@@ -1,3 +1,5 @@
+# Seb's QubesOS Scripts
+
 ## Installing QubesOS
 1. Start with an empty 8GB USB stick
 2. Download the latest [Qubes OS ISO image](https://www.qubes-os.org/downloads/)
