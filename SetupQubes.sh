@@ -60,7 +60,7 @@ function installApp () {
 	qvm-start AA-$1
 }
 
-#installApp brave red
-#installApp keepass black offline
-#installApp element red
+installApp brave red
+installApp keepass black offline
+installApp element red
 installApp signal red
