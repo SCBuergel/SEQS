@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=0xFrame
+Comment=Open source Ethereum Wallet
+GenericName=Ethereum Wallet
+Exec=Frame.AppImage
+TryExec=Frame.AppImage
+StartupNotify=true
+Version=1.0
+Icon=keepasscx
+Terminal=false
+Type=Application
+Categories=Qubes;Utility;
+MimeType=application/xhtml_xml;application/xml;
