@@ -1,6 +1,8 @@
+#!/bin/bash
+
 # fetchFromVM VMNAME FILE [EXE]
 function fetchFromVm() {
-	echo "fetching $2 from $1..."
+	echo "fetching $2 from VM $1..."
 
 	if [ $# -lt 2 ]; then
 		echo "Expected at least two parameters: fetchFromVm SOURCEVMNAME FILENAME [EXE]"
@@ -26,13 +28,13 @@ function fetchFromVm() {
 # fetchRunClean VMNAME PACKAGENAME PATH FILENAME
 function fetchRunClean() {
 	if fetchFromVm personal $3$4 EXE; then
-		echo "moving $2 install files to $1..."
+		echo "moving $2 install files to VM $1..."
 		qvm-move-to-vm $1 $4
 
-		echo "running $2 installer on $1..."
-		qvm-run -p $1 ./QubesIncoming/dom0/$4
+		echo "running $2 installer on VM $1..."
+		qvm-run -p $1 sudo ./QubesIncoming/dom0/$4
 
-		echo "cleaning up $2 install files on $1..."
+		echo "cleaning up $2 install files on VM $1..."
 		qvm-run -p $1 rm ./QubesIncoming -rf
 	else
 		echo "looks like there is no $4 script for $1. You do you. ¯\\_ (ツ)_/¯"
@@ -48,7 +50,6 @@ function installApp () {
 		return 1
 	fi
 
-	: ' 
 	echo "running $0..."
 
 	echo "setting up template VM ZZ-$1...."
@@ -77,7 +78,7 @@ function installApp () {
 	else
 		echo "looks like there is no $.desktop file for. No biggie ¯\\_ (ツ)_/¯"
 	fi
-'
+
 	echo "shutting down template VM..."
 	qvm-shutdown ZZ-$1
 
@@ -94,7 +95,8 @@ cd ~
 #installApp keepass black offline
 #installApp element red
 #installApp signal red
-installApp telegram red
+#installApp telegram red
+installApp wallets orange
 
 # finally delete this setup file after running it
 rm $0
