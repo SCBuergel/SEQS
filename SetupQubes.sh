@@ -1,66 +1,100 @@
-cd ~
+# fetchFromVM VMNAME FILE [EXE]
+function fetchFromVm() {
+	echo "fetching $2 from $1..."
 
-echo "setting up fetch-from-vm..."
-echo "
-if [ \$# -ne 2 ]; then
-echo \"Expect two parameters: fetch-from-vm source_vm file\"
-exit 1
-fi
-FILE=\$(basename \"\$2\")
-rm \$FILE 2>>/dev/null
-qvm-run --pass-io \$1 cat \$2 >> \$FILE
-chmod +x \$FILE
-" >> ./.local/bin/fetch-from-vm
-chmod +x ./.local/bin/fetch-from-vm
+	if [ $# -lt 2 ]; then
+		echo "Expected at least two parameters: fetchFromVm SOURCEVMNAME FILENAME [EXE]"
+		return 1
+	fi
+	
+	# delete file in case it already exists on dom0 and ignore errors
+	FILE=$(basename "$2")
+	rm $FILE 2>>/dev/null
+
+	# fetch the file via the 'cat' hack to avoid dom0 security precautions 
+	if qvm-run -p $1 cat $2 >> $FILE; then
+		# make the file executable if EXE parameter is passed along
+		if [ $# -gt 2 ] && [ $3 == "EXE" ]; then
+			chmod +x $FILE
+		fi
+	else
+		# bubble up errors
+		return 1
+	fi
+}
+
+# fetchRunClean VMNAME PACKAGENAME PATH FILENAME
+function fetchRunClean() {
+	if fetchFromVm personal $3$4 EXE; then
+		echo "moving $2 install files to $1..."
+		qvm-move-to-vm $1 $4
+
+		echo "running $2 installer on $1..."
+		qvm-run -p $1 ./QubesIncoming/dom0/$4
+
+		echo "cleaning up $2 install files on $1..."
+		qvm-run -p $1 rm ./QubesIncoming -rf
+	else
+		echo "looks like there is no $4 script for $1. You do you. ¯\\_ (ツ)_/¯"
+		# bubble up errors
+		return 1
+	fi
+
+}
 
 function installApp () {
 	if [ $# -lt 2 ]; then
-	echo "Expected two parameters: installApp APPNAME COLOR [offline]"
-	exit 1
+		echo "Expected two parameters: installApp APPNAME COLOR [offline]"
+		return 1
 	fi
-	
+
+	: ' 
+	echo "running $0..."
+
 	echo "setting up template VM ZZ-$1...."
 	qvm-clone debian-11 ZZ-$1
 	
-	echo "fetching $1 install files...."
-	fetch-from-vm personal /home/user/SEQS/install-scripts/$1.sh
-	
-	echo "moving $1 install files to template VM..."
-	qvm-move-to-vm ZZ-$1 $1.sh
+	echo "trying to fetch $1 templateVM install files...."
+	fetchRunClean ZZ-$1 $1 /home/user/SEQS/install-scripts/ $1_templateVM.sh
 
-	echo "running $1 installer..."
-	qvm-run ZZ-$1 ./QubesIncoming/dom0/$1.sh	
-
-	echo "cleaning up $1 install files on app VM..."
-	qvm-run ZZ-$1 rm ./QubesIncoming -rf
+	echo "shutting down template VM..."
 	qvm-shutdown ZZ-$1
 	sleep 2
 	
 	echo "creating app VM AA-$1..."
 	qvm-create AA-$1 --template ZZ-$1 --label $2
 	if [ $# -gt 2 ] && [ $3 == "offline" ]; then
-	echo "taking app VM offline..."
-	sleep 2
-	qvm-prefs AA-$1 netvm none
+		echo "taking app VM offline..."
+		sleep 2
+		qvm-prefs AA-$1 netvm none
 	fi
 
 	echo "trying to fetch $1.desktop file..."
-	fetch-from-vm personal /home/user/SEQS/menu-files/$1.desktop 
-
-	if [ -f "$1.desktop" ]; then
+	if fetchFromVm personal /home/user/SEQS/menu-files/$1.desktop; then
 		echo "moving $1.desktop file to template VM..."
 		qvm-move-to-vm ZZ-$1 $1.desktop
-		qvm-run ZZ-$1 sudo mv /home/user/QubesIncoming/dom0/$1.desktop /usr/share/applications/
+		qvm-run -p ZZ-$1 sudo mv /home/user/QubesIncoming/dom0/$1.desktop /usr/share/applications/
+	else
+		echo "looks like there is no $.desktop file for. No biggie ¯\\_ (ツ)_/¯"
 	fi
-
+'
 	echo "shutting down template VM..."
 	qvm-shutdown ZZ-$1
 
 	echo "starting app VM..."
 	qvm-start AA-$1
+	
+	echo "trying to fetch $1 appVM install files...."
+	fetchRunClean AA-$1 $1 /home/user/SEQS/install-scripts/ $1_appVM.sh
 }
 
-installApp brave red
-installApp keepass black offline
-installApp element red
-installApp signal red
+cd ~
+
+#installApp brave red
+#installApp keepass black offline
+#installApp element red
+#installApp signal red
+installApp telegram red
+
+# finally delete this setup file after running it
+rm $0
