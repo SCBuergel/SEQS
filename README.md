@@ -19,8 +19,9 @@ In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
 2. Open dom0 terminal and type the following one-liner:
 ```
-qvm-run --pass-io personal 'cat /home/user/SEQS/SetupQubes.sh' >> SetupQubes.sh && chmod +x SetupQubes.sh && ./SetupQubes.sh
+qvm-run -p personal 'cat /home/user/SEQS/SetupQubes.sh' >> s.sh && chmod +x s.sh && ./s.sh
 ```
+3. Some software packages require you to reboot the app VM once to actually work.
 
 The script will download the individual install scripts into dom0 and from there to newly created template VMs. The template VMs are then used to set up app VMs for proper isolation.
 
@@ -30,19 +31,6 @@ Control the actual software packages that are installed at the bottom of the `Se
 In order to add additional software packages, create corresponding install scripts to the respective folder. If needed (e.g. in case of AppImage donwloads) add menu files so that the program can be launched from the Qubes menu. 
 
 ## Helpers
-### fetch-from-vm
-The following script can be used from within dom0 to copy trusted files from a VM to dom0. It can be stored in dom0 in `/home/user/.local/bin/fetch-from-vm` and it can be used via e.g. `fetch-from-vm personal /home/user/SetupQubes.sh`
-
-```
-if [ $# -ne 2 ]; then
-echo "Expect two parameters: fetch-from-vm source_vm file"
-exit 1
-fi
-FILE=$(basename "$2")
-rm $FILE 2>>/dev/null
-qvm-run --pass-io $1 cat $2 >> $FILE
-chmod +x $FILE
-```
 ### cleanup.sh
 The following script cleans up VMs while debugging and setting up installers:
 ```

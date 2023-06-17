@@ -33,6 +33,7 @@ function fetchRunClean() {
 
 		echo "running $2 installer on VM $1..."
 		qvm-run -p $1 sudo ./QubesIncoming/dom0/$4
+		sleep 2
 
 		echo "cleaning up $2 install files on VM $1..."
 		qvm-run -p $1 rm ./QubesIncoming -rf
@@ -60,7 +61,15 @@ function installApp () {
 
 	echo "shutting down template VM..."
 	qvm-shutdown ZZ-$1
-	sleep 2
+	sleep 3
+
+	echo "starting template VM once more..."
+	qvm-start ZZ-$1
+	sleep 10
+
+	echo "and shutting template VM off again..."
+	qvm-shutdown ZZ-$1
+	sleep 3
 	
 	echo "creating app VM AA-$1..."
 	qvm-create AA-$1 --template ZZ-$1 --label $2
@@ -87,6 +96,9 @@ function installApp () {
 	
 	echo "trying to fetch $1 appVM install files...."
 	fetchRunClean AA-$1 $1 /home/user/SEQS/install-scripts/ $1_appVM.sh
+
+	echo "shutting app VM down..."
+	qvm-shutdown AA-$1
 }
 
 cd ~
