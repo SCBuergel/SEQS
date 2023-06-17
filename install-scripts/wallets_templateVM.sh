@@ -85,5 +85,6 @@ echo "Installing Docker packages..."
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
 echo "Adding  to user group..."
-sudo usermod -aG docker $USER
-
+groups user
+sudo usermod -aG docker user
+groups user

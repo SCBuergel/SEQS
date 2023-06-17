@@ -1,11 +1,7 @@
-echo "Installing element-desktop"
+echo "Installing signal chat"
 
-curl --proxy 127.0.0.1:8082 -s  https://packages.element.io/debian/element-io-archive-keyring.gpg | sudo tee /usr/share/keyrings/element-io-archive-keyring.gpg >> /dev/null
+curl --proxy 127.0.0.1:8082 -s https://updates.signal.org/desktop/apt/keys.asc | gpg --dearmor | sudo tee /usr/share/keyrings/signal-desktop-keyring.gpg >> /dev/null
 
-echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/signal-desktop-keyring.gpg] https://updates.signal.org/desktop/apt xenial main" | sudo tee /etc/apt/sources.list.d/signal-xenial.list
 
-sudo apt update
-
-sudo apt install dunst -y
-
-sudo apt install signal-desktop -y
+sudo apt update && sudo apt install signal-desktop -y

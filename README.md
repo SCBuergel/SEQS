@@ -34,20 +34,5 @@ In order to add additional software packages, create corresponding install scrip
 ### cleanup.sh
 The following script cleans up VMs while debugging and setting up installers:
 ```
-function deleteVMs () {
-        for app in "$@"; do
-                qvm-shutdown ZZ-$app 2>>/dev/null
-                qvm-shutdown AA-$app 2>>/dev/null
-                echo "waiting for qubes to shut down..."
-                sleep 2
-                qvm-remove AA-$app -f
-                qvm-remove ZZ-$app -f
-        done
-}
-
-cd ~
-rm SetupQubes.sh 2>>/dev/null
-rm ./.local/bin/fetch-from-vm 2>>/dev/null
-
-deleteVMs keepass
+./deleteVMs keepass telegram wallets
 ```
