@@ -36,3 +36,22 @@ The following script cleans up VMs while debugging and setting up installers:
 ```
 ./deleteVMs keepass telegram wallets
 ```
+
+### Firewall setup between app VMs
+
+For some use cases it is useful to allow for selective connections between individual app VMs. One example is the RPCh server running within the wallets app VM and another browser and browser wallet app VM. In order to do that find the two respective IPs and set the iptables in the sys-firewall qube
+
+On both RPCh and brave app VM do
+```
+hostname -I
+```
+
+within the sys-firewall do
+```
+iptables -I FORWARD 2 -s IP_BRAVE -d IP_RPCH -j ACCEPT
+```
+
+e.g.
+```
+iptables -I FORWARD 2 -s 10.137.0.25 -d 10.137.0.51 -j ACCEPT
+```

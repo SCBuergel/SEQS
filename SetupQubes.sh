@@ -98,6 +98,7 @@ cd ~
 installApp brave red
 installApp element red
 installApp keepass black offline
+installApp docker red
 installApp signal red
 installApp telegram red
 installApp wallets orange
