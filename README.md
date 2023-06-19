@@ -5,19 +5,24 @@
 2. Download the latest [Qubes OS ISO image](https://www.qubes-os.org/downloads/)
 3. On the first install selection menu (in terminal) right after selecting the boot media, select installation with latest kernel. I have a lot of issues with [graphics lagging](https://forum.qubes-os.org/t/extremely-slow-performance-on-qubes-4-1/10060/19) and [wifi adapter not being found](https://forum.qubes-os.org/t/how-to-connect-to-wi-fi/11965/13).
 4. I create partitions and mount points as follows:
-4.1 1 GB `/boot/efi`
-4.2 1 GB `/boot`
-4.3 32 GB `swap` (encrypted)
-4.4 whatever is left `/` (encrypted)
-5. For convenience I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows: 
+    1. 1 GB `/boot/efi`
+    2. 1 GB `/boot`
+    3. 32 GB `swap` (encrypted)
+    4. whatever is left `/` (encrypted)
+5. For convenience I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows:
+
+![Screenshot of Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
+
 6. After connecting to wifi, the system update icon should appear in the tray on the top right, run all updates and reboot
 
 ## Install software
-I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `ZZ-[AppName]` and my app VMs are prefixed `AA-[AppName]`.
+I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `ZZ-[AppName]` and my app VMs are prefixed `AA-[AppName]`. This repository contains a range of scripts that set up template VMs and app VMs for several software packages. In order to create them, you are copying files from an app VM to your dom0.
+
+**WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understood everything and considered all actions to be safe!**
 
 In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
-2. Open dom0 terminal and type the following one-liner:
+2. Open dom0 terminal and type the following one-liner (this is a common hack to copy files from an app VM into dom0):
 ```
 qvm-run -p personal 'cat /home/user/SEQS/SetupQubes.sh' >> s.sh && chmod +x s.sh && ./s.sh
 ```
