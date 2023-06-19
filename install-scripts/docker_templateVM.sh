@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+# exit on errors, undefined variables, ensure errors in pipes are not hidden
+set -Eeuo pipefail
+
 echo "Installing docker"
 
 echo "Installing ca-certificats for Docker Engine..."

@@ -1,3 +1,8 @@
+#!/usr/bin/env bash
+
+# exit on errors, undefined variables, ensure errors in pipes are not hidden
+set -Eeuo pipefail
+
 PREFIX_APP_VM="A-"
 PREFIX_TEMPLATE_VM="Z-"
 

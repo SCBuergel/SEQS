@@ -24,13 +24,13 @@ In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
 2. Open dom0 terminal and type the following one-liner (this is a [common hack to copy files from an app VM into dom0](https://www.qubes-os.org/doc/how-to-copy-from-dom0/#copying-to-dom0)):
 ```
-qvm-run -p personal 'cat /home/user/SEQS/SetupQubes.sh' >> s.sh && chmod +x s.sh && ./s.sh
+qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' >> s.sh && chmod +x s.sh && ./s.sh
 ```
 3. Some software packages require you to reboot the app VM once to actually work.
 
 The script will download the individual install scripts into dom0 and from there to newly created template VMs. The template VMs are then used to set up app VMs for proper isolation.
 
-Control the actual software packages that are installed at the bottom of the `SetupQubes.sh` file.
+Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
 
 ### I want to automate installation of [XYZ]
 In order to add additional software packages, create corresponding install scripts to the respective folder. If needed (e.g. in case of AppImage donwloads) add menu files so that the program can be launched from the Qubes menu. 
@@ -39,7 +39,7 @@ In order to add additional software packages, create corresponding install scrip
 ### cleanup.sh
 The following script cleans up VMs while debugging and setting up installers:
 ```
-./deleteVMs keepass telegram wallets
+./delete-vms.sh keepass telegram wallets
 ```
 
 ### Firewall setup between app VMs (TODO: script this)
