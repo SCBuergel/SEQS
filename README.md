@@ -43,21 +43,24 @@ The following script cleans up VMs while debugging and setting up installers:
 ```
 
 ### Firewall setup between app VMs (TODO: script this)
-For some use cases it is useful to allow for selective connections between individual app VMs. One example is the RPCh server running within the wallets app VM and another browser and browser wallet app VM. In order to do that find the two respective IPs and set the iptables. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
-1. On both RPCh and wallets app VM find the respective VM IPs via:
+For some use cases it is useful to allow for selective connections between individual app VMs. One example is the RPCh server running within the `A-docker` app VM that shoud be accessible from an `A-wallets` app VM. In order to do enable that find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
+1. in dom0 find the IP addresses of both app VMs:
+```
+qvm-ls -n | grep -E 'A-wallets|A-docker'
+```
 ```
 hostname -I
 ```
 2. clone `debian-11-dvm`, rename it as `app-sys-firewall`
 3. clone `sys-firewall`, rename it as `sys-firewall-lab`
-4. change `template sys-firewall-lab` from `debian-11-dvm` to `app-sys-firewall`
-5. configure changes on app-sys-firewall by
+4. change template of `sys-firewall-lab` from `debian-11-dvm` to `app-sys-firewall`
+5. configure changes on `app-sys-firewall` by
 ```
-echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_RPCH -j ACCEPT" >> /rw/config/qubes-firewall-user-script
+echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
 e.g.
 ```
-echo "iptables -I FORWARD 2 -s 10.137.0.25 -d 10.137.0.51 -j ACCEPT" >> /rw/config/qubes-firewall-user-script
+echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
 6. start `sys-firewall-lab`
 7. configure both RPCh app VM and wallet app VM to use `sys-firewall-lab` as their net cube
