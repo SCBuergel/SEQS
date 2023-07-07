@@ -7,7 +7,7 @@ echo "Installing wallets and brave-browser"
 
 echo "Adding Ledger udev rules..."
 
-cat <<EOF > /etc/udev/rules.d/20-hw1.rules
+cat << EOF | sudo tee /etc/udev/rules.d/20-hw1.rules
 # HW.1 / Nano
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="2581", ATTRS{idProduct}=="1b7c|2b7c|3b7c|4b7c", TAG+="uaccess", TAG+="udev-acl"
 # Blue
@@ -27,7 +27,7 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", ATTRS{idProduct}=="6011", TAG+="uacc
 EOF
 
 echo "Adding Trezor udev rules..."
-cat <<EOF > /etc/udev/rules.d/51-trezor.rules
+sudo cat << EOF | sudo tee /etc/udev/rules.d/51-trezor.rules
 # Trezor
 SUBSYSTEM=="usb", ATTR{idVendor}=="534c", ATTR{idProduct}=="0001", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="trezor%n"
 KERNEL=="hidraw*", ATTRS{idVendor}=="534c", ATTRS{idProduct}=="0001", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"
@@ -39,10 +39,10 @@ KERNEL=="hidraw*", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="53c1", MODE="0660
 EOF
 
 echo "triggering udevadm..."
-udevadm trigger
+sudo udevadm trigger
 
 echo "reloading rules..."
-udevadm control --reload-rules
+sudo udevadm control --reload-rules
 
 echo "loading brave keyring..."
 curl --proxy 127.0.0.1:8082 -s https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg | sudo tee /usr/share/keyrings/brave-browser-archive-keyring.gpg >> /dev/null
@@ -63,8 +63,8 @@ sudo mv ./Frame.AppImage /usr/bin/
 function installExtension() {
 	echo "installing $1"
 	EXTENSIONS_PATH=/opt/brave.com/brave/extensions
-	mkdir -p $EXTENSIONS_PATH
-	echo '{ "external_update_url": "https://clients2.google.com/service/update2/crx" }' > "${EXTENSIONS_PATH}/$1.json"
+	sudo mkdir -p $EXTENSIONS_PATH
+	echo '{ "external_update_url": "https://clients2.google.com/service/update2/crx" }' | sudo tee "${EXTENSIONS_PATH}/$1.json"
 }
 
 ARGENTX_ID=dlcobpjiigpikoobohmabehhmhfoodbb

@@ -24,7 +24,7 @@ In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
 2. Open dom0 terminal and type the following one-liner (this is a [common hack to copy files from an app VM into dom0](https://www.qubes-os.org/doc/how-to-copy-from-dom0/#copying-to-dom0)):
 ```
-qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' >> s.sh && chmod +x s.sh && ./s.sh
+qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' > s.sh && chmod +x s.sh && ./s.sh
 ```
 3. Some software packages require you to reboot the app VM once to actually work.
 
