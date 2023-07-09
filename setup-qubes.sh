@@ -117,6 +117,7 @@ installApp docker red
 installApp signal red
 installApp telegram red
 installApp wallets orange
+installApp python red
 
 # finally delete this setup file after running it
 rm $0
