@@ -1,0 +1,23 @@
+name: Lint
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+
+concurrency:
+  group: ${{ github.head_ref }}-lint
+  cancel-in-progress: true
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout hoprnet repository
+        uses: actions/checkout@v3
+
+      - name: Check shell scripts (not enforced for now)
+        run: shellcheck -a --norc -s bash -x scripts/*.sh
