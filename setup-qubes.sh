@@ -119,6 +119,7 @@ installApp telegram red
 installApp wallets orange
 installApp python red
 installApp openOffice red
+installApp vscode red
 
 # finally delete this setup file after running it
 rm $0
