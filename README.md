@@ -74,3 +74,12 @@ curl 10.137.0.51:8080/?exit-provider=https://primary.gnosis-chain.rpc.hoprtech.n
 ```
 
 If you re-install either of the two qubes, remember to update the entry in `/rw/config/qubes-firewall-user-script` with the respective new IPs.
+
+### vim mappings (TODO: script this)
+I like to move screen lines in vim instead of wrapped physical lines so I use the following `~/.vimrc` file:
+```
+noremap <up> gk
+noremap <down> gj
+inoremap <up> <C-o>gk
+inoremap <down> <C-o>gj
+```
