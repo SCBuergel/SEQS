@@ -54,7 +54,7 @@ sudo apt update
 sudo apt install brave-browser -y
 
 echo "downloading Frame..."
-curl --proxy 127.0.0.1:8082 https://github.com/floating/frame/releases/download/v0.6.6/Frame-0.6.6.AppImage -LGso Frame.AppImage
+curl --proxy 127.0.0.1:8082 https://github.com/floating/frame/releases/download/v0.6.7/Frame-0.6.7.AppImage -LGso Frame.AppImage
 
 sudo chmod +x Frame.AppImage
 sudo mv ./Frame.AppImage /usr/bin/
