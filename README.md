@@ -42,6 +42,13 @@ The following script cleans up VMs while debugging and setting up installers:
 ./delete-vms.sh keepass telegram wallets
 ```
 
+### Sync clock in Debian-11 template
+
+Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that install the following package in the base template (in my case `Debian-11`):
+```
+sudo apt install systemd-timesyncd
+```
+
 ### Firewall setup between app VMs (TODO: script this)
 For some use cases it is useful to allow for selective connections between individual app VMs. One example is the [RPCh server](https://access.rpch.net/) running within the `A-docker` app VM that shoud be accessible from an `A-wallets` app VM. In order to do enable that, find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
 1. in dom0 find the IP addresses of both app VMs:
