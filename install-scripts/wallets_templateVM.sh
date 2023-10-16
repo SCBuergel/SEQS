@@ -79,6 +79,7 @@ NABOX_ID=nknhiehlklippafakaeklbeglecifhad
 RABBY_ID=acmacodkjbdgmoleebolmdjonilkdbch
 TAHOE_ID=eajafomhmkipbjmfmhebemolkcicgfmd
 TRUSTWALLET_ID=egjidjbpglichdcondbcbdnbeeppgdph
+ZEAL_ID=heamnjbnflcikcggoiplibfommfbkjpj
 ZERION_ID=klghhnkeealcohjjanjjdaeeggmfmlpl
 
 echo "installing ArgentX Brave extension..."
@@ -105,5 +106,7 @@ echo "installing Tahoe Brave extension..."
 installExtension $TAHOE_ID
 echo "installing Trust Wallet Brave extension..."
 installExtension $TRUSTWALLET_ID
+echo "installing Zeal Brave extension..."
+installExtension $ZEAL_ID
 echo "installing Zerion Brave extension..."
 installExtension $ZERION_ID
