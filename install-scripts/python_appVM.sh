@@ -18,3 +18,14 @@ echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
 
 echo "installing latest python..."
 pyenv install 3.11
+
+echo "setting symlink..."
+sudo ln -s /usr/bin/python3 /usr/local/bin/python
+
+echo "installing virtualenv..."
+pip install virtualenv
+
+echo "adding deleting of Qubes and Downloads folder to .bashrc"
+echo "
+rm -rf QubesIncoming
+rm -rf Downloads/*" >> .bashrc

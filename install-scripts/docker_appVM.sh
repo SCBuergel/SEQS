@@ -8,3 +8,8 @@ echo "Persisting docker content on appVM"
 sudo mkdir /rw/config/qubes-bind-dirs.d/
 cd /rw/config/qubes-bind-dirs.d/
 echo "binds+=( '/var/lib/docker' )" | sudo tee 50_user.conf
+
+echo "adding deleting of Qubes and Downloads folder to .bashrc"
+echo "
+rm -rf QubesIncoming
+rm -rf Downloads/*" >> .bashrc
