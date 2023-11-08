@@ -77,6 +77,7 @@ LIQUALITY_ID=kpfopkelmapcoipemfendmdcghnegimn
 METAMASK_ID=nkbihfbeogaeaoehlefnkodbefgpgknn
 NABOX_ID=nknhiehlklippafakaeklbeglecifhad
 RABBY_ID=acmacodkjbdgmoleebolmdjonilkdbch
+RAINBOW_ID=opfgelmcmbiajamepnmloijbpoleiama
 TAHOE_ID=eajafomhmkipbjmfmhebemolkcicgfmd
 TRUSTWALLET_ID=egjidjbpglichdcondbcbdnbeeppgdph
 ZEAL_ID=heamnjbnflcikcggoiplibfommfbkjpj
@@ -101,7 +102,9 @@ installExtension $METAMASK_ID
 echo "installing Nabox Brave extension..."
 installExtension $NABOX_ID
 echo "installing Rabby Brave extension..."
-installExtension $RABBY_ID
+installextension $RABBY_ID
+echo "installing Rainbow Brave extension..."
+installExtension $RAINBOW_ID
 echo "installing Tahoe Brave extension..."
 installExtension $TAHOE_ID
 echo "installing Trust Wallet Brave extension..."
