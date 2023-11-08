@@ -77,6 +77,7 @@ LIQUALITY_ID=kpfopkelmapcoipemfendmdcghnegimn
 METAMASK_ID=nkbihfbeogaeaoehlefnkodbefgpgknn
 NABOX_ID=nknhiehlklippafakaeklbeglecifhad
 RABBY_ID=acmacodkjbdgmoleebolmdjonilkdbch
+OKX_ID=mcohilncbfahbmgdjkbpemcciiolgcge
 RAINBOW_ID=opfgelmcmbiajamepnmloijbpoleiama
 TAHOE_ID=eajafomhmkipbjmfmhebemolkcicgfmd
 TRUSTWALLET_ID=egjidjbpglichdcondbcbdnbeeppgdph
@@ -99,6 +100,8 @@ echo "installing Liquality Brave extension..."
 installExtension $LIQUALITY_ID
 echo "installing Metamask Brave extension..."
 installExtension $METAMASK_ID
+echo "installing OKX wallet Brave extension..."
+installExtension $OKX_ID
 echo "installing Nabox Brave extension..."
 installExtension $NABOX_ID
 echo "installing Rabby Brave extension..."
@@ -109,7 +112,7 @@ echo "installing Tahoe Brave extension..."
 installExtension $TAHOE_ID
 echo "installing Trust Wallet Brave extension..."
 installExtension $TRUSTWALLET_ID
-echo "installing Zeal Brave extension..."
+echo "installing Zeal wallet Brave extension..."
 installExtension $ZEAL_ID
-echo "installing Zerion Brave extension..."
+echo "installing Zerion wallet Brave extension..."
 installExtension $ZERION_ID
