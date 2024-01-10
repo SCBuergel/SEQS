@@ -33,7 +33,7 @@ The script will download the individual install scripts into dom0 and from there
 Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
 
 ### I want to automate installation of [XYZ]
-In order to add additional software packages, create corresponding install scripts to the respective folder. If needed (e.g. in case of AppImage donwloads) add menu files so that the program can be launched from the Qubes menu. 
+In order to add additional software packages, create corresponding install scripts to the respective folder. If needed (e.g. in case of AppImage donwloads) add menu files so that the program can be launched from the Qubes m6enu. 
 
 ## Helpers
 ### delete-vms.sh
@@ -50,7 +50,7 @@ sudo apt install systemd-timesyncd
 ```
 
 ### Firewall setup between app VMs (TODO: script this)
-For some use cases it is useful to allow for selective connections between individual app VMs. One example is the [RPCh server](https://access.rpch.net/) running within the `A-docker` app VM that shoud be accessible from an `A-wallets` app VM. In order to do enable that, find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
+For some use cases it is useful to allow for selective connections between individual app VMs. This setup limits port 45750 for TCP traffic between two qubes. One example is the [RPCh server](https://access.rpch.net/) running within the `A-docker` app VM that shoud be accessible from an `A-wallets` app VM. In order to do enable that, find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
 1. in dom0 find the IP addresses of both app VMs:
 ```
 qvm-ls -n | grep -E 'A-wallets|A-docker'
@@ -63,11 +63,11 @@ hostname -I
 4. change template of `sys-firewall-lab` from `debian-11-dvm` to `app-sys-firewall`
 5. configure changes on `app-sys-firewall` by opening a terminal in `app-sys-firewall`
 ```
-echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
+echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
 e.g.
 ```
-echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
+echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
 6. start `sys-firewall-lab`
 7. configure both RPCh app VM and wallet app VM to use `sys-firewall-lab` as their net cube. You can do that from the `dom0` terminal via:
