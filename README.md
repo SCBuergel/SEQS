@@ -90,3 +90,20 @@ noremap <down> gj
 inoremap <up> <C-o>gk
 inoremap <down> <C-o>gj
 ```
+
+### minimal templates
+Install in `dom0` via
+```
+sudo qubes-dom0-update qubes-template-debian-11-minimal
+```
+
+These templates are [passwordless](https://www.qubes-os.org/doc/templates/minimal/#passwordless-root) which means all `sudo` commands can only happen via a special terminal that has to be opened from `dom0` (for both template or app VM) via:
+```
+qvm-run -u root A-barcode xterm
+```
+
+To give the app-VM user access to e.g. the webcam run the following in the sudo terminal of the template VM of the app VM:
+```
+sudo usermod -a -G video user
+```
+
