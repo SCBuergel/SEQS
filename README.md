@@ -91,6 +91,14 @@ inoremap <up> <C-o>gk
 inoremap <down> <C-o>gj
 ```
 
+
+### mount USB drive
+Use the following to mount an attached USB drive without having all files be default executable and root-owned, even if it's FAT formatted
+```
+sudo mount -o uid=1000,gid=1000,fmask=177,dmask=077 /dev/xvdi /mnt
+```
+
+
 ### minimal templates
 Install in `dom0` via
 ```
