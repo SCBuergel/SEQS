@@ -55,13 +55,10 @@ For some use cases it is useful to allow for selective connections between indiv
 ```
 qvm-ls -n | grep -E 'A-wallets|A-docker'
 ```
-```
-hostname -I
-```
 2. clone `debian-11-dvm`, rename it as `app-sys-firewall`
 3. clone `sys-firewall`, rename it as `sys-firewall-lab`
 4. change template of `sys-firewall-lab` from `debian-11-dvm` to `app-sys-firewall`
-5. configure changes on `app-sys-firewall` by opening a terminal in `app-sys-firewall`
+5. configure changes on `sys-firewall-lab` by opening a terminal in `sys-firewall-lab`
 ```
 echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
@@ -69,15 +66,15 @@ e.g.
 ```
 echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
-6. start `sys-firewall-lab`
-7. configure both RPCh app VM and wallet app VM to use `sys-firewall-lab` as their net cube. You can do that from the `dom0` terminal via:
+6. restart `sys-firewall-lab`
+7. configure both `A-docker` app VM and `A-wallets` app VM to use `sys-firewall-lab` as their net cube. You can do that from the `dom0` terminal via:
 ```
 qvm-prefs A-docker netvm sys-firewall-lab
 qvm-prefs A-wallets netvm sys-firewall-lab
 ```
 9. Now the wallet qube should be able to use the RPCh server on the other app VM. Test e.g. by calling the RPCh app VM via command line:
 ```
-curl 10.137.0.51:8080/?exit-provider=https://primary.gnosis-chain.rpc.hoprtech.net -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+ curl 10.137.0.51:45750/?exit-provider=https://primary.gnosis-chain.rpc.hoprtech.net -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 ```
 
 If you re-install either of the two qubes, remember to update the entry in `/rw/config/qubes-firewall-user-script` with the respective new IPs.
