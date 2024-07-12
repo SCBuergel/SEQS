@@ -2,6 +2,7 @@
 
 PREFIX_APP_VM="A-"
 PREFIX_TEMPLATE_VM="Z-"
+OS_TEMPLATE_VM="debian-12"
 
 # fetchFromVM SOURCE_VM FILE [EXE]
 function fetchFromVm() {
@@ -71,7 +72,7 @@ function installApp () {
 	echo "STARTING INSTALLATION OF ${APPNAME}..."
 
 	echo "setting up template VM ${TEMPLATE_VM}...."
-	qvm-clone debian-11 ${TEMPLATE_VM}
+	qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
 	
 	echo "trying to fetch ${APPNAME} templateVM install files...."
 	fetchRunClean ${TEMPLATE_VM} ${APPNAME} /home/user/SEQS/install-scripts/ ${APPNAME}_templateVM.sh
