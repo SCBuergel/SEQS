@@ -112,3 +112,22 @@ To give the app-VM user access to e.g. the webcam run the following in the sudo 
 sudo usermod -a -G video user
 ```
 
+### open browser links in separate app qube
+For security purposes it makes sense to open all links in a separate browser as to not endanger another app qube by potentially malicious content in a link. You first have to allow opening links in `dom0` and then set up the link action in a `.desktop` file in the app qube from which you would like to open links in a separate target qube (e.g. `A-brave`).
+1. In `dom0` create a file `/etc/qubes/policy.d/29-browser.policy` that allows opening of links, e.g. in my case in `A-brave` with a single line:
+```
+qubes.OpenURL	*	@anyvm	A-brave	allow
+```
+2. In your app yoube from which you would like to open links (e.g. `A-telegram`), create a file `$HOME/.local/share/applications/mybrowser.desktop` (replance `A-brave` by whatever the name of your target browser qube is called):
+```
+[Desktop Entry]
+Encoding=UTF-8
+Name=MyBrowser
+Exec=qvm-open-in-vm A-brave %u
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+```
+**(TODO: script this for all app qubes except for the target)**
