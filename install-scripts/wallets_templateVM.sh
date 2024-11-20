@@ -54,7 +54,7 @@ sudo apt update
 sudo apt install brave-browser -y
 
 echo "downloading Frame..."
-curl --proxy 127.0.0.1:8082 https://github.com/floating/frame/releases/download/v0.6.8/Frame-0.6.8.AppImage -LGso Frame.AppImage
+curl --proxy 127.0.0.1:8082 https://github.com/floating/frame/releases/download/v0.6.9/Frame-0.6.9.AppImage -LGso Frame.AppImage
 
 sudo chmod +x Frame.AppImage
 sudo mv ./Frame.AppImage /usr/bin/
@@ -105,7 +105,7 @@ installExtension $OKX_ID
 echo "installing Nabox Brave extension..."
 installExtension $NABOX_ID
 echo "installing Rabby Brave extension..."
-installextension $RABBY_ID
+installExtension $RABBY_ID
 echo "installing Rainbow Brave extension..."
 installExtension $RAINBOW_ID
 echo "installing Tahoe Brave extension..."
