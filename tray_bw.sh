@@ -1,0 +1,1 @@
+qvm-run --pass-io GnosisVPN-app 'bash -c "old_rx=\$(sudo wg show gnosisvpnpoc dump | awk '\''NR==2 {print \$6}'\''); sleep 1; new_rx=\$(sudo wg show gnosisvpnpoc dump | awk '\''NR==2 {print \$6}'\''); diff=\$((new_rx - old_rx)); numfmt --to=iec --suffix=\B/s <<< \$diff"'
