@@ -3,13 +3,13 @@
 ## Installing QubesOS
 1. Start with an empty 8GB USB stick
 2. Download the latest [Qubes OS ISO image](https://www.qubes-os.org/downloads/)
-3. On the first install selection menu (in terminal) right after selecting the boot media, select installation with latest kernel. I have a lot of issues with [graphics lagging](https://forum.qubes-os.org/t/extremely-slow-performance-on-qubes-4-1/10060/19) and [wifi adapter not being found](https://forum.qubes-os.org/t/how-to-connect-to-wi-fi/11965/13).
+3. On the first install selection menu (in terminal) right after selecting the boot media, select installation with the latest kernel.
 4. I create partitions and mount points as follows:
     1. 1 GB `/boot/efi`
     2. 1 GB `/boot`
     3. 32 GB `swap` (encrypted)
     4. whatever is left `/` (encrypted)
-5. For convenience I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows:
+5. For convenience, I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows:
 
 ![Screenshot of Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
 
@@ -18,7 +18,7 @@
 ## Install software
 I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `ZZ-[AppName]` and my app VMs are prefixed `AA-[AppName]`. This repository contains a range of scripts that set up template VMs and app VMs for several software packages. In order to create them, you are copying files from an app VM to your dom0.
 
-**WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understood everything and considered all actions to be safe!**
+**WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understand everything and consider all actions to be safe!**
 
 In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
@@ -33,7 +33,7 @@ The script will download the individual install scripts into dom0 and from there
 Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
 
 ### I want to automate installation of [XYZ]
-In order to add additional software packages, create corresponding install scripts to the respective folder. If needed (e.g. in case of AppImage donwloads) add menu files so that the program can be launched from the Qubes m6enu. 
+In order to add additional software packages, create corresponding install scripts in the respective folder. If needed (e.g. in case of AppImage downloads) add menu files so that the program can be launched from the Qubes menu.
 
 ## Helpers
 ### delete-vms.sh
@@ -42,23 +42,23 @@ The following script cleans up VMs while debugging and setting up installers:
 ./delete-vms.sh keepass telegram wallets
 ```
 
-### Sync clock in Debian-11 template
+### Sync clock in Debian-12 template
 
-Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that install the following package in the base template (in my case `Debian-11`):
+Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that, install the following package in the base template (in my case `Debian-12`):
 ```
 sudo apt install systemd-timesyncd
 ```
 
 ### Firewall setup between app VMs (TODO: script this)
-For some use cases it is useful to allow for selective connections between individual app VMs. This setup limits port 45750 for TCP traffic between two qubes. One example is the [RPCh server](https://access.rpch.net/) running within the `A-docker` app VM that shoud be accessible from an `A-wallets` app VM. In order to do enable that, find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist it's `/rw` folder, the following is required to persist the settings between system reboots (as suggest [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
-1. in dom0 find the IP addresses of both app VMs:
+For some use cases, it is useful to allow for selective connections between individual app VMs. This setup limits port 45750 for TCP traffic between two qubes. One example is the [RPCh server](https://access.rpch.net/) running within the `A-docker` app VM that should be accessible from an `A-wallets` app VM. In order to enable that, find the two respective IPs and set the iptables in the net VM. Since the default sys-firewall qube does not persist its `/rw` folder, the following is required to persist the settings between system reboots (as suggested [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
+1. In dom0 find the IP addresses of both app VMs:
 ```
 qvm-ls -n | grep -E 'A-wallets|A-docker'
 ```
-2. clone `debian-11-dvm`, rename it as `app-sys-firewall`
-3. clone `sys-firewall`, rename it as `sys-firewall-lab`
-4. change template of `sys-firewall-lab` from `debian-11-dvm` to `app-sys-firewall`
-5. configure changes on `sys-firewall-lab` by opening a terminal in `sys-firewall-lab`
+2. Clone `debian-12-dvm`, rename it as `app-sys-firewall`
+3. Clone `sys-firewall`, rename it as `sys-firewall-lab`
+4. Change the template of `sys-firewall-lab` from `debian-12-dvm` to `app-sys-firewall`
+5. Configure changes on `sys-firewall-lab` by opening a terminal in `sys-firewall-lab`
 ```
 echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
@@ -66,8 +66,8 @@ e.g.
 ```
 echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
 ```
-6. restart `sys-firewall-lab`
-7. configure both `A-docker` app VM and `A-wallets` app VM to use `sys-firewall-lab` as their net cube. You can do that from the `dom0` terminal via:
+6. Restart `sys-firewall-lab`
+7. Configure both `A-docker` app VM and `A-wallets` app VM to use `sys-firewall-lab` as their net qube. You can do that from the `dom0` terminal via:
 ```
 qvm-prefs A-docker netvm sys-firewall-lab
 qvm-prefs A-wallets netvm sys-firewall-lab
@@ -88,18 +88,16 @@ inoremap <up> <C-o>gk
 inoremap <down> <C-o>gj
 ```
 
-
 ### mount USB drive
 Use the following to mount an attached USB drive without having all files be default executable and root-owned, even if it's FAT formatted
 ```
 sudo mount -o uid=1000,gid=1000,fmask=177,dmask=077 /dev/xvdi /mnt
 ```
 
-
 ### minimal templates
 Install in `dom0` via
 ```
-sudo qubes-dom0-update qubes-template-debian-11-minimal
+sudo qubes-dom0-update qubes-template-debian-12-minimal
 ```
 
 These templates are [passwordless](https://www.qubes-os.org/doc/templates/minimal/#passwordless-root) which means all `sudo` commands can only happen via a special terminal that has to be opened from `dom0` (for both template or app VM) via:
@@ -113,12 +111,12 @@ sudo usermod -a -G video user
 ```
 
 ### open browser links in separate app qube
-For security purposes it makes sense to open all links in a separate browser as to not endanger another app qube by potentially malicious content in a link. You first have to allow opening links in `dom0` and then set up the link action in a `.desktop` file in the app qube from which you would like to open links in a separate target qube (e.g. `A-brave`).
+For security purposes, it makes sense to open all links in a separate browser as to not endanger another app qube by potentially malicious content in a link. You first have to allow opening links in `dom0` and then set up the link action in a `.desktop` file in the app qube from which you would like to open links in a separate target qube (e.g. `A-brave`).
 1. In `dom0` create a file `/etc/qubes/policy.d/29-browser.policy` that allows opening of links, e.g. in my case in `A-brave` with a single line:
 ```
 qubes.OpenURL	*	@anyvm	A-brave	allow
 ```
-2. In your app yoube from which you would like to open links (e.g. `A-telegram`), create a file `$HOME/.local/share/applications/mybrowser.desktop` (replance `A-brave` by whatever the name of your target browser qube is called):
+2. In your app qube from which you would like to open links (e.g. `A-telegram`), create a file `$HOME/.local/share/applications/mybrowser.desktop` (replace `A-brave` by whatever the name of your target browser qube is called):
 ```
 [Desktop Entry]
 Encoding=UTF-8
