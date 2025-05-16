@@ -33,4 +33,10 @@ rm -f packages.microsoft.gpg
 
 sudo apt update -y
 sudo apt install code -y
+sudo apt install python3-pip -y
+
+# Ensure 'python' points to 'python3' for compatibility
+if ! command -v python >/dev/null 2>&1; then
+  sudo ln -s /usr/bin/python3 /usr/bin/python
+fi
 
