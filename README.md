@@ -2,14 +2,12 @@
 
 ## Installing QubesOS
 1. Start with an empty 8GB USB stick
-2. Download the latest [Qubes OS ISO image](https://www.qubes-os.org/downloads/)
-3. On the first install selection menu (in terminal) right after selecting the boot media, select installation with the latest kernel.
+2. Download the latest [Qubes OS ISO image](https://www.qubes-os.org/downloads/) - warning, [currently, Qubes cannot handle Ventoy-based installer images](https://github.com/QubesOS/qubes-issues/issues/8846), so use a dedicated USB drive for the Qubes installer!
 4. I create partitions and mount points as follows:
-    1. 1 GB `/boot/efi`
-    2. 1 GB `/boot`
-    3. 32 GB `swap` (encrypted)
-    4. whatever is left `/` (encrypted)
-5. For convenience, I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows:
+    1. 500 MGB `/boot/efi` (if you do multiboot with other OSs, this partition can be shared)
+    2. 1 GB `/boot` (warning: it seems that you cannot share a Qubes and e.g. Ubuntu `/boot` mount point, Qubes will just boot you into a black screen)
+    4. whatever is left `/` (encrypted, LUKS2)
+4. For convenience, I like window tiling to arrange windows neatly: Qubes menu -> System Tools -> Window Manager -> Keyboard -> scroll down to the Tile settings which I set as follows:
 
 ![Screenshot of Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
 
@@ -127,5 +125,9 @@ X-MultipleArgs=false
 Type=Application
 Categories=Network;WebBrowser;
 MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+```
+3. Activate this in your app qube (replace `mybrowser.desktop` with whatever your `.desktop` file above is called):
+```
+xdg-settings set default-web-browser mybrowser.desktop
 ```
 **(TODO: script this for all app qubes except for the target)**
