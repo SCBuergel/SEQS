@@ -121,6 +121,7 @@ installApp wallets orange
 installApp python red
 installApp openOffice red
 installApp vscode red
+installApp xournalpp red
 
 # finally delete this setup file after running it
 rm $0
