@@ -40,6 +40,58 @@ The following script cleans up VMs while debugging and setting up installers:
 ./delete-vms.sh keepass telegram wallets
 ```
 
+### Wireguard BW monitor in tray
+![Screenshot of Qubes tray showing download and upload stats](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
+
+To show the bandwidth that got consumed by a wireguard interface (e.g. of a VPN qube) in the system tray, do the following:
+1. create a script on the VPN app qube that has the wireguard interface (by default assumes interface name `wg0_gnosisvpn`):
+```
+#!/usr/bin/env bash
+set -euo pipefail
+
+IFACE="${1:-wg0_gnosisvpn}"
+
+get_bytes() {
+  sudo wg show "$IFACE" transfer 2>/dev/null \
+    | awk '{rx+=$2; tx+=$3} END {print rx+0, tx+0}'
+}
+
+human() {
+  local bytes="$1"
+  awk -v b="$bytes" 'BEGIN {
+    split("B KB MB GB TB", u, " ")
+    i=1
+    while (b>=1024 && i<5) { b/=1024; i++ }
+
+    # Always exactly 2 decimals to keep fixed width
+    val=sprintf("%.2f", b)
+
+    # 6 chars for number (incl. dot), 2 chars for unit
+    printf "%6s %-2s", val, u[i]
+  }'
+}
+
+read -r rx1 tx1 < <(get_bytes)
+sleep 1
+read -r rx2 tx2 < <(get_bytes)
+
+delta_rx=$((rx2 - rx1))
+delta_tx=$((tx2 - tx1))
+
+printf " ↑ %s (+ %s), ↓ %s (+ %s)\n" \
+  "$(human "$tx2")" "$(human "$delta_tx")" \
+  "$(human "$rx2")" "$(human "$delta_rx")"
+```
+2. Create a `vpn_monitor.sh` script in dom0 which calls the actual bandwidth monitor on the VPN app VM (assumes `sys-gnosis-vpn`)
+```
+#!/usr/bin/env bash
+set -euo pipefail
+
+QUBE="sys-gnosis-vpn"
+qvm-run --pass-io --no-gui "$QUBE" 'bash -lc ~/bw.sh'
+```
+3. Add a generic monitor to the tray which runs the `vpn_monitor.sh` script created above. Make sure to set the interval to 2s and not 1s otherwise the window manager might freeze!
+
 ### Sync clock in Debian-12 template
 
 Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that, install the following package in the base template (in my case `Debian-12`):
