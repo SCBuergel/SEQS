@@ -44,7 +44,7 @@ The following script cleans up VMs while debugging and setting up installers:
 ![Screenshot of Qubes tray showing download and upload stats](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
 
 To show the bandwidth that got consumed by a wireguard interface (e.g. of a VPN qube) in the system tray, do the following:
-1. create a script on the VPN app qube that has the wireguard interface (by default assumes interface name `wg0_gnosisvpn`):
+1. create a script `~/wg.sh` on the VPN app qube that has the wireguard interface (by default assumes interface name `wg0_gnosisvpn`):
 ```
 #!/usr/bin/env bash
 set -euo pipefail
@@ -84,11 +84,7 @@ printf " ↑ %s (+ %s), ↓ %s (+ %s)\n" \
 ```
 2. Create a `vpn_monitor.sh` script in dom0 which calls the actual bandwidth monitor on the VPN app VM (assumes `sys-gnosis-vpn`)
 ```
-#!/usr/bin/env bash
-set -euo pipefail
-
-QUBE="sys-gnosis-vpn"
-qvm-run --pass-io --no-gui "$QUBE" 'bash -lc ~/bw.sh'
+qvm-run --pass-io "sys-gnosis-vpn" "bash ~/bw.sh"
 ```
 3. Add a generic monitor to the tray which runs the `vpn_monitor.sh` script created above. Make sure to set the interval to 2s and not 1s otherwise the window manager might freeze!
 
