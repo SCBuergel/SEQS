@@ -88,6 +88,78 @@ qvm-run --pass-io "sys-gnosis-vpn" "bash ~/bw.sh"
 ```
 3. Add a generic monitor to the tray which runs the `vpn_monitor.sh` script created above. Make sure to set the interval to 2s and not 1s otherwise the window manager might freeze!
 
+
+
+### QubesOS CPU Pinning for sys-gnosisvpn
+
+The mixnet is CPU-intensive. This pins the qube to the two P-cores (physical cores 0 and 2) on the i7-1265U.
+
+**One-time setup (dom0)**
+
+Create the pin script:
+```bash
+cat > ~/pimpmyvpn.sh << 'EOF'
+#!/bin/bash
+xl vcpu-pin sys-gnosisvpn 0 0
+xl vcpu-pin sys-gnosisvpn 1 2
+xl sched-credit2 -d sys-gnosisvpn -w 512
+EOF
+chmod +x ~/pimpmyvpn.sh
+```
+
+Set vCPU count:
+```bash
+qvm-prefs sys-gnosisvpn vcpus 2
+```
+
+Create the xenstore watcher:
+```bash
+sudo nano /usr/local/bin/watch-gnosisvpn.sh
+```
+```bash
+#!/bin/bash
+xenstore-watch /local/domain | while read event; do
+    if xl list sys-gnosisvpn &>/dev/null; then
+        xl vcpu-pin sys-gnosisvpn 0 0
+        xl vcpu-pin sys-gnosisvpn 1 2
+        xl sched-credit2 -d sys-gnosisvpn -w 512
+    fi
+done
+```
+```bash
+sudo chmod +x /usr/local/bin/watch-gnosisvpn.sh
+```
+
+Create and enable the systemd service:
+```bash
+sudo nano /etc/systemd/system/watch-gnosisvpn.service
+```
+```ini
+[Unit]
+Description=Watch and pin sys-gnosisvpn CPUs
+After=xenstored.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/watch-gnosisvpn.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now watch-gnosisvpn.service
+```
+
+**Verify**
+```bash
+xl vcpu-list sys-gnosisvpn
+# Affinity should show: 0 / all and 2 / all
+```
+
+
+
 ### Sync clock in Debian-12 template
 
 Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that, install the following package in the base template (in my case `Debian-12`):
