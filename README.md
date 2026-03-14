@@ -197,6 +197,12 @@ qvm-prefs A-wallets netvm sys-firewall-lab
 
 If you re-install either of the two qubes, remember to update the entry in `/rw/config/qubes-firewall-user-script` with the respective new IPs.
 
+### get rid of lags in libreoffice
+```
+echo 'export SAL_USE_VCLPLUGIN=gen' >> ~/.bashrc
+```
+
+
 ### vim mappings (TODO: script this)
 I like to move screen lines in vim instead of wrapped physical lines so I use the following `~/.vimrc` file:
 ```
