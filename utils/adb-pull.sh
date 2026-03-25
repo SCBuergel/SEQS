@@ -142,14 +142,14 @@ adb_connect_prompt() {
     saved=$(load_saved_device)
 
     if [[ -n "$saved" ]]; then
-        echo "Last device: $saved"
         read -rp "Device IP:port [$saved]: " target
         target="${target:-$saved}"
     else
-        read -rp "Device IP address: " ip
-        read -rp "Port [5555]: " port
-        port="${port:-5555}"
-        target="$ip:$port"
+        read -rp "Device IP:port: " target
+        # Default port to 5555 if only an IP was entered
+        if [[ "$target" != *:* ]]; then
+            target="$target:5555"
+        fi
     fi
 
     # Offer pairing (first-time wireless)
