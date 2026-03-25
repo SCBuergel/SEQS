@@ -284,11 +284,12 @@ for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
         rm -f "$TMPCHUNK"
 
         # Download chunk: pipe through pv for progress if available
+        # Note: pv writes progress to stderr, so only suppress adb's stderr, not pv's
         if command -v pv &>/dev/null; then
             if ! timeout "$CHUNK_TIMEOUT" \
-                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" \
+                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" 2>/dev/null \
                 | pv -s "$THIS_CHUNK_BYTES" -p -t -e -r \
-                > "$TMPCHUNK" 2>/dev/null; then
+                > "$TMPCHUNK"; then
                 echo "  adb/timeout error"
             fi
         else
