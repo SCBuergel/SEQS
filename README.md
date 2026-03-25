@@ -202,6 +202,19 @@ If you re-install either of the two qubes, remember to update the entry in `/rw/
 echo 'export SAL_USE_VCLPLUGIN=gen' >> ~/.bashrc
 ```
 
+### reliably copy large files from/to Android phone
+Unfortunately default methods for copying large files to/from Android phones are not reliable on QubesOS. The best method is therefore to copy directly to/from sys-usb. In order to keep the default sys-usb unharmed, install a separate template VM which has `adb` installed. `utils/switch-to-new-sys-usb.sh` facilitates this.
+
+Once `adb` has been installed and `sys-usb` switched to the new template, you can simply copy files to and from the device via:
+```
+adb pull /sdcard/Documents/somefile.txt /tmp
+```
+and
+```
+adb push /tmp/somefile.txt /sdcard/Documents
+```
+
+
 
 ### vim mappings (TODO: script this)
 I like to move screen lines in vim instead of wrapped physical lines so I use the following `~/.vimrc` file:
