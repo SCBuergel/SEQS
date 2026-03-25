@@ -5,9 +5,11 @@ set -euo pipefail
 ADB_DIR=~/platform-tools
 ADB="$ADB_DIR/adb"
 ADB_ZIP_URL="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+CONNECTION_FILE=~/.adb-pull-device  # persists IP:port between runs
 DEFAULT_CHUNK_MB=5
 MAX_RETRIES=5
-RETRY_DELAY=10
+RETRY_DELAY=5
+ADB_TIMEOUT=8                      # seconds before a stuck adb command is killed
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 usage() {
@@ -64,7 +66,8 @@ if [[ -d "$OUTPUT" ]]; then
     OUTPUT="$OUTPUT/$(basename "$REMOTE")"
 fi
 
-# ─── Install ADB if missing ─────────────────────────────────────────────────
+# ─── Install dependencies if missing ────────────────────────────────────────
+
 install_adb() {
     echo "ADB not found at $ADB. Installing latest platform-tools..."
     local zip_path
@@ -97,57 +100,120 @@ install_adb() {
     echo ""
 }
 
-if [[ ! -x "$ADB" ]]; then
-    install_adb
+install_pv() {
+    echo "Installing 'pv' (pipe viewer) for progress bars..."
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y pv
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y pv
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm pv
+    else
+        echo "WARNING: Could not auto-install pv — unknown package manager."
+        echo "         Install it manually for per-chunk progress bars."
+        return 1
+    fi
+}
+
+[[ ! -x "$ADB" ]] && install_adb
+
+if ! command -v pv &>/dev/null; then
+    install_pv || true
 fi
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# ─── Saved device connection ────────────────────────────────────────────────
+# Reads saved IP:port from ~/.adb-pull-device so you don't re-enter it each run.
 
-# Prompt user for IP:port and connect wirelessly
+load_saved_device() {
+    if [[ -f "$CONNECTION_FILE" ]]; then
+        cat "$CONNECTION_FILE"
+    fi
+}
+
+save_device() {
+    echo "$1" > "$CONNECTION_FILE"
+}
+
+# ─── Connection helpers ─────────────────────────────────────────────────────
+
+# Prompt for IP:port (pre-filled with saved value) and optionally pair
 adb_connect_prompt() {
-    local ip port
-    read -rp "Enter device IP address: " ip
-    read -rp "Enter device port (default 5555): " port
-    port="${port:-5555}"
+    local saved ip port target
+    saved=$(load_saved_device)
 
-    echo ""
-    echo "If your device requires pairing (first-time wireless connection),"
-    echo "you may need to pair before connecting."
-    read -rp "Do you need to pair first? [y/N]: " do_pair
+    if [[ -n "$saved" ]]; then
+        echo "Last device: $saved"
+        read -rp "Device IP:port [$saved]: " target
+        target="${target:-$saved}"
+    else
+        read -rp "Device IP address: " ip
+        read -rp "Port [5555]: " port
+        port="${port:-5555}"
+        target="$ip:$port"
+    fi
 
+    # Offer pairing (first-time wireless)
+    read -rp "Pair first? (only needed once per device) [y/N]: " do_pair
     if [[ "${do_pair,,}" == "y" ]]; then
         local pair_port pair_code
-        read -rp "Enter pairing port (shown on device): " pair_port
-        read -rp "Enter pairing code (shown on device): " pair_code
-        echo "Pairing with $ip:$pair_port ..."
-        $ADB pair "$ip:$pair_port" "$pair_code"
+        read -rp "Pairing port (shown on device): " pair_port
+        read -rp "Pairing code (shown on device): " pair_code
+        local pair_ip="${target%%:*}"
+        echo "Pairing with $pair_ip:$pair_port ..."
+        $ADB pair "$pair_ip:$pair_port" "$pair_code"
         echo ""
     fi
 
-    echo "Connecting to $ip:$port ..."
-    $ADB connect "$ip:$port"
+    echo "Connecting to $target ..."
+    if $ADB connect "$target" 2>/dev/null | grep -q 'connected'; then
+        save_device "$target"
+        echo "Connected (saved to $CONNECTION_FILE for next time)."
+    else
+        echo "WARNING: connection may have failed — will verify below."
+    fi
     echo ""
 }
 
-# Wait for a connected device, prompting to connect if none found
+# Try reconnecting to saved device silently, return 0 on success
+adb_reconnect_saved() {
+    local saved
+    saved=$(load_saved_device)
+    [[ -z "$saved" ]] && return 1
+    timeout "$ADB_TIMEOUT" $ADB connect "$saved" &>/dev/null || true
+    $ADB devices 2>/dev/null | grep -q 'device$'
+}
+
+# Check for connected device; auto-reconnect or prompt as needed
 adb_wait() {
+    # Already connected?
+    if $ADB devices 2>/dev/null | grep -q 'device$'; then
+        return 0
+    fi
+
+    # Try saved device first (silent)
+    if adb_reconnect_saved; then
+        return 0
+    fi
+
+    # No device — prompt for connection
+    echo "No ADB device detected."
+    adb_connect_prompt
+
+    # Retry loop
     local attempt
     for (( attempt=1; attempt<=MAX_RETRIES; attempt++ )); do
         if $ADB devices 2>/dev/null | grep -q 'device$'; then
             return 0
         fi
-        if [[ $attempt -eq 1 ]]; then
-            echo "No ADB device detected."
-            read -rp "Connect to a device over Wi-Fi? [Y/n]: " answer
-            if [[ "${answer,,}" != "n" ]]; then
-                adb_connect_prompt
-                continue
-            fi
+        # Try saved reconnect between waits
+        if adb_reconnect_saved; then
+            return 0
         fi
-        echo "  [wait] ADB not connected, attempt $attempt/$MAX_RETRIES (retry in ${RETRY_DELAY}s)..."
+        echo "  [wait] attempt $attempt/$MAX_RETRIES (retry in ${RETRY_DELAY}s)..."
         sleep "$RETRY_DELAY"
     done
-    echo "ERROR: ADB device not reconnected after $MAX_RETRIES attempts."
+
+    echo "ERROR: device not connected after $MAX_RETRIES attempts."
     return 1
 }
 
@@ -155,7 +221,7 @@ adb_wait() {
 adb_wait
 
 # ─── Get remote file size ────────────────────────────────────────────────────
-SIZE=$($ADB shell stat -c%s "$REMOTE" 2>/dev/null | tr -d '\r')
+SIZE=$(timeout "$ADB_TIMEOUT" $ADB shell stat -c%s "$REMOTE" 2>/dev/null | tr -d '\r')
 if [[ -z "$SIZE" ]] || [[ "$SIZE" -eq 0 ]]; then
     echo "ERROR: Could not stat remote file or file is empty: $REMOTE"
     exit 1
@@ -194,6 +260,8 @@ echo ""
 
 # ─── Transfer loop ───────────────────────────────────────────────────────────
 TMPCHUNK="${OUTPUT}.chunk.tmp"
+# Scale per-chunk timeout: at least ADB_TIMEOUT, or ~2s per MB (slow wifi headroom)
+CHUNK_TIMEOUT=$(( CHUNK_MB * 2 + ADB_TIMEOUT ))
 
 for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
     SKIP=$(( i * CHUNK_MB ))
@@ -211,26 +279,40 @@ for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
     # retry loop per chunk
     CHUNK_OK=0
     for (( attempt=1; attempt<=MAX_RETRIES; attempt++ )); do
-        echo -n "[$PCT%] Chunk $((i+1))/$TOTAL_CHUNKS (offset ${SKIP}M, ${THIS_CHUNK_MB}MB) attempt $attempt... "
+        echo "[$PCT%] Chunk $((i+1))/$TOTAL_CHUNKS (offset ${SKIP}M, ${THIS_CHUNK_MB}MB) attempt $attempt"
 
         rm -f "$TMPCHUNK"
 
-        if ! $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" > "$TMPCHUNK" 2>/dev/null; then
-            echo "adb error"
+        # Download chunk: pipe through pv for progress if available
+        if command -v pv &>/dev/null; then
+            if ! timeout "$CHUNK_TIMEOUT" \
+                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" \
+                | pv -s "$THIS_CHUNK_BYTES" -p -t -e -r \
+                > "$TMPCHUNK" 2>/dev/null; then
+                echo "  adb/timeout error"
+            fi
         else
-            GOT=$(stat -c%s "$TMPCHUNK" 2>/dev/null || echo 0)
-            if [[ "$GOT" -ne "$THIS_CHUNK_BYTES" ]]; then
-                echo "size mismatch (got ${GOT}, expected ${THIS_CHUNK_BYTES})"
-            else
-                cat "$TMPCHUNK" >> "$OUTPUT"
-                sync "$OUTPUT"
-                echo "ok"
-                CHUNK_OK=1
-                break
+            if ! timeout "$CHUNK_TIMEOUT" \
+                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" \
+                > "$TMPCHUNK" 2>/dev/null; then
+                echo "  adb/timeout error"
             fi
         fi
 
-        echo "  [retry] Waiting ${RETRY_DELAY}s then reconnecting..."
+        # Verify chunk size
+        GOT=$(stat -c%s "$TMPCHUNK" 2>/dev/null || echo 0)
+        if [[ "$GOT" -eq "$THIS_CHUNK_BYTES" ]]; then
+            cat "$TMPCHUNK" >> "$OUTPUT"
+            sync "$OUTPUT"
+            echo "  ok"
+            CHUNK_OK=1
+            break
+        else
+            echo "  size mismatch (got ${GOT}, expected ${THIS_CHUNK_BYTES})"
+        fi
+
+        # Reconnect before retrying
+        echo "  [retry] reconnecting in ${RETRY_DELAY}s..."
         sleep "$RETRY_DELAY"
         adb_wait || { rm -f "$TMPCHUNK"; exit 1; }
     done
@@ -239,7 +321,7 @@ for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
 
     if [[ "$CHUNK_OK" -eq 0 ]]; then
         echo "FAILED after $MAX_RETRIES attempts at chunk $((i+1))."
-        echo "Reconnect and re-run: $0 $REMOTE $OUTPUT"
+        echo "Re-run to resume: $0 $REMOTE $OUTPUT"
         exit 1
     fi
 done
@@ -249,7 +331,7 @@ echo "Transfer complete. Verifying checksums..."
 echo ""
 
 echo -n "Remote SHA-256: "
-REMOTE_SHA=$($ADB shell sha256sum "$REMOTE" 2>/dev/null | awk '{print $1}' | tr -d '\r')
+REMOTE_SHA=$(timeout 120 $ADB shell sha256sum "$REMOTE" 2>/dev/null | awk '{print $1}' | tr -d '\r')
 echo "$REMOTE_SHA"
 
 echo -n "Local SHA-256:  "
