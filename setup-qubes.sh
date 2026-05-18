@@ -5,7 +5,7 @@ REPO_VM="personal"
 
 PREFIX_APP_VM="A-"
 PREFIX_TEMPLATE_VM="Z-"
-OS_TEMPLATE_VM="debian-12"
+OS_TEMPLATE_VM="debian-13-xfce"
 
 # App qube that every other app qube opens web links in (for isolation).
 BROWSER_VM="${PREFIX_APP_VM}brave"
@@ -104,6 +104,18 @@ EOF
 	qvm-run -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
 }
 
+# requireOsTemplate -- abort early if the base template to clone is missing
+function requireOsTemplate() {
+	if ! qvm-check "${OS_TEMPLATE_VM}" &>/dev/null; then
+		echo "ERROR: base template '${OS_TEMPLATE_VM}' does not exist." >&2
+		echo "Install it in dom0 first, e.g.:" >&2
+		echo "  sudo qubes-dom0-update qubes-template-${OS_TEMPLATE_VM}" >&2
+		echo "or set OS_TEMPLATE_VM at the top of this script to a template you have." >&2
+		exit 1
+	fi
+	echo "Base template '${OS_TEMPLATE_VM}' found."
+}
+
 # installApp APPNAME COLOR OFFLINE
 function installApp () {
 	if [ $# -lt 2 ]; then
@@ -163,6 +175,8 @@ function installApp () {
 }
 
 cd ~
+
+requireOsTemplate
 
 setupBrowserPolicy
 
