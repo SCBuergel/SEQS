@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Qube that holds the SEQS repo; install scripts are fetched from here.
+REPO_VM="personal"
+
 PREFIX_APP_VM="A-"
 PREFIX_TEMPLATE_VM="Z-"
 OS_TEMPLATE_VM="debian-12"
@@ -38,7 +41,7 @@ function fetchRunClean() {
 	APP="${2}"
 	FILE_PATH="${3}"
 	FILENAME="${4}"
-	if fetchFromVm personal ${FILE_PATH}${FILENAME} EXE; then
+	if fetchFromVm ${REPO_VM} ${FILE_PATH}${FILENAME} EXE; then
 		echo "Moving ${APP} install files to VM ${VMNAME}..."
 		qvm-move-to-vm ${VMNAME} ${FILENAME}
 
@@ -78,7 +81,7 @@ function installApp () {
 	fetchRunClean ${TEMPLATE_VM} ${APPNAME} /home/user/SEQS/install-scripts/ ${APPNAME}_templateVM.sh
 
 	echo "trying to fetch ${APPNAME}.desktop file..."
-	if fetchFromVm personal /home/user/SEQS/menu-files/${APPNAME}.desktop; then
+	if fetchFromVm ${REPO_VM} /home/user/SEQS/menu-files/${APPNAME}.desktop; then
 		echo "moving ${APPNAME}.desktop file to template VM..."
 		qvm-move-to-vm ${TEMPLATE_VM} ${APPNAME}.desktop
 		qvm-run -p ${TEMPLATE_VM} sudo mv /home/user/QubesIncoming/dom0/${APPNAME}.desktop /usr/share/applications/
