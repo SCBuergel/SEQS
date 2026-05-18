@@ -503,8 +503,3 @@ nvm_reset() {
 echo "installing latest version of node..."
 nvm install node
 nvm use node
-
-echo "adding deleting of Qubes and Downloads folder to .bashrc"
-echo "
-rm -rf QubesIncoming
-rm -rf Downloads/*" >> .bashrc

@@ -30,8 +30,3 @@ pip install virtualenv
 
 echo "updating pip..."
 pip install --upgrade pip
-
-echo "adding deleting of Qubes and Downloads folder to .bashrc"
-echo "
-rm -rf QubesIncoming
-rm -rf Downloads/*" >> .bashrc
