@@ -5,6 +5,8 @@ set -Eeuo pipefail
 
 echo "Installing Xournal++"
 
-sudo apt install libportaudiocpp0 libzip4 xournalpp -y
-
-echo "Make sure you change input settings for Xournal++: https://github.com/xournalpp/xournalpp/issues/5771#issuecomment-3180794310"
+# Install straight from the Debian repository. xournalpp's package already
+# depends on the right libzip/portaudio versions, so do not pin lib names
+# here -- hard-coded SONAME packages (e.g. libzip4) break across Debian releases.
+sudo apt-get update
+sudo apt-get install -y xournalpp
