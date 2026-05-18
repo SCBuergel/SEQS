@@ -116,6 +116,17 @@ function requireOsTemplate() {
 	echo "Base template '${OS_TEMPLATE_VM}' found."
 }
 
+# requireRepoVm -- abort early if the qube holding the SEQS repo is missing
+function requireRepoVm() {
+	if ! qvm-check "${REPO_VM}" &>/dev/null; then
+		echo "ERROR: source qube '${REPO_VM}' does not exist." >&2
+		echo "This is the qube that should hold the SEQS repo and install scripts." >&2
+		echo "Set REPO_VM at the top of this script to the qube where you cloned it." >&2
+		exit 1
+	fi
+	echo "Source qube '${REPO_VM}' found."
+}
+
 # installApp APPNAME COLOR OFFLINE
 function installApp () {
 	if [ $# -lt 2 ]; then
@@ -177,6 +188,7 @@ function installApp () {
 cd ~
 
 requireOsTemplate
+requireRepoVm
 
 setupBrowserPolicy
 
