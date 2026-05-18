@@ -269,4 +269,4 @@ MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;appl
 ```
 xdg-settings set default-web-browser mybrowser.desktop
 ```
-**(TODO: script this for all app qubes except for the target)**
+**Note:** `setup-qubes.sh` now performs all of the above automatically for every app qube it creates, pointing them at the `BROWSER_VM` qube (default `A-brave`) and skipping the browser qube itself. The manual steps above are only needed for pre-existing qubes that the script does not manage.

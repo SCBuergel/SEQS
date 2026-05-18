@@ -7,6 +7,16 @@ PREFIX_APP_VM="A-"
 PREFIX_TEMPLATE_VM="Z-"
 OS_TEMPLATE_VM="debian-12"
 
+# App qube that every other app qube opens web links in (for isolation).
+BROWSER_VM="${PREFIX_APP_VM}brave"
+# Name of the .desktop link handler installed into each non-browser app qube.
+BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
+
+# Shared helper libraries fetched from REPO_VM and moved next to every install
+# script inside the target VM, so install scripts can `source` them.
+LIB_PATH="/home/user/SEQS/install-scripts/lib/"
+LIB_FILES="brave.sh"
+
 # fetchFromVM SOURCE_VM FILE [EXE]
 function fetchFromVm() {
 	if [ $# -lt 2 ]; then
@@ -42,8 +52,16 @@ function fetchRunClean() {
 	FILE_PATH="${3}"
 	FILENAME="${4}"
 	if fetchFromVm ${REPO_VM} ${FILE_PATH}${FILENAME} EXE; then
+		# fetch shared helper libraries so the install script can source them
+		local lib libs=""
+		for lib in ${LIB_FILES}; do
+			if fetchFromVm ${REPO_VM} ${LIB_PATH}${lib}; then
+				libs="${libs} ${lib}"
+			fi
+		done
+
 		echo "Moving ${APP} install files to VM ${VMNAME}..."
-		qvm-move-to-vm ${VMNAME} ${FILENAME}
+		qvm-move-to-vm ${VMNAME} ${FILENAME} ${libs}
 
 		echo "Running ${APP} installer on VM ${VMNAME}..."
 		qvm-run -p ${VMNAME} ./QubesIncoming/dom0/${FILENAME}
@@ -57,6 +75,33 @@ function fetchRunClean() {
 		return 1
 	fi
 
+}
+
+# create the dom0 qrexec policy so any qube may open links in the browser qube
+function setupBrowserPolicy() {
+	echo "allowing all qubes to open links in ${BROWSER_VM}..."
+	echo "qubes.OpenURL * @anyvm ${BROWSER_VM} allow" \
+		| sudo tee /etc/qubes/policy.d/29-browser.policy > /dev/null
+}
+
+# setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM}
+function setBrowserQube() {
+	local APP_VM="${1}"
+
+	echo "configuring ${APP_VM} to open links in ${BROWSER_VM}..."
+	qvm-run -p ${APP_VM} "mkdir -p ~/.local/share/applications && cat > ~/.local/share/applications/${BROWSER_DESKTOP}" <<EOF
+[Desktop Entry]
+Encoding=UTF-8
+Name=Open links in ${BROWSER_VM}
+Exec=qvm-open-in-vm ${BROWSER_VM} %u
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+EOF
+
+	qvm-run -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
 }
 
 # installApp APPNAME COLOR OFFLINE
@@ -108,11 +153,18 @@ function installApp () {
 	echo "trying to fetch ${APPNAME} appVM install files...."
 	fetchRunClean ${APP_VM} ${APPNAME} /home/user/SEQS/install-scripts/ ${APPNAME}_appVM.sh
 
+	# point every app qube at the browser qube for links (except the browser qube itself)
+	if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
+		setBrowserQube ${APP_VM}
+	fi
+
 	echo "shutting app VM down..."
 	qvm-shutdown ${APP_VM}
 }
 
 cd ~
+
+setupBrowserPolicy
 
 installApp brave red
 installApp element red
