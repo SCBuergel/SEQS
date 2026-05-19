@@ -3,9 +3,8 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-echo "Installing Node.js and npm"
+echo "Installing Node.js prerequisites"
 
-# Node.js straight from the Debian repository -- apt-verified against the
-# template's Debian archive keyring, no third-party repo or vendored installer.
+# curl is needed by the app-vm phase to fetch the nvm installer.
 sudo apt-get update
-sudo apt-get install -y nodejs npm
+sudo apt-get install -y curl

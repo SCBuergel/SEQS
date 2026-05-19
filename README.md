@@ -36,7 +36,7 @@ Developer tooling is not installed one-tool-per-qube. Instead each tool is a **c
 Available components (`install-scripts/components/`):
 - `docker` — Docker engine
 - `python` — build dependencies and pyenv/Python
-- `node` — Node.js and npm (from the Debian repository)
+- `node` — Node.js and npm via nvm (so Node versions can be switched)
 - `vscode` — Visual Studio Code
 - `claude-code` — Claude Code (native installer, self-updating)
 

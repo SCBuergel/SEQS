@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
 echo "Installing Python on appVM"
-curl https://pyenv.run | bash
+# pyenv is kept, in preference to the apt python3 package, for the flexibility
+# of installing and switching Python versions -- see TRUST.md. The installer is
+# an unverified curl|bash; -fsSL at least makes it fail on an HTTP error.
+curl -fsSL https://pyenv.run | bash
 
 echo "setting .profile..."
 echo -e "\
@@ -16,14 +19,14 @@ source ~/.profile
 echo "setting .bashrc..."
 echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
 
-echo "installing latest python..."
-pyenv install 3.11.6
+echo "installing Python 3.13.13..."
+pyenv install 3.13.13
 
 echo "setting symlink..."
 sudo ln -s /usr/bin/python3 /usr/local/bin/python
 
 echo "setting global python version..."
-pyenv global 3.11.6
+pyenv global 3.13.13
 
 echo "installing virtualenv..."
 pip install virtualenv

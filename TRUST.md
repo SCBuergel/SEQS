@@ -108,15 +108,20 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ✅ `signal_templateVM.sh` embeds the Signal signing key and **aborts unless its fingerprint matches the pinned value** `DBA36B5181D0C816F630E889D980A17457F6FB06`. Signal publishes no fingerprint, so it was cross-checked on **2026-05-18** against the key served at `updates.signal.org`, a keys.openpgp.org by-fingerprint lookup, and Wayback Machine snapshots from 2018/2020/2022 (the same key for 8+ years) — see the script header.
 - **Residual risk:** The pin proves you have Signal's real key; it does not vouch for what Signal builds and signs. The embedded key inherits §2 repo trust.
 
-### Docker, Element — apt repositories ⚠️
+### Docker — apt repository with an embedded, verified key ✅
+- **Trust assumption:** Docker's apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
+- **Established by:** ✅ `install-scripts/components/docker/template-vm.sh` embeds the Docker signing key and **aborts unless its fingerprint matches the pinned value** `9DC858229FC7DD38854AE2D88D81803C0EBFCD88`. Verified on **2026-05-19** against `download.docker.com`, `keyserver.ubuntu.com` and `keys.openpgp.org` (and Wayback Machine snapshots from 2020/2023) — see the script header.
+- **Residual risk:** docker-group membership granted to `user` is **equivalent to root inside the qube** — significant because dev qubes run untrusted build code. Images pulled at runtime are arbitrary code.
+
+### Element — apt repository ⚠️
 - **Trust assumption:** The GPG keyring fetched over HTTPS at install time is genuine; thereafter apt verifies package signatures.
-- **Established by:** ⚠️ TOFU — `curl … | gpg --dearmor | sudo tee`, no fingerprint pin. The Element `curl` call also uses `-s` without `-f`, so an HTTP error page could be written as the "keyring" (the bug fixed for Brave).
+- **Established by:** ⚠️ TOFU — `curl … | gpg --dearmor | sudo tee`, no fingerprint pin. The `curl` call also uses `-s` without `-f`, so an HTTP error page could be written as the "keyring" (the bug fixed for Brave).
 - **Residual risk:** A MITM during the *first* keyring fetch substitutes the trust anchor for all later updates.
 
-### VS Code — apt repository 📝
+### VS Code — apt repository with an embedded, verified key ✅
 - **Trust assumption:** The Microsoft signing key is genuine.
-- **Established by:** 📝 Reviewed — the key is **embedded inline** in `install-scripts/components/vscode/template-vm.sh`, so trust rests on the committed file rather than a network fetch. The strongest of the apt installs.
-- **Residual risk:** A bad key committed to the repo (covered by §2 repo trust).
+- **Established by:** ✅ `install-scripts/components/vscode/template-vm.sh` embeds the Microsoft signing key and **aborts unless its fingerprint matches the pinned value** `BC528686B50D79E339D3721CEB3E94ADBE1229CF`. Verified on **2026-05-19** against `packages.microsoft.com/keys/microsoft.asc`, `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header.
+- **Residual risk:** VS Code extensions (the Marketplace) run with full user privileges — the real VS Code attack surface, beyond the package install.
 
 ### Telegram — snap
 - **Trust assumption:** Canonical's snap store and the `telegram-desktop` publisher.
@@ -129,11 +134,11 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ❌ Unverified — HTTPS only, no signature or checksum. Several are then installed/run **as root**; `bitbox` and `openOffice` additionally run `sudo dpkg -i *.deb` (wildcard).
 - **Residual risk:** The highest-value remaining gap. These include a hardware-wallet companion app and crypto wallets. Compromise of GitHub release assets, the SourceForge mirror, the Ledger CDN, or DNS = root code execution in your wallet qubes. Upstream signatures/digests exist for several of these and are not currently used — KeePassXC was moved to verified (above); the same pattern applies here.
 
-### pyenv installer (python component) ❌
-- **Component:** `install-scripts/components/python/app-vm.sh` — `curl https://pyenv.run | bash`.
-- **Trust assumption:** Whatever that URL serves at run time is benign.
-- **Established by:** ❌ Unverified remote code piped straight to a shell. (`app-vm.sh` also lacks `set -euo pipefail`.)
-- **Residual risk:** Full control of the dev qube for whoever controls `pyenv.run` or its redirect target.
+### pyenv (python component) ❌ — accepted tradeoff
+- **Component:** `install-scripts/components/python/app-vm.sh` — `curl -fsSL https://pyenv.run | bash`.
+- **Trust assumption:** Whatever `pyenv.run` serves at run time is benign.
+- **Established by:** ❌ Unverified remote code piped to a shell. **This is a deliberate choice:** pyenv is kept, in preference to the apt `python3` package, for the flexibility of installing and switching Python versions — accepting the weaker trust. (`app-vm.sh` also lacks `set -euo pipefail`, kept off so pyenv's profile sourcing does not abort it.)
+- **Residual risk:** Full control of the dev qube for whoever controls `pyenv.run` or its redirect target. `pip install` then pulls from PyPI (hash-checked, not signature-verified).
 
 ### Claude Code — native installer (claude-code component) ❌
 - **Component:** `install-scripts/components/claude-code/app-vm.sh` — `curl -fsSL https://claude.ai/install.sh | bash`.
@@ -141,10 +146,11 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ❌ Unverified — remote code piped to a shell over HTTPS, no signature or checksum; Anthropic publishes no pinnable artifact for this path. `-f` only ensures an HTTP error page is not executed.
 - **Residual risk:** Whoever controls `claude.ai/install.sh` or DNS runs code in the dev qube. Claude Code then self-updates, so the trust is ongoing — not just at install time.
 
-### Node.js — Debian package (node component) ✅
-- **Component:** `install-scripts/components/node/template-vm.sh` — `apt-get install nodejs npm`.
-- **Established by:** ✅ Debian repository, apt-verified against the template's Debian archive keyring — no third-party repo. (This replaces the previously vendored nvm installer.)
-- **Residual risk:** Debian's Node may trail upstream; updates arrive via normal template `apt upgrade`.
+### nvm + Node.js (node component) ❌ — accepted tradeoff
+- **Component:** `install-scripts/components/node/app-vm.sh` — `curl -fsSL …/nvm/<pinned-tag>/install.sh | bash`.
+- **Trust assumption:** The pinned nvm `install.sh` served by GitHub is benign.
+- **Established by:** ❌ Unverified remote code piped to a shell, pinned to a specific nvm release. **This is a deliberate choice:** nvm is kept, in preference to the apt `nodejs` package, for the flexibility of installing and switching Node versions — accepting the weaker trust.
+- **Residual risk:** Whoever controls that script (or the pinned tag) runs code in the dev qube. `npm install` then runs package lifecycle scripts — a large supply-chain surface.
 
 ### Brave wallet extensions ⚠️
 - **Component:** `wallets*_templateVM.sh` drop `external_update_url` manifests so Brave force-installs the wallet extensions from the Google Chrome Web Store.
@@ -179,8 +185,8 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ## Weakest links, ranked
 
 1. **Unverified wallet binaries** (§3) — no signature check on BitBox, Frame, Ledger Live, OpenOffice, installed as root in security-critical qubes.
-2. **curl-pipe-bash installers** (§3) — the `python` (pyenv) and `claude-code` components both execute unreviewed remote code on install.
+2. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
 3. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
-4. **TOFU keyrings** (§3) — Element and Docker trust anchors set without a pin (and Element's `curl` still lacks `-f`).
+4. **TOFU keyring** (§3) — Element's trust anchor is set without a pin (and its `curl` still lacks `-f`).
 
-Brave, KeePassXC and Signal (§3) are the software sources with cryptographic verification; Docker and Element remain TOFU.
+Brave, KeePassXC, Signal, Docker and VS Code (§3) verify their signing keys against pinned, cross-checked fingerprints; Element remains TOFU.
