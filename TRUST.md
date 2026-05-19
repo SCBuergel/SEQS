@@ -128,11 +128,21 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ⚠️ snapd verifies Canonical-signed assertions; the snap content is the publisher's.
 - **Residual risk:** Publisher or store compromise; the snap auto-updates.
 
-### Direct binary downloads — BitBox, Frame, Ledger Live, OpenOffice ❌
-- **Components:** `bitbox_templateVM.sh` (.deb), `wallets*_templateVM.sh` (Frame AppImage), `wallets_appVM.sh` (Ledger Live AppImage), `openOffice_templateVM.sh` (.tar.gz).
-- **Trust assumption:** The file served over HTTPS is genuine.
-- **Established by:** ❌ Unverified — HTTPS only, no signature or checksum. Several are then installed/run **as root**; `bitbox` and `openOffice` additionally run `sudo dpkg -i *.deb` (wildcard).
-- **Residual risk:** The highest-value remaining gap. These include a hardware-wallet companion app and crypto wallets. Compromise of GitHub release assets, the SourceForge mirror, the Ledger CDN, or DNS = root code execution in your wallet qubes. Upstream signatures/digests exist for several of these and are not currently used — KeePassXC was moved to verified (above); the same pattern applies here.
+### BitBoxApp — .deb with a verified signature ✅
+- **Component:** `bitbox_templateVM.sh` — downloads the BitBoxApp `.deb` and its detached `.asc`.
+- **Established by:** ✅ The script embeds the ShiftCrypto Security signing key and **aborts unless `gpg --verify` confirms the `.deb` is signed by it** (fingerprint `DD09E41309750EBFAE0DEF63509249B068D215AE`). Verified on **2026-05-19** against BitBox's own docs (which publish the fingerprint), `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header. Installed via `apt-get` so dependencies resolve. (Not currently wired into `setup-qubes.sh`.)
+- **Residual risk:** The pinned version (currently 4.51.0) is bumped manually. A crypto wallet — keep its qube isolated.
+
+### Apache OpenOffice — tarball with a verified signature ✅
+- **Component:** `openOffice_templateVM.sh` — downloads the Apache OpenOffice tarball and its detached `.asc` from `downloads.apache.org`.
+- **Established by:** ✅ The script embeds Jim Jagielski's Apache OpenOffice release signing key and **aborts unless `gpg --verify` confirms the tarball is signed by it** (fingerprint `A93D62ECC3C8EA12DB220EC934EA76E6791485A8`). Verified on **2026-05-19** against the Apache OpenOffice `KEYS` file, the Apache committer keyring (`people.apache.org`) and `keyserver.ubuntu.com` — see the script header.
+- **Residual risk:** The pinned version (currently 4.1.16) is bumped manually; Apache OpenOffice releases infrequently.
+
+### Ledger Live ❌ — unverifiable
+- **Component:** `wallets_appVM.sh` — `curl -fsSL https://download.live.ledger.com/latest/linux`.
+- **Trust assumption:** The AppImage served by Ledger at that URL is genuine.
+- **Established by:** ❌ Nothing. Ledger does **not** publish a GPG signature for the Linux AppImage (only a SHA-512 on a JS-rendered download page), and the download URL is unversioned ("latest"), so the AppImage can be neither signature-verified nor version-pinned. `-f` is set so an HTTP error page is not saved as the AppImage, but the AppImage content itself is trusted on download.
+- **Residual risk:** Whoever controls Ledger's download infrastructure or DNS can serve arbitrary code into the wallet qube. The Ledger udev rules in `wallets_templateVM.sh` are independent — the hardware device works regardless.
 
 ### pyenv (python component) ❌ — accepted tradeoff
 - **Component:** `install-scripts/components/python/app-vm.sh` — `curl -fsSL https://pyenv.run | bash`.
@@ -184,9 +194,9 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ## Weakest links, ranked
 
-1. **Unverified wallet binaries** (§3) — no signature check on BitBox, Frame, Ledger Live, OpenOffice, installed as root in security-critical qubes.
+1. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned. The one remaining unverifiable software download.
 2. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
 3. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
 4. **TOFU keyring** (§3) — Element's trust anchor is set without a pin (and its `curl` still lacks `-f`).
 
-Brave, KeePassXC, Signal, Docker and VS Code (§3) verify their signing keys against pinned, cross-checked fingerprints; Element remains TOFU.
+Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp and Apache OpenOffice (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints; Element remains TOFU and Ledger Live unverifiable.

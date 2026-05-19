@@ -41,17 +41,10 @@ sudo udevadm control --reload-rules
 
 install_brave
 
-echo "downloading Frame..."
-curl --proxy 127.0.0.1:8082 https://github.com/floating/frame/releases/download/v0.6.9/Frame-0.6.9.AppImage -LGso Frame.AppImage
-
-sudo chmod +x Frame.AppImage
-sudo mv ./Frame.AppImage /usr/bin/
-
 # Brave wallet extension IDs (Chrome Web Store)
 ARGENTX_ID=dlcobpjiigpikoobohmabehhmhfoodbb
 COSMOSTATION_ID=fpkhgmpbidmiogeglndfbkegfdlnajnf
 ENKRYPT_ID=kkpllkodjeloidieedojogacfhpaihoh
-FRAME_ID=ldcoohedfbjoobcadoglnnmmfbdlmmhf
 METAMASK_ID=nkbihfbeogaeaoehlefnkodbefgpgknn
 NABOX_ID=nknhiehlklippafakaeklbeglecifhad
 RABBY_ID=acmacodkjbdgmoleebolmdjonilkdbch
@@ -67,7 +60,6 @@ install_brave_extensions \
 	"${ARGENTX_ID}" \
 	"${COSMOSTATION_ID}" \
 	"${ENKRYPT_ID}" \
-	"${FRAME_ID}" \
 	"${METAMASK_ID}" \
 	"${OKX_ID}" \
 	"${NABOX_ID}" \

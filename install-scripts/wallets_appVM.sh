@@ -6,5 +6,9 @@ set -Eeuo pipefail
 echo "Installing wallets on appVM"
 
 echo "downloading Ledger Live..."
-curl https://download.live.ledger.com/latest/linux -LGso LedgerLive.AppImage
+# Ledger publishes no GPG signature for the Linux AppImage and the URL is
+# unversioned ("latest"), so this download cannot be cryptographically
+# verified or version-pinned -- see TRUST.md. -f at least makes curl fail on
+# an HTTP error instead of saving an error page as the AppImage.
+curl -fsSL https://download.live.ledger.com/latest/linux -o LedgerLive.AppImage
 chmod +x LedgerLive.AppImage
