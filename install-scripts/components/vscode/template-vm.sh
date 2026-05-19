@@ -39,4 +39,3 @@ sudo apt install python3-pip -y
 if ! command -v python >/dev/null 2>&1; then
   sudo ln -s /usr/bin/python3 /usr/bin/python
 fi
-

@@ -14,7 +14,7 @@
 6. After connecting to wifi, the system update icon should appear in the tray on the top right, run all updates and reboot
 
 ## Install software
-I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `ZZ-[AppName]` and my app VMs are prefixed `AA-[AppName]`. This repository contains a range of scripts that set up template VMs and app VMs for several software packages. In order to create them, you are copying files from an app VM to your dom0.
+I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `Z-[AppName]` and my app VMs are prefixed `A-[AppName]`. This repository contains a range of scripts that set up template VMs and app VMs for several software packages. In order to create them, you are copying files from an app VM to your dom0.
 
 **WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understand everything and consider all actions to be safe!**
 
@@ -29,6 +29,28 @@ qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' > s.sh && chmod +x s.sh
 The script will download the individual install scripts into dom0 and from there to newly created template VMs. The template VMs are then used to set up app VMs for proper isolation.
 
 Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
+
+### Developer qubes
+Developer tooling is not installed one-tool-per-qube. Instead each tool is a **component**, and a developer qube is composed from any mix of components into a single template (`Z-[name]`) and app VM (`A-[name]`).
+
+Available components (`install-scripts/components/`):
+- `docker` — Docker engine
+- `python` — build dependencies and pyenv/Python
+- `node` — Node.js and npm (from the Debian repository)
+- `vscode` — Visual Studio Code
+- `claude-code` — Claude Code (native installer, self-updating)
+
+Configure the developer qubes you want in the `DEV_QUBES` array near the top of `setup-qubes.sh`. Each entry is `"NAME COLOR component component ..."`:
+```
+DEV_QUBES=(
+	"dev-full    gray  docker python node vscode claude-code"
+	"dev-backend gray  docker python"
+	"dev-web     gray  node vscode claude-code"
+)
+```
+Running `setup-qubes.sh` builds one template plus app VM per entry — e.g. the second line above creates `A-dev-backend` containing only Docker and Python. To set up a different toolset, add or edit a line; nothing else needs to change.
+
+Each component is a directory `install-scripts/components/[name]/` containing an optional `template-vm.sh` (installed system-wide into the template) and/or `app-vm.sh` (run in the app VM, for `$HOME` and `/rw` setup). To add a new component, create that directory with the relevant script(s); its name is then usable in `DEV_QUBES`.
 
 ### I want to automate installation of [XYZ]
 In order to add additional software packages, create corresponding install scripts in the respective folder. If needed (e.g. in case of AppImage downloads) add menu files so that the program can be launched from the Qubes menu.

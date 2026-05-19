@@ -22,6 +22,14 @@ LIB_FILES="brave.sh"
 CLEANUP_QUBESINCOMING="/home/user/QubesIncoming"
 CLEANUP_DOWNLOADS="/home/user/Downloads"
 
+# Developer qubes -- each entry builds one template + app qube composed of the
+# listed components (install-scripts/components/<name>/). Mix and match freely.
+# Format: "NAME COLOR component component ..."
+# Available components: docker python node vscode claude-code
+DEV_QUBES=(
+	"dev-full gray docker python node vscode claude-code"
+)
+
 # fetchFromVM SOURCE_VM FILE [EXE]
 function fetchFromVm() {
 	if [ $# -lt 2 ]; then
@@ -241,6 +249,64 @@ function installApp () {
 	qvm-shutdown ${APP_VM}
 }
 
+# installQube NAME COLOR component [component ...]
+# Builds a Z-NAME template + A-NAME app qube composed of the named components
+# (install-scripts/components/<component>/). Each component may provide a
+# template-vm.sh (system-wide install) and/or an app-vm.sh (per-app-qube
+# setup); missing parts are skipped.
+function installQube() {
+	if [ $# -lt 3 ]; then
+		echo "Expected: installQube NAME COLOR component [component ...]"
+		return 1
+	fi
+
+	local NAME="${1}"
+	local COLOR="${2}"
+	shift 2
+	local COMPONENTS="$*"
+	local APP_VM="${PREFIX_APP_VM}${NAME}"
+	local TEMPLATE_VM="${PREFIX_TEMPLATE_VM}${NAME}"
+	local COMPONENT_PATH="/home/user/SEQS/install-scripts/components/"
+	local comp
+
+	echo "STARTING BUILD OF ${NAME} from components: ${COMPONENTS}"
+
+	echo "setting up template VM ${TEMPLATE_VM}..."
+	qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
+
+	# template phase: run each component's template-vm.sh in the template
+	for comp in ${COMPONENTS}; do
+		echo "installing component '${comp}' into ${TEMPLATE_VM}..."
+		fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh
+	done
+
+	installCleanupService ${TEMPLATE_VM}
+
+	echo "shutting down template VM..."
+	qvm-shutdown ${TEMPLATE_VM}
+	sleep 4
+
+	echo "creating app VM ${APP_VM}..."
+	qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
+
+	echo "starting app VM..."
+	qvm-start ${APP_VM}
+
+	# app-VM phase: run each component's app-vm.sh in the app qube
+	for comp in ${COMPONENTS}; do
+		echo "configuring component '${comp}' on ${APP_VM}..."
+		fetchRunClean ${APP_VM} "${comp}" "${COMPONENT_PATH}${comp}/" app-vm.sh
+	done
+
+	# open web links in the browser qube
+	if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
+		setBrowserQube ${APP_VM}
+	fi
+
+	echo "shutting app VM down..."
+	qvm-shutdown ${APP_VM}
+}
+
 cd ~
 
 requireOsTemplate
@@ -251,14 +317,16 @@ setupBrowserPolicy
 installApp brave red
 installApp element red
 installApp keepass black offline
-installApp docker red
 installApp signal red
 installApp telegram red
 installApp wallets orange
-installApp python red
 installApp openOffice red
-installApp vscode red
 installApp xournalpp red
+
+# developer qubes -- composed from the DEV_QUBES list configured at the top
+for spec in "${DEV_QUBES[@]}"; do
+	installQube ${spec}
+done
 
 # finally delete this setup file after running it
 rm $0
