@@ -178,11 +178,12 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** A deliberate design choice — concentrating link handling in one browser qube *is* the isolation benefit.
 - **Residual risk:** `A-brave` becomes a funnel for hostile links from every qube; its compromise is in scope. The policy allows `@anyvm → A-brave`.
 
-### ADB file transfer
-- **Components:** `utils/switch-to-new-sys-usb.sh` (adds `adb` to a `sys-usb` template), `utils/adb-pull.sh` (chunked pull over wireless ADB).
-- **Trust assumptions:** (a) `platform-tools` downloaded from `dl.google.com` is genuine; (b) the Android device / ADB peer on the network is the real one.
-- **Established by:** ❌ The platform-tools download has no checksum. `adb-pull.sh`'s SHA-256 step compares remote vs local, but both pass through the same ADB endpoint — so it catches transport corruption, **not** a malicious peer.
-- **Residual risk:** Wireless ADB exposes a shell-capable channel on the LAN; a hostile peer can feed arbitrary file content. Prefer USB-attached ADB on an untrusted network.
+### ADB file transfer ✅
+- **Component:** `install-scripts/components/adb/template-vm.sh` -- `apt-get install -y adb pv` (Debian-signed). The chunked, resumable `adb-pull` helper (`install-scripts/components/adb/adb-pull.sh`) is shipped as a per-component asset by `fetchRunClean` and installed system-wide to `/usr/bin/adb-pull` in the template.
+- **Qube:** `A-usb-data-transfer` (red label). `sys-usb` is **not** modified; phones are USB-attached to this qube via Qubes' standard device-attach mechanism, isolating the larger ADB code surface from the front-line USB qube.
+- **Trust assumption:** The Android device / ADB peer attached to the qube is the real one.
+- **Established by:** ✅ `adb` and `pv` arrive through normal Debian apt signature verification. The previous unsigned `dl.google.com` platform-tools download path is gone (and so is `utils/switch-to-new-sys-usb.sh`).
+- **Residual risk:** Wireless ADB (the fallback when USB attach isn't an option) exposes a shell-capable channel on the LAN; the `adb-pull` end-of-transfer SHA-256 check catches transport corruption but **not** a malicious peer (both hashes flow through the same ADB channel). Prefer USB-attached ADB; reserve wireless ADB for trusted networks.
 
 ### Hardware-wallet udev rules
 - **Components:** `install-scripts/components/ledger/template-vm.sh` and `install-scripts/components/trezor/template-vm.sh` install the Ledger and Trezor udev rules respectively.

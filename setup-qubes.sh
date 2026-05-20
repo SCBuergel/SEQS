@@ -29,13 +29,14 @@
 
 # Single-component qubes -- one app per qube.
 SINGLE_QUBES=(
-	"brave      red    brave"                # network strangers -- web
-	"element    red    element"              # network strangers -- chat (links/files)
-	"telegram   red    telegram"             # network strangers -- bots/channels/groups
-	"signal     green  signal"               # E2E with known contacts only
-	"openoffice yellow openoffice"           # local docs -- import risk
-	"xournalpp  yellow xournalpp"            # local docs -- minimal surface
-	"keepass    black  keepass    offline"   # offline vault
+	"brave             red    brave"                # network strangers -- web
+	"element           red    element"              # network strangers -- chat (links/files)
+	"telegram          red    telegram"             # network strangers -- bots/channels/groups
+	"signal            green  signal"               # E2E with known contacts only
+	"openoffice        yellow openoffice"           # local docs -- import risk
+	"xournalpp         yellow xournalpp"            # local docs -- minimal surface
+	"usb-data-transfer red    adb"                  # USB-attached devices -- arbitrary file input
+	"keepass           black  keepass    offline"   # offline vault
 )
 
 # Developer qubes -- mix any components; typical: docker, python, node, vscode,
@@ -137,12 +138,14 @@ function fetchFromVm() {
 }
 
 # fetchRunClean VMNAME APP FILE_PATH FILENAME [DESKTOP_NAME]
-# Fetches FILENAME from ${REPO_VM}:${FILE_PATH}, plus LIB_FILES alongside, and
-# (when DESKTOP_NAME is given AND ${FILE_PATH}menu.desktop exists) that too.
-# Moves them all into VMNAME in one batch, runs FILENAME, installs the
-# menu.desktop as /usr/share/applications/${DESKTOP_NAME}.desktop, then cleans
-# QubesIncoming once. Returns non-zero (and skips cleanup) only if FILENAME
-# itself cannot be fetched.
+# Fetches FILENAME from ${REPO_VM}:${FILE_PATH}, plus LIB_FILES alongside, plus
+# any per-component asset files (anything in ${FILE_PATH} other than
+# template-vm.sh, app-vm.sh and menu.desktop), and (when DESKTOP_NAME is given
+# AND ${FILE_PATH}menu.desktop exists) that too. Moves them all into VMNAME in
+# one batch, runs FILENAME (which can reference assets via $(dirname "$0")),
+# installs the menu.desktop as /usr/share/applications/${DESKTOP_NAME}.desktop,
+# then cleans QubesIncoming once. Returns non-zero (and skips cleanup) only if
+# FILENAME itself cannot be fetched.
 function fetchRunClean() {
 	VMNAME="${1}"
 	APP="${2}"
@@ -169,7 +172,29 @@ function fetchRunClean() {
 			fi
 		fi
 
-		local move_files="${FILENAME}${libs}"
+		# Fetch per-component assets: any file in the component directory other
+		# than the canonical scripts and menu.desktop handled above. Names are
+		# validated against the same safe pattern used elsewhere so a hostile
+		# REPO_VM cannot return a filename containing shell metacharacters that
+		# would then be interpolated into a remote qvm-run command.
+		local assets="" asset raw_assets
+		if raw_assets=$(qvm-run -p ${REPO_VM} "ls ${FILE_PATH} 2>/dev/null" 2>/dev/null); then
+			while IFS= read -r asset; do
+				[ -z "${asset}" ] && continue
+				case "${asset}" in
+					template-vm.sh|app-vm.sh|menu.desktop) continue ;;
+				esac
+				if ! [[ "${asset}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+					echo "ERROR: refusing unsafe asset filename from ${REPO_VM}: '${asset}'" >&2
+					exit 1
+				fi
+				if fetchFromVm ${REPO_VM} "${FILE_PATH}${asset}"; then
+					assets="${assets} ${asset}"
+				fi
+			done <<< "${raw_assets}"
+		fi
+
+		local move_files="${FILENAME}${libs}${assets}"
 		[ "${has_desktop}" -eq 1 ] && move_files="${move_files} menu.desktop"
 
 		echo "Moving ${APP} install files to VM ${VMNAME}..."
@@ -280,6 +305,10 @@ function requireRepoVm() {
 # discoverLibFiles -- enumerate *.sh under LIB_PATH inside REPO_VM and store
 # the space-separated basenames in the global LIB_FILES. Called once after
 # requireRepoVm so fetchRunClean can ship every helper alongside each install.
+# Each basename is validated against a strict pattern before being accepted:
+# basenames are later interpolated into qvm-run command strings (via
+# fetchFromVm), so a hostile or broken REPO_VM returning a basename with shell
+# metacharacters could otherwise inject commands into the remote shell.
 function discoverLibFiles() {
 	local listing
 	if ! listing=$(qvm-run -p ${REPO_VM} "ls ${LIB_PATH}*.sh 2>/dev/null | xargs -n1 basename" 2>/dev/null); then
@@ -287,7 +316,16 @@ function discoverLibFiles() {
 		LIB_FILES=""
 		return
 	fi
-	LIB_FILES=$(echo ${listing} | tr '\n' ' ')
+	local lib
+	LIB_FILES=""
+	while IFS= read -r lib; do
+		[ -z "${lib}" ] && continue
+		if ! [[ "${lib}" =~ ^[A-Za-z0-9._-]+\.sh$ ]]; then
+			echo "ERROR: refusing unsafe helper-library basename from ${REPO_VM}: '${lib}'" >&2
+			exit 1
+		fi
+		LIB_FILES="${LIB_FILES}${lib} "
+	done <<< "${listing}"
 	echo "Helper libraries discovered: ${LIB_FILES:-<none>}"
 }
 
@@ -299,18 +337,43 @@ function discoverLibFiles() {
 function validateAllQubes() {
 	echo "validating all qube specs..."
 
-	# components available in REPO_VM
-	local available_components
-	if ! available_components=$(qvm-run -p ${REPO_VM} "ls /home/user/SEQS/install-scripts/components/" 2>/dev/null); then
+	# Components available in REPO_VM. Each directory name is validated against
+	# a strict pattern before being accepted -- the names are later interpolated
+	# into qvm-run command strings (e.g. the desktop filename moved into
+	# /usr/share/applications/ by fetchRunClean), so a hostile or broken REPO_VM
+	# returning a directory name with shell metacharacters could otherwise
+	# inject commands into the remote shell as root.
+	local raw_components available_components=" " cname
+	if ! raw_components=$(qvm-run -p ${REPO_VM} "ls /home/user/SEQS/install-scripts/components/" 2>/dev/null); then
 		echo "ERROR: could not enumerate components from ${REPO_VM}." >&2
 		exit 1
 	fi
-	available_components=" $(echo ${available_components} | tr '\n' ' ') "
+	while IFS= read -r cname; do
+		[ -z "${cname}" ] && continue
+		if ! [[ "${cname}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+			echo "ERROR: refusing unsafe component name from ${REPO_VM}: '${cname}'" >&2
+			exit 1
+		fi
+		available_components+="${cname} "
+	done <<< "${raw_components}"
 
-	# brave extension names available in BRAVE_EXTENSIONS
-	local available_extensions=" " entry ename
+	# Brave extension names + IDs from BRAVE_EXTENSIONS. Both are validated:
+	# names get interpolated into shell commands; IDs are interpolated into the
+	# single-quoted Chrome Web Store ID arg of install_brave_extension and must
+	# match the published 32-char a-p format exactly so a stray quote cannot
+	# break out of the single-quoted string.
+	local available_extensions=" " entry ename eid
 	for entry in "${BRAVE_EXTENSIONS[@]}"; do
 		ename="${entry%% *}"
+		eid="${entry##* }"
+		if ! [[ "${ename}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+			echo "ERROR: BRAVE_EXTENSIONS contains unsafe name '${ename}'." >&2
+			exit 1
+		fi
+		if ! [[ "${eid}" =~ ^[a-p]{32}$ ]]; then
+			echo "ERROR: BRAVE_EXTENSIONS entry '${ename}' has invalid Chrome Web Store ID '${eid}' (expected 32 chars a-p)." >&2
+			exit 1
+		fi
 		available_extensions+="${ename} "
 	done
 
@@ -348,6 +411,15 @@ function validateAllQubes() {
 		local i comp ext_name
 		for (( i=2; i<n; i++ )); do
 			comp="${args[i]}"
+			# Each component name is later interpolated into remote shell
+			# commands (path + desktop filename), so require a safe identifier
+			# up-front before any further check. brave-extension-<name> follows
+			# the same rule -- the full token must be safe.
+			if ! [[ "${comp}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+				echo "ERROR: qube '${NAME}' references component with unsafe name '${comp}'." >&2
+				errors=$((errors+1))
+				continue
+			fi
 			case "${comp}" in
 				brave-extension-*)
 					ext_name="${comp#brave-extension-}"

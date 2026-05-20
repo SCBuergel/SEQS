@@ -1,10 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
+# Chunked, resumable wrapper around `adb pull` for transferring large files
+# from an Android device to the local qube. Installed to /usr/bin/adb-pull by
+# the adb component (install-scripts/components/adb/template-vm.sh). Designed
+# to run inside A-usb-data-transfer with the phone either USB-attached via
+# qvm-usb or paired over wireless ADB.
+#
+# adb and pv are expected to be pre-installed by the template; this script no
+# longer downloads platform-tools from dl.google.com (that path was unsigned
+# and is gone -- see TRUST.md, "ADB file transfer").
+
 # ─── Configuration ───────────────────────────────────────────────────────────
-ADB_DIR=~/platform-tools
-ADB="$ADB_DIR/adb"
-ADB_ZIP_URL="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+ADB=/usr/bin/adb
 CONNECTION_FILE=~/.adb-pull-device  # persists IP:port between runs
 DEFAULT_CHUNK_MB=5
 MAX_RETRIES=5
@@ -66,59 +74,15 @@ if [[ -d "$OUTPUT" ]]; then
     OUTPUT="$OUTPUT/$(basename "$REMOTE")"
 fi
 
-# ─── Install dependencies if missing ────────────────────────────────────────
-
-install_adb() {
-    echo "ADB not found at $ADB. Installing latest platform-tools..."
-    local zip_path
-    zip_path=$(mktemp /tmp/platform-tools-XXXXXX.zip)
-
-    if ! command -v curl &>/dev/null; then
-        echo "ERROR: curl is required to download platform-tools."
-        exit 1
-    fi
-
-    echo "Downloading from $ADB_ZIP_URL ..."
-    curl -fL -o "$zip_path" "$ADB_ZIP_URL"
-
-    if ! command -v unzip &>/dev/null; then
-        echo "ERROR: unzip is required to extract platform-tools."
-        rm -f "$zip_path"
-        exit 1
-    fi
-
-    echo "Extracting to $HOME ..."
-    unzip -o -q "$zip_path" -d "$HOME"
-    rm -f "$zip_path"
-
-    if [[ ! -x "$ADB" ]]; then
-        echo "ERROR: Installation failed — $ADB not found after extraction."
-        exit 1
-    fi
-
-    echo "ADB installed: $($ADB --version | head -1)"
-    echo ""
-}
-
-install_pv() {
-    echo "Installing 'pv' (pipe viewer) for progress bars..."
-    if command -v apt-get &>/dev/null; then
-        sudo apt-get install -y pv
-    elif command -v dnf &>/dev/null; then
-        sudo dnf install -y pv
-    elif command -v pacman &>/dev/null; then
-        sudo pacman -S --noconfirm pv
-    else
-        echo "WARNING: Could not auto-install pv — unknown package manager."
-        echo "         Install it manually for per-chunk progress bars."
-        return 1
-    fi
-}
-
-[[ ! -x "$ADB" ]] && install_adb
-
+# ─── Dependency check ────────────────────────────────────────────────────────
+# adb and pv come from the template (apt-installed). Fail clearly if missing
+# -- this script no longer self-installs them from unsigned sources.
+if [[ ! -x "$ADB" ]]; then
+    echo "ERROR: $ADB not found. Run this inside A-usb-data-transfer (or any qube based on Z-usb-data-transfer)."
+    exit 1
+fi
 if ! command -v pv &>/dev/null; then
-    install_pv || true
+    echo "WARNING: pv not installed -- per-chunk progress bars disabled."
 fi
 
 # ─── Saved device connection ────────────────────────────────────────────────
@@ -340,8 +304,11 @@ LOCAL_SHA=$(sha256sum "$OUTPUT" | awk '{print $1}')
 echo "$LOCAL_SHA"
 
 echo ""
+# NOTE: this is a transport-corruption check, not a peer-authenticity check.
+# Both hashes flow through the same ADB connection -- a hostile peer that
+# served corrupt bytes could also lie about sha256sum.
 if [[ "$REMOTE_SHA" = "$LOCAL_SHA" ]]; then
-    echo "MATCH — transfer verified successfully."
+    echo "MATCH — transport checksum OK (does not imply peer authenticity)."
 else
     echo "MISMATCH — file may be corrupted."
     echo "  Local size:  $(stat -c%s "$OUTPUT")"
