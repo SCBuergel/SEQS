@@ -1,46 +1,18 @@
 #!/usr/bin/env bash
 
-# Qube that holds the SEQS repo; install scripts are fetched from here.
-REPO_VM="personal"
+# ════════════════════════════════════════════════════════════════════════════
+# Qubes to build -- the main knobs. Edit these to change what gets created.
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Every qube spec is: "NAME COLOR component [component ...] [offline]"
+#   * NAME     -- gets PREFIX_TEMPLATE_VM/PREFIX_APP_VM prepended (default Z-/A-)
+#   * COLOR    -- Qubes label. Trust scale: red=untrusted/exposed,
+#                 orange/yellow=in-between, green=trusted, black=most trusted.
+#                 https://doc.qubes-os.org/en/latest/introduction/getting-started.html
+#   * components live under install-scripts/components/<name>/ (mix and match)
+#   * trailing 'offline' detaches the app qube from netvm (used for keepass)
 
-PREFIX_APP_VM="A-"
-PREFIX_TEMPLATE_VM="Z-"
-OS_TEMPLATE_VM="debian-13-xfce"
-
-# App qube that every other app qube opens web links in (for isolation).
-BROWSER_VM="${PREFIX_APP_VM}brave"
-# Name of the .desktop link handler installed into each non-browser app qube.
-BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
-
-# Shared helper libraries fetched from REPO_VM and moved next to every install
-# script inside the target VM, so install scripts can `source` them. Every
-# *.sh under LIB_PATH is auto-discovered at script start (see discoverLibFiles).
-LIB_PATH="/home/user/SEQS/install-scripts/lib/"
-LIB_FILES=""
-
-# Directories deleted on every app qube's boot AND shutdown, via a systemd
-# service installed into each template. Empty array disables cleanup.
-CLEANUP_DIRS=(
-	"/home/user/QubesIncoming"
-	"/home/user/Downloads"
-)
-
-# Developer qubes -- each entry builds one template + app qube composed of the
-# listed components (install-scripts/components/<name>/). Mix and match freely.
-# Format: "NAME COLOR component component ..." with a trailing 'offline' to
-# detach the app qube from netvm. Typical dev components: docker, python, node,
-# vscode, claude-code -- but any component (see install-scripts/components/) is
-# valid here; for wallet qubes use WALLET_QUBES below.
-DEV_QUBES=(
-	"dev-full gray docker python node vscode claude-code"
-)
-
-# Single-component qubes -- one app per qube. Same format as WALLET_QUBES /
-# DEV_QUBES; a trailing 'offline' detaches the app qube from netvm (used here
-# for keepass).
-# Colors follow the informal Qubes trust scale: red=untrusted/exposed,
-# orange/yellow=in-between, green=trusted, black=most trusted (vault).
-# https://doc.qubes-os.org/en/latest/introduction/getting-started.html
+# Single-component qubes -- one app per qube.
 SINGLE_QUBES=(
 	"brave      red    brave"                # web -- maximum exposure
 	"element    red    element"              # chat with strangers + links/files
@@ -51,9 +23,22 @@ SINGLE_QUBES=(
 	"keepass    black  keepass    offline"   # password vault (offline)
 )
 
-# Brave wallet extension name -> Chrome Web Store ID.
-# Reference these as 'brave-extension-<name>' in qube specs (see WALLET_QUBES).
-# To add an extension: add a line. To retire one: remove its line.
+# Developer qubes -- mix any components; typical: docker, python, node, vscode,
+# claude-code. Each entry builds one template + app qube.
+DEV_QUBES=(
+	"dev-full gray docker python node vscode claude-code"
+)
+
+# Wallet qubes -- use 'brave-extension-<name>' to add a wallet extension
+# (looked up in BRAVE_EXTENSIONS below; Brave is auto-installed when needed).
+WALLET_QUBES=(
+	"wallet-ledger orange ledger brave-extension-rabby"
+	"wallet-trezor orange trezor brave-extension-rabby"
+)
+
+# Brave wallet extension name -> Chrome Web Store ID. Reference these as
+# 'brave-extension-<name>' in WALLET_QUBES (or any other qube spec).
+# Add/remove lines to enable/retire an extension.
 BRAVE_EXTENSIONS=(
 	"ready         dlcobpjiigpikoobohmabehhmhfoodbb"
 	"cosmostation  fpkhgmpbidmiogeglndfbkegfdlnajnf"
@@ -69,14 +54,44 @@ BRAVE_EXTENSIONS=(
 	"zerion        klghhnkeealcohjjanjjdaeeggmfmlpl"
 )
 
-# Wallet qubes -- each entry builds one template + app qube composed of the
-# listed components. Use 'brave-extension-<name>' to add a wallet extension
-# (looked up in BRAVE_EXTENSIONS above; Brave is auto-installed when needed).
-# Format: "NAME COLOR component component ..."
-WALLET_QUBES=(
-	"wallet-ledger orange ledger brave-extension-rabby"
-	"wallet-trezor orange trezor brave-extension-rabby"
+# ════════════════════════════════════════════════════════════════════════════
+# Source / base qubes -- usually set once when first installing SEQS.
+# ════════════════════════════════════════════════════════════════════════════
+
+# Qube that holds the SEQS repo; install scripts are fetched from here.
+REPO_VM="personal"
+
+# Base template every new template VM clones from.
+OS_TEMPLATE_VM="debian-13-xfce"
+
+# Naming prefix added to each created qube.
+PREFIX_APP_VM="A-"
+PREFIX_TEMPLATE_VM="Z-"
+
+# App qube every non-browser qube opens web links in (for isolation). Must
+# match a qube that actually gets built (or an existing one).
+BROWSER_VM="${PREFIX_APP_VM}brave"
+# Filename of the .desktop link handler installed into each non-browser qube.
+BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Hardening -- transient-directory cleanup at app-qube boot and shutdown,
+# via a systemd service installed into each template. Empty array disables.
+# ════════════════════════════════════════════════════════════════════════════
+
+CLEANUP_DIRS=(
+	"/home/user/QubesIncoming"
+	"/home/user/Downloads"
 )
+
+# ════════════════════════════════════════════════════════════════════════════
+# Internal -- rarely edited.
+# ════════════════════════════════════════════════════════════════════════════
+
+# Every *.sh under LIB_PATH is auto-discovered (see discoverLibFiles) and
+# shipped next to every install script inside the target VM, so install
+# scripts can `source` them.
+LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 
 # fetchFromVM SOURCE_VM FILE [EXE]
 function fetchFromVm() {
