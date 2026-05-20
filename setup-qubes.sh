@@ -185,6 +185,40 @@ function setupBrowserPolicy() {
 		| sudo tee /etc/qubes/policy.d/29-browser.policy > /dev/null
 }
 
+# On Qubes 4.3 the shipped /etc/qubes/policy.d/50-config-input.policy silently
+# DENIES qubes.InputKeyboard from sys-usb to dom0 (mouse/tablet ask; keyboard
+# does not). External USB keyboards therefore don't work out of the box.
+#
+# We install a higher-precedence override at 30-user-input.policy that brings
+# keyboard in line with mouse/tablet: prompt on every connect, dom0 pre-selected.
+# Editing the shipped 50- file directly would be clobbered by qubes-core-dom0
+# package updates; the 30- prefix wins by file evaluation order.
+#
+# Idempotent: re-running setup-qubes.sh re-writes the file with identical
+# content. Skipped on releases other than 4.3 and when sys-usb is absent.
+function setupUsbKeyboardPolicy() {
+	local release
+	release=$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)
+	if [ "${release}" != "4.3" ]; then
+		echo "Qubes ${release:-unknown} -- skipping USB keyboard policy override (only needed on 4.3)."
+		return 0
+	fi
+	if ! qvm-check sys-usb &>/dev/null; then
+		echo "sys-usb not found -- skipping USB keyboard policy override."
+		return 0
+	fi
+	echo "installing /etc/qubes/policy.d/30-user-input.policy so USB keyboards prompt before attaching to dom0..."
+	sudo tee /etc/qubes/policy.d/30-user-input.policy > /dev/null <<'EOF'
+# SEQS override: prompt before attaching a USB keyboard from sys-usb to dom0.
+# Lower numeric prefix (30-) wins over the shipped 50-config-input.policy,
+# which silently denies qubes.InputKeyboard on Qubes 4.3. Managed by
+# setup-qubes.sh; re-running the setup re-writes this file.
+qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm
+EOF
+	sudo chmod 0644 /etc/qubes/policy.d/30-user-input.policy
+	sudo chown root:root /etc/qubes/policy.d/30-user-input.policy
+}
+
 # setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM}
 function setBrowserQube() {
 	local APP_VM="${1}"
@@ -504,6 +538,7 @@ discoverLibFiles
 validateAllQubes
 
 setupBrowserPolicy
+setupUsbKeyboardPolicy
 
 # Single-component qubes (one app per qube)
 for spec in "${SINGLE_QUBES[@]}"; do
