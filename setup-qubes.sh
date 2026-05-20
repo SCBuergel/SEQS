@@ -32,6 +32,19 @@ DEV_QUBES=(
 	"dev-full gray docker python node vscode claude-code"
 )
 
+# Single-component qubes -- one app per qube. Same format as WALLET_QUBES /
+# DEV_QUBES; a trailing 'offline' detaches the app qube from netvm (used here
+# for keepass).
+SINGLE_QUBES=(
+	"brave      red    brave"
+	"element    red    element"
+	"keepass    black  keepass    offline"
+	"signal     red    signal"
+	"telegram   red    telegram"
+	"openoffice red    openoffice"
+	"xournalpp  red    xournalpp"
+)
+
 # Brave wallet extension name -> Chrome Web Store ID.
 # Reference these as 'brave-extension-<name>' in qube specs (see WALLET_QUBES).
 # To add an extension: add a line. To retire one: remove its line.
@@ -55,7 +68,8 @@ BRAVE_EXTENSIONS=(
 # (looked up in BRAVE_EXTENSIONS above; Brave is auto-installed when needed).
 # Format: "NAME COLOR component component ..."
 WALLET_QUBES=(
-	"wallets orange ledger trezor brave-extension-argentx brave-extension-cosmostation brave-extension-enkrypt brave-extension-metamask brave-extension-nabox brave-extension-okx brave-extension-rabby brave-extension-rainbow brave-extension-tahoe brave-extension-trustwallet brave-extension-zeal brave-extension-zerion"
+	"wallet-ledger orange ledger brave-extension-rabby"
+	"wallet-trezor orange trezor brave-extension-rabby"
 )
 
 # fetchFromVM SOURCE_VM FILE [EXE]
@@ -86,12 +100,20 @@ function fetchFromVm() {
 	fi
 }
 
-# fetchRunClean VMNAME APP PATH FILENAME
+# fetchRunClean VMNAME APP FILE_PATH FILENAME [DESKTOP_NAME]
+# Fetches FILENAME from ${REPO_VM}:${FILE_PATH}, plus LIB_FILES alongside, and
+# (when DESKTOP_NAME is given AND ${FILE_PATH}menu.desktop exists) that too.
+# Moves them all into VMNAME in one batch, runs FILENAME, installs the
+# menu.desktop as /usr/share/applications/${DESKTOP_NAME}.desktop, then cleans
+# QubesIncoming once. Returns non-zero (and skips cleanup) only if FILENAME
+# itself cannot be fetched.
 function fetchRunClean() {
 	VMNAME="${1}"
 	APP="${2}"
 	FILE_PATH="${3}"
 	FILENAME="${4}"
+	local DESKTOP_NAME="${5:-}"
+
 	if fetchFromVm ${REPO_VM} ${FILE_PATH}${FILENAME} EXE; then
 		# fetch shared helper libraries so the install script can source them
 		local lib libs=""
@@ -101,11 +123,29 @@ function fetchRunClean() {
 			fi
 		done
 
+		# optionally fetch a per-component menu.desktop in the same batch
+		local has_desktop=0
+		if [ -n "${DESKTOP_NAME}" ]; then
+			if fetchFromVm ${REPO_VM} "${FILE_PATH}menu.desktop"; then
+				has_desktop=1
+			else
+				rm -f menu.desktop
+			fi
+		fi
+
+		local move_files="${FILENAME}${libs}"
+		[ "${has_desktop}" -eq 1 ] && move_files="${move_files} menu.desktop"
+
 		echo "Moving ${APP} install files to VM ${VMNAME}..."
-		qvm-move-to-vm ${VMNAME} ${FILENAME} ${libs}
+		qvm-move-to-vm ${VMNAME} ${move_files}
 
 		echo "Running ${APP} installer on VM ${VMNAME}..."
 		qvm-run -p ${VMNAME} ./QubesIncoming/dom0/${FILENAME}
+
+		if [ "${has_desktop}" -eq 1 ]; then
+			echo "Installing ${DESKTOP_NAME}.desktop launcher..."
+			qvm-run -p ${VMNAME} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${DESKTOP_NAME}.desktop"
+		fi
 
 		echo "Cleaning up ${APP} install files on VM ${VMNAME}..."
 		qvm-run -p ${VMNAME} rm ./QubesIncoming -rf
@@ -115,7 +155,6 @@ function fetchRunClean() {
 		# bubble up errors
 		return 1
 	fi
-
 }
 
 # create the dom0 qrexec policy so any qube may open links in the browser qube
@@ -166,6 +205,88 @@ function requireRepoVm() {
 		exit 1
 	fi
 	echo "Source qube '${REPO_VM}' found."
+}
+
+# validateAllQubes -- pre-flight check across SINGLE_QUBES, WALLET_QUBES,
+# DEV_QUBES. Verifies every referenced component exists (under
+# install-scripts/components/ or in the BRAVE_EXTENSIONS array), no two configured
+# qubes share a NAME, and no target qube (Z-NAME / A-NAME) is already taken.
+# Aborts before any qube is built if anything looks wrong.
+function validateAllQubes() {
+	echo "validating all qube specs..."
+
+	# components available in REPO_VM
+	local available_components
+	if ! available_components=$(qvm-run -p ${REPO_VM} "ls /home/user/SEQS/install-scripts/components/" 2>/dev/null); then
+		echo "ERROR: could not enumerate components from ${REPO_VM}." >&2
+		exit 1
+	fi
+	available_components=" $(echo ${available_components} | tr '\n' ' ') "
+
+	# brave extension names available in BRAVE_EXTENSIONS
+	local available_extensions=" " entry ename
+	for entry in "${BRAVE_EXTENSIONS[@]}"; do
+		ename="${entry%% *}"
+		available_extensions+="${ename} "
+	done
+
+	local errors=0
+	local seen_names=" " spec NAME
+
+	# iterate every configured qube
+	for spec in "${SINGLE_QUBES[@]}" "${WALLET_QUBES[@]}" "${DEV_QUBES[@]}"; do
+		local args=(${spec})
+		NAME="${args[0]}"
+		local n=${#args[@]}
+		# strip trailing 'offline'
+		if [ "${args[$((n-1))]}" = "offline" ]; then
+			n=$((n-1))
+		fi
+
+		# duplicate name within this run?
+		if [[ "${seen_names}" == *" ${NAME} "* ]]; then
+			echo "ERROR: duplicate qube name '${NAME}' in the configured specs." >&2
+			errors=$((errors+1))
+		fi
+		seen_names+="${NAME} "
+
+		# template/app qube already exist?
+		if qvm-check "${PREFIX_TEMPLATE_VM}${NAME}" &>/dev/null; then
+			echo "ERROR: template '${PREFIX_TEMPLATE_VM}${NAME}' already exists -- refusing to clobber it." >&2
+			errors=$((errors+1))
+		fi
+		if qvm-check "${PREFIX_APP_VM}${NAME}" &>/dev/null; then
+			echo "ERROR: app qube '${PREFIX_APP_VM}${NAME}' already exists -- refusing to clobber it." >&2
+			errors=$((errors+1))
+		fi
+
+		# components valid?
+		local i comp ext_name
+		for (( i=2; i<n; i++ )); do
+			comp="${args[i]}"
+			case "${comp}" in
+				brave-extension-*)
+					ext_name="${comp#brave-extension-}"
+					if [[ "${available_extensions}" != *" ${ext_name} "* ]]; then
+						echo "ERROR: qube '${NAME}' references unknown Brave extension '${ext_name}' (not in BRAVE_EXTENSIONS)." >&2
+						errors=$((errors+1))
+					fi
+					;;
+				*)
+					if [[ "${available_components}" != *" ${comp} "* ]]; then
+						echo "ERROR: qube '${NAME}' references unknown component '${comp}' (no install-scripts/components/${comp}/)." >&2
+						errors=$((errors+1))
+					fi
+					;;
+			esac
+		done
+	done
+
+	if [ "${errors}" -gt 0 ]; then
+		echo "Validation failed with ${errors} error(s). Aborting before any qube is built." >&2
+		exit 1
+	fi
+	echo "All qube specs valid."
 }
 
 # installCleanupService TEMPLATE_VM -- install a systemd service into the
@@ -295,14 +416,8 @@ function installQube() {
 				;;
 			*)
 				echo "installing component '${comp}' into ${TEMPLATE_VM}..."
-				fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh
-				# optional per-component menu.desktop -> /usr/share/applications/<comp>.desktop
-				if fetchFromVm ${REPO_VM} "${COMPONENT_PATH}${comp}/menu.desktop"; then
-					qvm-move-to-vm ${TEMPLATE_VM} menu.desktop
-					qvm-run -p ${TEMPLATE_VM} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${comp}.desktop && rm -rf /home/user/QubesIncoming"
-				else
-					rm -f menu.desktop
-				fi
+				# fetchRunClean handles an optional menu.desktop in the same fetch/move/run/clean cycle
+				fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh "${comp}"
 				;;
 		esac
 	done
@@ -350,17 +465,14 @@ cd ~
 
 requireOsTemplate
 requireRepoVm
+validateAllQubes
 
 setupBrowserPolicy
 
 # Single-component qubes (one app per qube)
-installQube brave      red    brave
-installQube element    red    element
-installQube keepass    black  keepass    offline
-installQube signal     red    signal
-installQube telegram   red    telegram
-installQube openoffice red    openoffice
-installQube xournalpp  red    xournalpp
+for spec in "${SINGLE_QUBES[@]}"; do
+	installQube ${spec}
+done
 
 # Wallet qubes -- composed from the WALLET_QUBES list configured at the top
 for spec in "${WALLET_QUBES[@]}"; do

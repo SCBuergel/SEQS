@@ -113,10 +113,10 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ✅ `install-scripts/components/docker/template-vm.sh` embeds the Docker signing key and **aborts unless its fingerprint matches the pinned value** `9DC858229FC7DD38854AE2D88D81803C0EBFCD88`. Verified on **2026-05-19** against `download.docker.com`, `keyserver.ubuntu.com` and `keys.openpgp.org` (and Wayback Machine snapshots from 2020/2023) — see the script header.
 - **Residual risk:** docker-group membership granted to `user` is **equivalent to root inside the qube** — significant because dev qubes run untrusted build code. Images pulled at runtime are arbitrary code.
 
-### Element — apt repository ⚠️
-- **Trust assumption:** The GPG keyring fetched over HTTPS at install time is genuine; thereafter apt verifies package signatures.
-- **Established by:** ⚠️ TOFU — `curl … | gpg --dearmor | sudo tee`, no fingerprint pin. The `curl` call also uses `-s` without `-f`, so an HTTP error page could be written as the "keyring" (the bug fixed for Brave).
-- **Residual risk:** A MITM during the *first* keyring fetch substitutes the trust anchor for all later updates.
+### Element — apt repository with an embedded, verified key ✅
+- **Trust assumption:** The Element apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
+- **Established by:** ✅ `install-scripts/components/element/template-vm.sh` embeds the Element signing key and **aborts unless its fingerprint matches the pinned value** `12D4CD600C2240A9F4A82071D7B0B66941D01538`. Verified on **2026-05-20** against the key served at `packages.element.io/debian/element-io-archive-keyring.gpg`, a `keyserver.ubuntu.com` by-fingerprint lookup, and a `keys.openpgp.org` by-fingerprint lookup; a Wayback Machine snapshot from 2023 carries the same fingerprint. uid is the historical "riot.im packages <packages@riot.im>" (Element's prior name). Element Desktop is not in the Debian repositories (verified 2026-05-20), so the upstream apt repo is the only mainstream channel; the install procedure matches the Brave/Signal/KeePass pattern.
+- **Residual risk:** The pin proves you have Element's real key; it does not vouch for what Element builds and signs. The embedded key inherits §2 repo trust.
 
 ### VS Code — apt repository with an embedded, verified key ✅
 - **Trust assumption:** The Microsoft signing key is genuine.
@@ -166,7 +166,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Mechanism:** Each wallet qube's `WALLET_QUBES` spec lists extensions as `brave-extension-<name>` components; the composer looks `<name>` up in the `BRAVE_EXTENSIONS` array (name → Chrome Web Store ID) in `setup-qubes.sh`, ensures Brave is installed (idempotent `ensure_brave` in `lib/brave.sh`), and force-installs the extension via an `external_update_url` manifest. No per-extension component directory exists.
 - **Trust assumption:** Google's Web Store distribution and each extension's publisher.
 - **Established by:** ⚠️ Web Store hosting + publisher; extensions auto-update silently.
-- **Residual risk:** A large surface — every installed wallet extension can read pages and prompt to sign in the browser. Abandoned extensions (Liquality, BlockWallet, Frame) have been removed; the `BRAVE_EXTENSIONS` list should be periodically pruned to maintained projects only.
+- **Residual risk:** A large surface — every installed wallet extension can read pages and prompt to sign in the browser. Abandoned extensions (Liquality, BlockWallet, Frame) have been removed; the `BRAVE_EXTENSIONS` list should be periodically pruned to maintained projects only. The default `WALLET_QUBES` builds two minimal wallet qubes (Ledger + Rabby, Trezor + Rabby) — much smaller blast radius than a single qube with every extension.
 
 ---
 
@@ -197,6 +197,5 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 1. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned. The one remaining unverifiable software download.
 2. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
 3. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
-4. **TOFU keyring** (§3) — Element's trust anchor is set without a pin (and its `curl` still lacks `-f`).
 
-Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp and Apache OpenOffice (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints; Element remains TOFU and Ledger Live unverifiable.
+Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp, Apache OpenOffice and Element (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints; only Ledger Live remains unverifiable.

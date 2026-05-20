@@ -200,9 +200,9 @@ xl vcpu-list sys-gnosisvpn
 
 
 
-### Sync clock in Debian-12 template
+### Sync clock in the base template
 
-Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that, install the following package in the base template (in my case `Debian-12`):
+Several apps will have issues with exactly synced time (e.g. 2FA authenticator apps). To mitigate that, install the following package in your base template (e.g. `debian-13-xfce`):
 ```
 sudo apt install systemd-timesyncd
 ```
@@ -213,9 +213,9 @@ For some use cases, it is useful to allow for selective connections between indi
 ```
 qvm-ls -n | grep -E 'A-wallets|A-docker'
 ```
-2. Clone `debian-12-dvm`, rename it as `app-sys-firewall`
+2. Clone your base disposable-VM template (e.g. `debian-13-xfce-dvm`), rename it as `app-sys-firewall`
 3. Clone `sys-firewall`, rename it as `sys-firewall-lab`
-4. Change the template of `sys-firewall-lab` from `debian-12-dvm` to `app-sys-firewall`
+4. Change the template of `sys-firewall-lab` from the disposable-VM template (e.g. `debian-13-xfce-dvm`) to `app-sys-firewall`
 5. Configure changes on `sys-firewall-lab` by opening a terminal in `sys-firewall-lab`
 ```
 echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
@@ -274,7 +274,7 @@ sudo mount -o uid=1000,gid=1000,fmask=177,dmask=077 /dev/xvdi /mnt
 ### minimal templates
 Install in `dom0` via
 ```
-sudo qubes-dom0-update qubes-template-debian-12-minimal
+sudo qubes-dom0-update qubes-template-debian-13-minimal
 ```
 
 These templates are [passwordless](https://www.qubes-os.org/doc/templates/minimal/#passwordless-root) which means all `sudo` commands can only happen via a special terminal that has to be opened from `dom0` (for both template or app VM) via:
