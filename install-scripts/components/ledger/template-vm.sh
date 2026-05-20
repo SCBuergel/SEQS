@@ -21,3 +21,9 @@ sudo udevadm trigger
 
 echo "reloading rules..."
 sudo udevadm control --reload-rules
+
+# Ledger Live AppImage (installed by the app-vm phase) needs FUSE 2 at runtime.
+# Debian 13 ships it as libfuse2t64; Debian 12 as libfuse2.
+echo "installing FUSE 2 runtime for the Ledger Live AppImage..."
+sudo apt-get update
+sudo apt-get install -y libfuse2t64 2>/dev/null || sudo apt-get install -y libfuse2
