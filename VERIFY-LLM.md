@@ -151,11 +151,14 @@ done
 Cross-check every component in every qube spec against the actual components directory and the extension registry.
 
 ```sh
-SINGLE=$(sed -n '/^SINGLE_QUBES=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+')
-WALLET=$(sed -n '/^WALLET_QUBES=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+')
-DEV=$(   sed -n '/^DEV_QUBES=(/,/^)$/p'    setup-qubes.sh | grep -oP '"\K[^"]+')
-# space-separated so the case-pattern membership tests below match correctly
-EXT_NAMES=$(sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[a-z0-9-]+' | tr '\n' ' ')
+# Lookahead for the closing `"` so trailing `# comments` after each spec line
+# don't bleed into a second pseudo-match.
+SINGLE=$(sed -n '/^SINGLE_QUBES=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+(?=")')
+WALLET=$(sed -n '/^WALLET_QUBES=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+(?=")')
+DEV=$(   sed -n '/^DEV_QUBES=(/,/^)$/p'    setup-qubes.sh | grep -oP '"\K[^"]+(?=")')
+# space-separated so the case-pattern membership tests below match correctly;
+# `(?= )` keeps just the leading name token of each "<name> <id>" pair.
+EXT_NAMES=$(sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[a-z0-9-]+(?= )' | tr '\n' ' ')
 COMPS=$(ls install-scripts/components/ | tr '\n' ' ')
 
 # Collect all specs into an array with IFS=newline, then iterate with default
@@ -196,12 +199,12 @@ done
 Each entry must be `<name> <32-char-lowercase-id>` (Chrome Web Store ID format). Names must be unique.
 
 ```sh
-sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+' | while read line; do
+sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[^"]+(?=")' | while read line; do
     name=${line%% *}; id=${line##* }
     [[ "$id" =~ ^[a-z]{32}$ ]] || echo "  FAIL: '$name' has malformed id '$id' (want 32 lowercase letters)"
 done
 
-dupes=$(sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[a-z0-9-]+' | sort | uniq -d)
+dupes=$(sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[a-z0-9-]+(?= )' | sort | uniq -d)
 [ -z "$dupes" ] && echo "  BRAVE_EXTENSIONS names: PASS" || echo "  FAIL: duplicate extension names: $dupes"
 ```
 

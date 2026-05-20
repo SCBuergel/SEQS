@@ -70,6 +70,8 @@ DEV_QUBES=(
 
 Single-component qubes (Brave, KeePass, Signal, Telegram, Element, OpenOffice, Xournal++) are direct `installQube NAME COLOR component` calls at the bottom of `setup-qubes.sh`. A trailing `offline` flag (used for KeePass) detaches the app qube from netvm.
 
+> **Browser-link handoff requires `A-brave`.** `setup-qubes.sh` configures every non-browser qube to open web links in `BROWSER_VM` (default `A-brave`) via the dom0 qrexec policy `qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `SINGLE_QUBES`, also change `BROWSER_VM` at the top of the script to a browser qube you do have — otherwise links from every other qube will fail to open.
+
 ### Adding a new component
 Create `install-scripts/components/<name>/` containing an optional `template-vm.sh` (system-wide install in the template), an optional `app-vm.sh` (per-app-VM setup in `$HOME`/`/rw`), and an optional `menu.desktop` (installed as `/usr/share/applications/<name>.desktop`). Reference `<name>` in any qube spec. If the component needs Brave, it can `source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave` for idempotent installation).
 
@@ -287,26 +289,3 @@ To give the app-VM user access to e.g. the webcam run the following in the sudo 
 sudo usermod -a -G video user
 ```
 
-### open browser links in separate app qube
-For security purposes, it makes sense to open all links in a separate browser as to not endanger another app qube by potentially malicious content in a link. You first have to allow opening links in `dom0` and then set up the link action in a `.desktop` file in the app qube from which you would like to open links in a separate target qube (e.g. `A-brave`).
-1. In `dom0` create a file `/etc/qubes/policy.d/29-browser.policy` that allows opening of links, e.g. in my case in `A-brave` with a single line:
-```
-qubes.OpenURL	*	@anyvm	A-brave	allow
-```
-2. In your app qube from which you would like to open links (e.g. `A-telegram`), create a file `$HOME/.local/share/applications/mybrowser.desktop` (replace `A-brave` by whatever the name of your target browser qube is called):
-```
-[Desktop Entry]
-Encoding=UTF-8
-Name=MyBrowser
-Exec=qvm-open-in-vm A-brave %u
-Terminal=false
-X-MultipleArgs=false
-Type=Application
-Categories=Network;WebBrowser;
-MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
-```
-3. Activate this in your app qube (replace `mybrowser.desktop` with whatever your `.desktop` file above is called):
-```
-xdg-settings set default-web-browser mybrowser.desktop
-```
-**Note:** `setup-qubes.sh` now performs all of the above automatically for every app qube it creates, pointing them at the `BROWSER_VM` qube (default `A-brave`) and skipping the browser qube itself. The manual steps above are only needed for pre-existing qubes that the script does not manage.

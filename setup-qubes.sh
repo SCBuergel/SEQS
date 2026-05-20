@@ -13,14 +13,17 @@ BROWSER_VM="${PREFIX_APP_VM}brave"
 BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
 
 # Shared helper libraries fetched from REPO_VM and moved next to every install
-# script inside the target VM, so install scripts can `source` them.
+# script inside the target VM, so install scripts can `source` them. Every
+# *.sh under LIB_PATH is auto-discovered at script start (see discoverLibFiles).
 LIB_PATH="/home/user/SEQS/install-scripts/lib/"
-LIB_FILES="brave.sh"
+LIB_FILES=""
 
 # Directories deleted on every app qube's boot AND shutdown, via a systemd
-# service installed into each template. Leave a value empty to skip it.
-CLEANUP_QUBESINCOMING="/home/user/QubesIncoming"
-CLEANUP_DOWNLOADS="/home/user/Downloads"
+# service installed into each template. Empty array disables cleanup.
+CLEANUP_DIRS=(
+	"/home/user/QubesIncoming"
+	"/home/user/Downloads"
+)
 
 # Developer qubes -- each entry builds one template + app qube composed of the
 # listed components (install-scripts/components/<name>/). Mix and match freely.
@@ -35,21 +38,24 @@ DEV_QUBES=(
 # Single-component qubes -- one app per qube. Same format as WALLET_QUBES /
 # DEV_QUBES; a trailing 'offline' detaches the app qube from netvm (used here
 # for keepass).
+# Colors follow the informal Qubes trust scale: red=untrusted/exposed,
+# orange/yellow=in-between, green=trusted, black=most trusted (vault).
+# https://doc.qubes-os.org/en/latest/introduction/getting-started.html
 SINGLE_QUBES=(
-	"brave      red    brave"
-	"element    red    element"
-	"keepass    black  keepass    offline"
-	"signal     red    signal"
-	"telegram   red    telegram"
-	"openoffice red    openoffice"
-	"xournalpp  red    xournalpp"
+	"brave      red    brave"                # web -- maximum exposure
+	"element    red    element"              # chat with strangers + links/files
+	"telegram   orange telegram"             # bots/channels/groups, mixed trust
+	"signal     green  signal"               # E2E with known contacts only
+	"openoffice yellow openoffice"           # local docs, import risk
+	"xournalpp  green  xournalpp"            # local notes, minimal surface
+	"keepass    black  keepass    offline"   # password vault (offline)
 )
 
 # Brave wallet extension name -> Chrome Web Store ID.
 # Reference these as 'brave-extension-<name>' in qube specs (see WALLET_QUBES).
 # To add an extension: add a line. To retire one: remove its line.
 BRAVE_EXTENSIONS=(
-	"argentx       dlcobpjiigpikoobohmabehhmhfoodbb"
+	"ready         dlcobpjiigpikoobohmabehhmhfoodbb"
 	"cosmostation  fpkhgmpbidmiogeglndfbkegfdlnajnf"
 	"enkrypt       kkpllkodjeloidieedojogacfhpaihoh"
 	"metamask      nkbihfbeogaeaoehlefnkodbefgpgknn"
@@ -207,6 +213,20 @@ function requireRepoVm() {
 	echo "Source qube '${REPO_VM}' found."
 }
 
+# discoverLibFiles -- enumerate *.sh under LIB_PATH inside REPO_VM and store
+# the space-separated basenames in the global LIB_FILES. Called once after
+# requireRepoVm so fetchRunClean can ship every helper alongside each install.
+function discoverLibFiles() {
+	local listing
+	if ! listing=$(qvm-run -p ${REPO_VM} "ls ${LIB_PATH}*.sh 2>/dev/null | xargs -n1 basename" 2>/dev/null); then
+		echo "WARNING: could not enumerate ${LIB_PATH} on ${REPO_VM}; no helper libs will ship." >&2
+		LIB_FILES=""
+		return
+	fi
+	LIB_FILES=$(echo ${listing} | tr '\n' ' ')
+	echo "Helper libraries discovered: ${LIB_FILES:-<none>}"
+}
+
 # validateAllQubes -- pre-flight check across SINGLE_QUBES, WALLET_QUBES,
 # DEV_QUBES. Verifies every referenced component exists (under
 # install-scripts/components/ or in the BRAVE_EXTENSIONS array), no two configured
@@ -297,7 +317,7 @@ function installCleanupService() {
 
 	# build a shell-quoted, space-separated directory list from the config
 	local dirs="" d
-	for d in "${CLEANUP_QUBESINCOMING}" "${CLEANUP_DOWNLOADS}"; do
+	for d in "${CLEANUP_DIRS[@]}"; do
 		[ -n "${d}" ] && dirs="${dirs} \"${d}\""
 	done
 	if [ -z "${dirs}" ]; then
@@ -465,6 +485,7 @@ cd ~
 
 requireOsTemplate
 requireRepoVm
+discoverLibFiles
 validateAllQubes
 
 setupBrowserPolicy
@@ -484,5 +505,5 @@ for spec in "${DEV_QUBES[@]}"; do
 	installQube ${spec}
 done
 
-# finally delete this setup file after running it
-rm $0
+# Uncomment to delete this setup file after a successful run.
+#rm $0
