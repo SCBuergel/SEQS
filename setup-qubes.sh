@@ -6,34 +6,49 @@
 #
 # Every qube spec is: "NAME COLOR component [component ...] [offline]"
 #   * NAME     -- gets PREFIX_TEMPLATE_VM/PREFIX_APP_VM prepended (default Z-/A-)
-#   * COLOR    -- Qubes label. Trust scale: red=untrusted/exposed,
-#                 orange/yellow=in-between, green=trusted, black=most trusted.
+#   * COLOR    -- Qubes label. The window border is your last-glance check
+#                 before clicking. Each color names a risk class (not a unique
+#                 qube), building on Qubes' own sys-* convention
+#                 (sys-net/sys-usb=red, sys-firewall=green):
+#                   red    -- arbitrary network input from strangers
+#                             (brave, element, telegram)
+#                   orange -- heavy tooling / agent code execution
+#                             (dev qubes -- npm/pypi/curl|bash/LLM agents)
+#                   yellow -- local docs with import risk
+#                             (openoffice, xournalpp)
+#                   green  -- clean utility, known-only input
+#                             (signal: E2E with known contacts)
+#                   gray   -- exposed AND holds value: no safe zone classifies
+#                             (wallets: extensions over Brave, signs irrev. tx)
+#                   black  -- offline vault, no network at all (keepass)
+#                 blue and purple are left unused -- reserve them for user-
+#                 added qubes that don't fit the categories above.
 #                 https://doc.qubes-os.org/en/latest/introduction/getting-started.html
 #   * components live under install-scripts/components/<name>/ (mix and match)
 #   * trailing 'offline' detaches the app qube from netvm (used for keepass)
 
 # Single-component qubes -- one app per qube.
 SINGLE_QUBES=(
-	"brave      red    brave"                # web -- maximum exposure
-	"element    red    element"              # chat with strangers + links/files
-	"telegram   orange telegram"             # bots/channels/groups, mixed trust
+	"brave      red    brave"                # network strangers -- web
+	"element    red    element"              # network strangers -- chat (links/files)
+	"telegram   red    telegram"             # network strangers -- bots/channels/groups
 	"signal     green  signal"               # E2E with known contacts only
-	"openoffice yellow openoffice"           # local docs, import risk
-	"xournalpp  green  xournalpp"            # local notes, minimal surface
-	"keepass    black  keepass    offline"   # password vault (offline)
+	"openoffice yellow openoffice"           # local docs -- import risk
+	"xournalpp  yellow xournalpp"            # local docs -- minimal surface
+	"keepass    black  keepass    offline"   # offline vault
 )
 
 # Developer qubes -- mix any components; typical: docker, python, node, vscode,
 # claude-code. Each entry builds one template + app qube.
 DEV_QUBES=(
-	"dev-full gray docker python node vscode claude-code"
+	"dev-full orange docker python node vscode claude-code"   # heavy tooling + LLM-agent code execution
 )
 
 # Wallet qubes -- use 'brave-extension-<name>' to add a wallet extension
 # (looked up in BRAVE_EXTENSIONS below; Brave is auto-installed when needed).
 WALLET_QUBES=(
-	"wallet-ledger orange ledger brave-extension-rabby"
-	"wallet-trezor orange trezor brave-extension-rabby"
+	"wallet-ledger gray ledger brave-extension-rabby"   # exposed (extensions, online) AND holds value
+	"wallet-trezor gray trezor brave-extension-rabby"   # exposed (extensions, online) AND holds value
 )
 
 # Brave wallet extension name -> Chrome Web Store ID. Reference these as
