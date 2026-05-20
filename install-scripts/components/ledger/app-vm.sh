@@ -3,8 +3,6 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-echo "Installing wallets on appVM"
-
 echo "downloading Ledger Live..."
 # Ledger publishes no GPG signature for the Linux AppImage and the URL is
 # unversioned ("latest"), so this download cannot be cryptographically

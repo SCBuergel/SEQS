@@ -110,10 +110,10 @@ install_brave_extension() {
 		| sudo tee "${extensions_path}/${id}.json" > /dev/null
 }
 
-# install_brave_extensions ID... -- force-install several extensions.
-install_brave_extensions() {
-	local id
-	for id in "$@"; do
-		install_brave_extension "${id}"
-	done
+# ensure_brave -- idempotent install: installs Brave only if not already present.
+# Used by the brave-extension-* dispatch in setup-qubes.sh so that a qube
+# containing one or more brave-extension-<name> components auto-installs Brave
+# on the first invocation, no-op thereafter.
+ensure_brave() {
+	dpkg -s brave-browser >/dev/null 2>&1 || install_brave
 }

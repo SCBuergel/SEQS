@@ -100,12 +100,12 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### KeePassXC — AppImage with verified signature ✅
 - **Trust assumption:** The KeePassXC AppImage really was built and released by the KeePassXC team.
-- **Established by:** ✅ `keepass_templateVM.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header.
+- **Established by:** ✅ `install-scripts/components/keepass/template-vm.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header.
 - **Residual risk:** The version (currently 2.7.12) is pinned in the script; an AppImage does not auto-update, so security fixes arrive only when the pin is bumped and the script re-run. The signing key is embedded in the repo, so it also inherits §2 repo trust.
 
 ### Signal — apt repository with an embedded, verified key ✅
 - **Trust assumption:** Signal's apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
-- **Established by:** ✅ `signal_templateVM.sh` embeds the Signal signing key and **aborts unless its fingerprint matches the pinned value** `DBA36B5181D0C816F630E889D980A17457F6FB06`. Signal publishes no fingerprint, so it was cross-checked on **2026-05-18** against the key served at `updates.signal.org`, a keys.openpgp.org by-fingerprint lookup, and Wayback Machine snapshots from 2018/2020/2022 (the same key for 8+ years) — see the script header.
+- **Established by:** ✅ `install-scripts/components/signal/template-vm.sh` embeds the Signal signing key and **aborts unless its fingerprint matches the pinned value** `DBA36B5181D0C816F630E889D980A17457F6FB06`. Signal publishes no fingerprint, so it was cross-checked on **2026-05-18** against the key served at `updates.signal.org`, a keys.openpgp.org by-fingerprint lookup, and Wayback Machine snapshots from 2018/2020/2022 (the same key for 8+ years) — see the script header.
 - **Residual risk:** The pin proves you have Signal's real key; it does not vouch for what Signal builds and signs. The embedded key inherits §2 repo trust.
 
 ### Docker — apt repository with an embedded, verified key ✅
@@ -129,20 +129,20 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Residual risk:** Publisher or store compromise; the snap auto-updates.
 
 ### BitBoxApp — .deb with a verified signature ✅
-- **Component:** `bitbox_templateVM.sh` — downloads the BitBoxApp `.deb` and its detached `.asc`.
-- **Established by:** ✅ The script embeds the ShiftCrypto Security signing key and **aborts unless `gpg --verify` confirms the `.deb` is signed by it** (fingerprint `DD09E41309750EBFAE0DEF63509249B068D215AE`). Verified on **2026-05-19** against BitBox's own docs (which publish the fingerprint), `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header. Installed via `apt-get` so dependencies resolve. (Not currently wired into `setup-qubes.sh`.)
+- **Component:** `install-scripts/components/bitbox/template-vm.sh` — downloads the BitBoxApp `.deb` and its detached `.asc`.
+- **Established by:** ✅ The script embeds the ShiftCrypto Security signing key and **aborts unless `gpg --verify` confirms the `.deb` is signed by it** (fingerprint `DD09E41309750EBFAE0DEF63509249B068D215AE`). Verified on **2026-05-19** against BitBox's own docs (which publish the fingerprint), `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header. Installed via `apt-get` so dependencies resolve. (Not in the default `WALLET_QUBES`; add `bitbox` to a wallet qube's component list to include it.)
 - **Residual risk:** The pinned version (currently 4.51.0) is bumped manually. A crypto wallet — keep its qube isolated.
 
 ### Apache OpenOffice — tarball with a verified signature ✅
-- **Component:** `openOffice_templateVM.sh` — downloads the Apache OpenOffice tarball and its detached `.asc` from `downloads.apache.org`.
+- **Component:** `install-scripts/components/openoffice/template-vm.sh` — downloads the Apache OpenOffice tarball and its detached `.asc` from `downloads.apache.org`.
 - **Established by:** ✅ The script embeds Jim Jagielski's Apache OpenOffice release signing key and **aborts unless `gpg --verify` confirms the tarball is signed by it** (fingerprint `A93D62ECC3C8EA12DB220EC934EA76E6791485A8`). Verified on **2026-05-19** against the Apache OpenOffice `KEYS` file, the Apache committer keyring (`people.apache.org`) and `keyserver.ubuntu.com` — see the script header.
 - **Residual risk:** The pinned version (currently 4.1.16) is bumped manually; Apache OpenOffice releases infrequently.
 
 ### Ledger Live ❌ — unverifiable
-- **Component:** `wallets_appVM.sh` — `curl -fsSL https://download.live.ledger.com/latest/linux`.
+- **Component:** `install-scripts/components/ledger/app-vm.sh` — `curl -fsSL https://download.live.ledger.com/latest/linux`.
 - **Trust assumption:** The AppImage served by Ledger at that URL is genuine.
 - **Established by:** ❌ Nothing. Ledger does **not** publish a GPG signature for the Linux AppImage (only a SHA-512 on a JS-rendered download page), and the download URL is unversioned ("latest"), so the AppImage can be neither signature-verified nor version-pinned. `-f` is set so an HTTP error page is not saved as the AppImage, but the AppImage content itself is trusted on download.
-- **Residual risk:** Whoever controls Ledger's download infrastructure or DNS can serve arbitrary code into the wallet qube. The Ledger udev rules in `wallets_templateVM.sh` are independent — the hardware device works regardless.
+- **Residual risk:** Whoever controls Ledger's download infrastructure or DNS can serve arbitrary code into the wallet qube. The Ledger udev rules in `install-scripts/components/ledger/template-vm.sh` are independent — the hardware device works regardless.
 
 ### pyenv (python component) ❌ — accepted tradeoff
 - **Component:** `install-scripts/components/python/app-vm.sh` — `curl -fsSL https://pyenv.run | bash`.
@@ -163,10 +163,10 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Residual risk:** Whoever controls that script (or the pinned tag) runs code in the dev qube. `npm install` then runs package lifecycle scripts — a large supply-chain surface.
 
 ### Brave wallet extensions ⚠️
-- **Component:** `wallets*_templateVM.sh` drop `external_update_url` manifests so Brave force-installs the wallet extensions from the Google Chrome Web Store.
+- **Mechanism:** Each wallet qube's `WALLET_QUBES` spec lists extensions as `brave-extension-<name>` components; the composer looks `<name>` up in the `BRAVE_EXTENSIONS` array (name → Chrome Web Store ID) in `setup-qubes.sh`, ensures Brave is installed (idempotent `ensure_brave` in `lib/brave.sh`), and force-installs the extension via an `external_update_url` manifest. No per-extension component directory exists.
 - **Trust assumption:** Google's Web Store distribution and each extension's publisher.
 - **Established by:** ⚠️ Web Store hosting + publisher; extensions auto-update silently.
-- **Residual risk:** A large surface — every installed wallet extension can read pages and prompt to sign in the browser. Abandoned extensions (Liquality, BlockWallet) were removed 2026-05-18; the remaining list should be periodically pruned to maintained projects only.
+- **Residual risk:** A large surface — every installed wallet extension can read pages and prompt to sign in the browser. Abandoned extensions (Liquality, BlockWallet, Frame) have been removed; the `BRAVE_EXTENSIONS` list should be periodically pruned to maintained projects only.
 
 ---
 
@@ -185,7 +185,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Residual risk:** Wireless ADB exposes a shell-capable channel on the LAN; a hostile peer can feed arbitrary file content. Prefer USB-attached ADB on an untrusted network.
 
 ### Hardware-wallet udev rules
-- **Component:** `wallets_templateVM.sh` installs Ledger / Trezor udev rules.
+- **Components:** `install-scripts/components/ledger/template-vm.sh` and `install-scripts/components/trezor/template-vm.sh` install the Ledger and Trezor udev rules respectively.
 - **Trust assumption:** The rule contents (USB vendor/product IDs, permissions) are correct.
 - **Established by:** 📝 Reviewed; mirrors vendor-published rules.
 - **Residual risk:** Low — grants local device access to the user; no network trust involved.

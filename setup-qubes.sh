@@ -24,10 +24,38 @@ CLEANUP_DOWNLOADS="/home/user/Downloads"
 
 # Developer qubes -- each entry builds one template + app qube composed of the
 # listed components (install-scripts/components/<name>/). Mix and match freely.
-# Format: "NAME COLOR component component ..."
-# Available components: docker python node vscode claude-code
+# Format: "NAME COLOR component component ..." with a trailing 'offline' to
+# detach the app qube from netvm. Typical dev components: docker, python, node,
+# vscode, claude-code -- but any component (see install-scripts/components/) is
+# valid here; for wallet qubes use WALLET_QUBES below.
 DEV_QUBES=(
 	"dev-full gray docker python node vscode claude-code"
+)
+
+# Brave wallet extension name -> Chrome Web Store ID.
+# Reference these as 'brave-extension-<name>' in qube specs (see WALLET_QUBES).
+# To add an extension: add a line. To retire one: remove its line.
+BRAVE_EXTENSIONS=(
+	"argentx       dlcobpjiigpikoobohmabehhmhfoodbb"
+	"cosmostation  fpkhgmpbidmiogeglndfbkegfdlnajnf"
+	"enkrypt       kkpllkodjeloidieedojogacfhpaihoh"
+	"metamask      nkbihfbeogaeaoehlefnkodbefgpgknn"
+	"nabox         nknhiehlklippafakaeklbeglecifhad"
+	"okx           mcohilncbfahbmgdjkbpemcciiolgcge"
+	"rabby         acmacodkjbdgmoleebolmdjonilkdbch"
+	"rainbow       opfgelmcmbiajamepnmloijbpoleiama"
+	"tahoe         eajafomhmkipbjmfmhebemolkcicgfmd"
+	"trustwallet   egjidjbpglichdcondbcbdnbeeppgdph"
+	"zeal          heamnjbnflcikcggoiplibfommfbkjpj"
+	"zerion        klghhnkeealcohjjanjjdaeeggmfmlpl"
+)
+
+# Wallet qubes -- each entry builds one template + app qube composed of the
+# listed components. Use 'brave-extension-<name>' to add a wallet extension
+# (looked up in BRAVE_EXTENSIONS above; Brave is auto-installed when needed).
+# Format: "NAME COLOR component component ..."
+WALLET_QUBES=(
+	"wallets orange ledger trezor brave-extension-argentx brave-extension-cosmostation brave-extension-enkrypt brave-extension-metamask brave-extension-nabox brave-extension-okx brave-extension-rabby brave-extension-rainbow brave-extension-tahoe brave-extension-trustwallet brave-extension-zeal brave-extension-zerion"
 )
 
 # fetchFromVM SOURCE_VM FILE [EXE]
@@ -189,81 +217,66 @@ EOF
 	qvm-run -u root -p ${TEMPLATE_VM} "systemctl enable seqs-cleanup.service"
 }
 
-# installApp APPNAME COLOR OFFLINE
-function installApp () {
-	if [ $# -lt 2 ]; then
-		echo "Expected two parameters: installApp APPNAME COLOR [offline]"
+# braveExtensionInstall VM EXT_NAME -- install one Brave extension into VM.
+# Looks up the Chrome Web Store ID in the BRAVE_EXTENSIONS array, ensures Brave
+# is installed (idempotent), then force-installs the extension. Used by
+# installQube to dispatch the synthetic 'brave-extension-<name>' component
+# namespace -- no per-extension component directory is needed.
+function braveExtensionInstall() {
+	local VM="${1}"
+	local EXT_NAME="${2}"
+	local id="" entry name
+	for entry in "${BRAVE_EXTENSIONS[@]}"; do
+		name="${entry%% *}"
+		if [ "${name}" = "${EXT_NAME}" ]; then
+			id="${entry##* }"
+			break
+		fi
+	done
+	if [ -z "${id}" ]; then
+		echo "ERROR: unknown Brave extension '${EXT_NAME}' -- not in BRAVE_EXTENSIONS." >&2
 		return 1
 	fi
-
-	APPNAME="${1}"
-	COLOR="${2}"
-	OFFLINE="${3}"
-	APP_VM="${PREFIX_APP_VM}${APPNAME}"
-	TEMPLATE_VM="${PREFIX_TEMPLATE_VM}${APPNAME}"
-
-	echo "STARTING INSTALLATION OF ${APPNAME}..."
-
-	echo "setting up template VM ${TEMPLATE_VM}...."
-	qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
-	
-	echo "trying to fetch ${APPNAME} templateVM install files...."
-	fetchRunClean ${TEMPLATE_VM} ${APPNAME} /home/user/SEQS/install-scripts/ ${APPNAME}_templateVM.sh
-
-	echo "trying to fetch ${APPNAME}.desktop file..."
-	if fetchFromVm ${REPO_VM} /home/user/SEQS/menu-files/${APPNAME}.desktop; then
-		echo "moving ${APPNAME}.desktop file to template VM..."
-		qvm-move-to-vm ${TEMPLATE_VM} ${APPNAME}.desktop
-		qvm-run -p ${TEMPLATE_VM} sudo mv /home/user/QubesIncoming/dom0/${APPNAME}.desktop /usr/share/applications/
-	else
-		echo "looks like there is no $APPNAME.desktop file. No biggie ¯\\_ (ツ)_/¯"
-		rm ${APPNAME}.desktop
+	echo "installing Brave extension '${EXT_NAME}' (${id}) into ${VM}..."
+	if ! fetchFromVm ${REPO_VM} "${LIB_PATH}brave.sh"; then
+		echo "ERROR: failed to fetch lib/brave.sh from ${REPO_VM}" >&2
+		return 1
 	fi
-
-	installCleanupService ${TEMPLATE_VM}
-
-	echo "shutting down template VM..."
-	qvm-shutdown ${TEMPLATE_VM}
-	sleep 4
-
-	echo "creating app VM ${APP_VM}..."
-	qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
-	if [ ! -z "${OFFLINE}" ] && [[ ${OFFLINE} == "offline" ]]; then
-		echo "taking app VM offline..."
-		sleep 2
-		qvm-prefs ${APP_VM} netvm none
-	fi
-
-	echo "starting app VM..."
-	qvm-start ${APP_VM}
-	
-	echo "trying to fetch ${APPNAME} appVM install files...."
-	fetchRunClean ${APP_VM} ${APPNAME} /home/user/SEQS/install-scripts/ ${APPNAME}_appVM.sh
-
-	# point every app qube at the browser qube for links (except the browser qube itself)
-	if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
-		setBrowserQube ${APP_VM}
-	fi
-
-	echo "shutting app VM down..."
-	qvm-shutdown ${APP_VM}
+	qvm-move-to-vm "${VM}" brave.sh
+	qvm-run -p "${VM}" ". ./QubesIncoming/dom0/brave.sh && ensure_brave && install_brave_extension '${id}'"
+	qvm-run -p "${VM}" "rm ./QubesIncoming -rf"
 }
 
-# installQube NAME COLOR component [component ...]
+# installQube NAME COLOR component [component ...] [offline]
 # Builds a Z-NAME template + A-NAME app qube composed of the named components
-# (install-scripts/components/<component>/). Each component may provide a
-# template-vm.sh (system-wide install) and/or an app-vm.sh (per-app-qube
-# setup); missing parts are skipped.
+# (install-scripts/components/<component>/). Each component may provide:
+#   * template-vm.sh -- system-wide install in the template (skipped if absent)
+#   * app-vm.sh      -- per-app-qube setup        (skipped if absent)
+#   * menu.desktop   -- launcher installed into /usr/share/applications/<comp>.desktop
+# The synthetic 'brave-extension-<name>' component namespace is dispatched via
+# braveExtensionInstall (looked up in BRAVE_EXTENSIONS) -- no per-extension
+# component directory is needed; Brave is auto-installed on first call.
+# Trailing 'offline' flag detaches the app qube from netvm (e.g. for keepass).
 function installQube() {
 	if [ $# -lt 3 ]; then
-		echo "Expected: installQube NAME COLOR component [component ...]"
+		echo "Expected: installQube NAME COLOR component [component ...] [offline]"
 		return 1
 	fi
 
 	local NAME="${1}"
 	local COLOR="${2}"
 	shift 2
-	local COMPONENTS="$*"
+
+	# detect trailing 'offline' flag and strip it from the component list
+	local OFFLINE=""
+	local args=("$@")
+	local n=${#args[@]}
+	if [ "${n}" -gt 0 ] && [ "${args[$((n-1))]}" = "offline" ]; then
+		OFFLINE="offline"
+		unset 'args[n-1]'
+	fi
+	local COMPONENTS="${args[*]}"
+
 	local APP_VM="${PREFIX_APP_VM}${NAME}"
 	local TEMPLATE_VM="${PREFIX_TEMPLATE_VM}${NAME}"
 	local COMPONENT_PATH="/home/user/SEQS/install-scripts/components/"
@@ -274,10 +287,24 @@ function installQube() {
 	echo "setting up template VM ${TEMPLATE_VM}..."
 	qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
 
-	# template phase: run each component's template-vm.sh in the template
+	# template phase
 	for comp in ${COMPONENTS}; do
-		echo "installing component '${comp}' into ${TEMPLATE_VM}..."
-		fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh
+		case "${comp}" in
+			brave-extension-*)
+				braveExtensionInstall "${TEMPLATE_VM}" "${comp#brave-extension-}"
+				;;
+			*)
+				echo "installing component '${comp}' into ${TEMPLATE_VM}..."
+				fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh
+				# optional per-component menu.desktop -> /usr/share/applications/<comp>.desktop
+				if fetchFromVm ${REPO_VM} "${COMPONENT_PATH}${comp}/menu.desktop"; then
+					qvm-move-to-vm ${TEMPLATE_VM} menu.desktop
+					qvm-run -p ${TEMPLATE_VM} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${comp}.desktop && rm -rf /home/user/QubesIncoming"
+				else
+					rm -f menu.desktop
+				fi
+				;;
+		esac
 	done
 
 	installCleanupService ${TEMPLATE_VM}
@@ -288,17 +315,29 @@ function installQube() {
 
 	echo "creating app VM ${APP_VM}..."
 	qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
+	if [ "${OFFLINE}" = "offline" ]; then
+		echo "taking app VM offline..."
+		sleep 2
+		qvm-prefs ${APP_VM} netvm none
+	fi
 
 	echo "starting app VM..."
 	qvm-start ${APP_VM}
 
-	# app-VM phase: run each component's app-vm.sh in the app qube
+	# app-VM phase
 	for comp in ${COMPONENTS}; do
-		echo "configuring component '${comp}' on ${APP_VM}..."
-		fetchRunClean ${APP_VM} "${comp}" "${COMPONENT_PATH}${comp}/" app-vm.sh
+		case "${comp}" in
+			brave-extension-*)
+				: # brave-extension-* is template-only; no app-vm action
+				;;
+			*)
+				echo "configuring component '${comp}' on ${APP_VM}..."
+				fetchRunClean ${APP_VM} "${comp}" "${COMPONENT_PATH}${comp}/" app-vm.sh
+				;;
+		esac
 	done
 
-	# open web links in the browser qube
+	# open web links in the browser qube (except for the browser qube itself)
 	if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
 		setBrowserQube ${APP_VM}
 	fi
@@ -314,16 +353,21 @@ requireRepoVm
 
 setupBrowserPolicy
 
-installApp brave red
-installApp element red
-installApp keepass black offline
-installApp signal red
-installApp telegram red
-installApp wallets orange
-installApp openOffice red
-installApp xournalpp red
+# Single-component qubes (one app per qube)
+installQube brave      red    brave
+installQube element    red    element
+installQube keepass    black  keepass    offline
+installQube signal     red    signal
+installQube telegram   red    telegram
+installQube openoffice red    openoffice
+installQube xournalpp  red    xournalpp
 
-# developer qubes -- composed from the DEV_QUBES list configured at the top
+# Wallet qubes -- composed from the WALLET_QUBES list configured at the top
+for spec in "${WALLET_QUBES[@]}"; do
+	installQube ${spec}
+done
+
+# Developer qubes -- composed from the DEV_QUBES list configured at the top
 for spec in "${DEV_QUBES[@]}"; do
 	installQube ${spec}
 done

@@ -30,30 +30,48 @@ The script will download the individual install scripts into dom0 and from there
 
 Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
 
-### Developer qubes
-Developer tooling is not installed one-tool-per-qube. Instead each tool is a **component**, and a developer qube is composed from any mix of components into a single template (`Z-[name]`) and app VM (`A-[name]`).
+### Composing qubes from components
+Every qube the setup builds is composed by `installQube` from one or more **components** in `install-scripts/components/<name>/`. Single-tool qubes are 1-component; mix-and-match qubes (wallet, developer) list several. The composer clones the base template, runs each component's `template-vm.sh` (system-wide install) in the template, installs any `menu.desktop` it carries, then runs each `app-vm.sh` (per-app-qube setup) in the app qube, and wires up the browser-link policy and cleanup service.
 
-Available components (`install-scripts/components/`):
-- `docker` — Docker engine
-- `python` — build dependencies and pyenv/Python
-- `node` — Node.js and npm via nvm (so Node versions can be switched)
-- `vscode` — Visual Studio Code
-- `claude-code` — Claude Code (native installer, self-updating)
+Available components today:
 
-Configure the developer qubes you want in the `DEV_QUBES` array near the top of `setup-qubes.sh`. Each entry is `"NAME COLOR component component ..."`:
+| Component | What it installs |
+|---|---|
+| `brave`        | Brave browser (apt repo, embedded verified key) |
+| `element`      | Element chat (apt repo) |
+| `keepass`      | KeePassXC AppImage (GPG-verified) |
+| `signal`       | Signal Desktop (apt repo, embedded verified key) |
+| `telegram`     | Telegram via snap (`telegram-desktop`) |
+| `openoffice`   | Apache OpenOffice tarball (GPG-verified) |
+| `xournalpp`    | Xournal++ (Debian package) |
+| `ledger`       | Ledger udev rules + Ledger Live |
+| `trezor`       | Trezor udev rules |
+| `bitbox`       | BitBoxApp `.deb` (GPG-verified) |
+| `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
+| `python`       | pyenv + Python |
+| `node`         | Node.js via nvm |
+| `vscode`       | Visual Studio Code |
+| `claude-code`  | Claude Code (native installer) |
+
+**Three config blocks at the top of `setup-qubes.sh`:**
+
+`WALLET_QUBES` and `DEV_QUBES` — arrays of qube specs, one per line, format `"NAME COLOR component component ..."`. Add a line to spin up a new combination; edit a line to add/remove components from an existing qube:
 ```
+WALLET_QUBES=(
+    "wallets  orange  ledger trezor brave-extension-metamask brave-extension-rabby"
+)
 DEV_QUBES=(
-	"dev-full    gray  docker python node vscode claude-code"
-	"dev-backend gray  docker python"
-	"dev-web     gray  node vscode claude-code"
+    "dev-full    gray  docker python node vscode claude-code"
+    "dev-backend gray  docker python"
 )
 ```
-Running `setup-qubes.sh` builds one template plus app VM per entry — e.g. the second line above creates `A-dev-backend` containing only Docker and Python. To set up a different toolset, add or edit a line; nothing else needs to change.
 
-Each component is a directory `install-scripts/components/[name]/` containing an optional `template-vm.sh` (installed system-wide into the template) and/or `app-vm.sh` (run in the app VM, for `$HOME` and `/rw` setup). To add a new component, create that directory with the relevant script(s); its name is then usable in `DEV_QUBES`.
+`BRAVE_EXTENSIONS` — name → Chrome Web Store ID for each Brave wallet extension. Reference them in wallet qube specs as `brave-extension-<name>`; the composer auto-installs Brave on the first such reference in a qube. To **enable** an extension in a qube: add `brave-extension-<name>` to that qube's `WALLET_QUBES` line. To **retire** an extension entirely: remove its line from `BRAVE_EXTENSIONS`. To **add** a new extension (e.g. Ambire): add a `BRAVE_EXTENSIONS` line, then reference it as `brave-extension-ambire` in any wallet qube.
 
-### I want to automate installation of [XYZ]
-In order to add additional software packages, create corresponding install scripts in the respective folder. If needed (e.g. in case of AppImage downloads) add menu files so that the program can be launched from the Qubes menu.
+Single-component qubes (Brave, KeePass, Signal, Telegram, Element, OpenOffice, Xournal++) are direct `installQube NAME COLOR component` calls at the bottom of `setup-qubes.sh`. A trailing `offline` flag (used for KeePass) detaches the app qube from netvm.
+
+### Adding a new component
+Create `install-scripts/components/<name>/` containing an optional `template-vm.sh` (system-wide install in the template), an optional `app-vm.sh` (per-app-VM setup in `$HOME`/`/rw`), and an optional `menu.desktop` (installed as `/usr/share/applications/<name>.desktop`). Reference `<name>` in any qube spec. If the component needs Brave, it can `source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave` for idempotent installation).
 
 ## Helpers
 ### delete-vms.sh
