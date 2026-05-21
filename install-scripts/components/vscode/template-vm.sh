@@ -103,3 +103,18 @@ EOF
 # ─── Install VS Code ─────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y code
+
+# ─── Lock the keyring file against in-place rewrite ──────────────────────────
+# `chattr +i` makes ${KEYRING} immutable -- even root cannot modify or
+# replace it without first running `sudo chattr -i ${KEYRING}`. The apt
+# Pin-Priority: -1 + allowlist above bounds which *packages* this repo
+# can publish, but it does NOT constrain maintainer scripts inside an
+# allowlisted package: the `code` deb runs preinst/postinst as root,
+# and a (hypothetical, future) scriptlet that does
+#     cp /usr/share/code/something.gpg ${KEYRING}
+# would silently rotate the trust anchor the signed-by= directive
+# references -- with no SEQS verification ever firing again. Immutability
+# turns that into a loud failure (dpkg will abort the package), forcing
+# legitimate key rotation through manual re-verification of the new
+# fingerprint against the three independent sources documented above.
+sudo chattr +i "${KEYRING}"

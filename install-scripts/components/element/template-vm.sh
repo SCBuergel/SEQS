@@ -135,3 +135,11 @@ EOF
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y element-desktop
+
+# ─── Lock the keyring file against in-place rewrite ──────────────────────────
+# See vscode/template-vm.sh for the rationale. chattr +i bounds what a
+# root-running maintainer script in the allowlisted element-desktop
+# package can do to the trust anchor at ${KEYRING}; legitimate key
+# rotation must then go through `sudo chattr -i ${KEYRING}` + manual
+# re-verify against the three independent sources documented above.
+sudo chattr +i "${KEYRING}"

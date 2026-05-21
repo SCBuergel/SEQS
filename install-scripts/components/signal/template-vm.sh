@@ -125,3 +125,11 @@ EOF
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y signal-desktop
+
+# ─── Lock the keyring file against in-place rewrite ──────────────────────────
+# See vscode/template-vm.sh for the rationale. The Pin-Priority allowlist
+# bounds which package names this repo can ship; chattr +i additionally
+# bounds what root-running maintainer scripts inside an allowlisted
+# package can do to the trust anchor at ${KEYRING}. Key rotation must
+# then go through `sudo chattr -i ${KEYRING}` + manual re-verify.
+sudo chattr +i "${KEYRING}"

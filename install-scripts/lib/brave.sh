@@ -132,6 +132,20 @@ EOF
 
 	sudo apt-get update
 	sudo apt-get install -y brave-browser
+
+	# Lock the keyring file against in-place rewrite. The Pin-Priority
+	# allowlist above bounds which package names this repo can ship, and
+	# brave-keyring is DELIBERATELY excluded so apt won't auto-rotate the
+	# trust anchor via that package's maintainer scriptlets. chattr +i is
+	# the next layer: even an allowlisted package (brave-browser) whose
+	# postinst did
+	#     cp /usr/share/brave/something.gpg ${keyring}
+	# would now fail loudly instead of silently rotating the key the
+	# signed-by= directive in /etc/apt/sources.list.d/brave-browser-release.list
+	# anchors against. Legitimate key rotation must go through
+	# `sudo chattr -i ${keyring}` + manual re-verify against the three
+	# independent sources documented at the top of this file.
+	sudo chattr +i "${keyring}"
 }
 
 # install_brave_extension ID -- force-install one Brave extension by its

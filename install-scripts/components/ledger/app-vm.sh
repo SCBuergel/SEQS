@@ -3,10 +3,11 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-echo "downloading Ledger Live..."
-# Ledger publishes no GPG signature for the Linux AppImage and the URL is
-# unversioned ("latest"), so this download cannot be cryptographically
-# verified or version-pinned -- see TRUST.md. -f at least makes curl fail on
-# an HTTP error instead of saving an error page as the AppImage.
-curl -fsSL https://download.live.ledger.com/latest/linux -o LedgerLive.AppImage
-chmod +x LedgerLive.AppImage
+# LedgerLive.AppImage is installed system-wide in the template phase
+# (template-vm.sh -> /usr/bin/LedgerLive.AppImage, owned root:root) so
+# the binary cannot be silently replaced by anything compromising the
+# wallet qube user account between sessions. There is no per-app-VM
+# action remaining; this file exists only to make the move explicit
+# in the component directory and to avoid the misleading "no app-vm.sh"
+# log line that fetchRunClean prints when an expected file is absent.
+echo "ledger: AppImage installed in template phase; nothing to do per-qube."

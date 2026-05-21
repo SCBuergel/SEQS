@@ -42,8 +42,9 @@ In order to set up everything in an automated fashion:
 1. Download this repo into the home directory of your `personal` app VM
 2. Open dom0 terminal and type the following one-liner (this is a [common hack to copy files from an app VM into dom0](https://www.qubes-os.org/doc/how-to-copy-from-dom0/#copying-to-dom0)):
 ```
-qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' > s.sh && chmod +x s.sh && ./s.sh
+qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' 2>/dev/null > s.sh && chmod +x s.sh && ./s.sh
 ```
+The `2>/dev/null` on the `qvm-run` step is deliberate. The fetch happens BEFORE `setup-qubes.sh` exists in dom0 (and therefore before its `vmRun` sanitizer is available), so any bytes the source qube writes to stderr land directly on the dom0 terminal. A compromised `personal` qube could otherwise emit ANSI / CSI / OSC sequences (window-title smuggling, OSC 52 clipboard write, repaint earlier lines) during the `cat` — the same class of attack `vmRun` later defends against on every VM→dom0 path. Dropping stderr closes that bootstrap window. If the `cat` fails, `s.sh` ends up empty/partial and `./s.sh` fails loudly enough on its own.
 3. Some software packages require you to reboot the app VM once to actually work.
 
 The script will download the individual install scripts into dom0 and from there to newly created template VMs. The template VMs are then used to set up app VMs for proper isolation.

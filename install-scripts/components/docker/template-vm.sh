@@ -130,6 +130,14 @@ EOF
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+# ─── Lock the keyring file against in-place rewrite ──────────────────────────
+# See vscode/template-vm.sh for the rationale. chattr +i bounds what a
+# root-running maintainer script in any of the allowlisted docker-* /
+# containerd.io packages can do to the trust anchor at ${KEYRING};
+# legitimate key rotation must then go through `sudo chattr -i ${KEYRING}`
+# + manual re-verify against the three independent sources documented above.
+sudo chattr +i "${KEYRING}"
+
 # Add the user to the docker group. NOTE: docker-group membership is equivalent
 # to root inside this qube -- see TRUST.md.
 sudo usermod -aG docker user

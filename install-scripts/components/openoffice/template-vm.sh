@@ -180,6 +180,27 @@ if [ "${unsafe_count}" -gt 0 ]; then
 	exit 1
 fi
 
+# Reject symlink and hardlink members. A signed-bad tarball could contain
+# a symlink like './foo -> /etc/cron.d/x' followed by a regular member
+# './foo/bar' whose extraction follows the symlink and writes through it.
+# Modern GNU tar (>=1.30) has opportunistic protection against the
+# symlink-then-write-through pattern, but the protection is heuristic and
+# changes between versions. Rejecting links up-front here means the
+# extract step below is bounded by member NAME alone -- the validate
+# step above already constrains names to relative paths without '..'.
+#
+# tar -tvzf prefixes each member with the entry type:
+#   '-' = regular file, 'd' = directory, 'l' = symlink, 'h' = hardlink
+# We only reject 'l' and 'h'; the OpenOffice tarball legitimately
+# contains no links (verified locally on 4.1.16).
+echo "checking tarball for symlink/hardlink members..."
+link_count=$(tar -tvzf "${WORKDIR}/${TARBALL}" \
+	| awk '/^[lh]/ { print > "/dev/stderr"; n++ } END { print n+0 }')
+if [ "${link_count}" -gt 0 ]; then
+	echo "ERROR: tarball contains ${link_count} symlink/hardlink member(s) above -- aborting." >&2
+	exit 1
+fi
+
 # ─── Unpack ──────────────────────────────────────────────────────────────────
 # --no-overwrite-dir : do not replace an existing directory with a non-dir
 #                      member, or change its mode -- blocks a planted dir
