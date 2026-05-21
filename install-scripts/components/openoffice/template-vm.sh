@@ -3,6 +3,10 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
+# Shared gpg detached-sig verification helper; setup-qubes.sh moves
+# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+. "$(dirname "$0")/verify-gpg.sh"
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 AOO_VERSION="4.1.16"
 APT_PROXY="127.0.0.1:8082"
@@ -142,14 +146,11 @@ curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${TARBALL}.asc" "${BASE_URL}/${TAR
 
 # ─── Verify the signature chains to the pinned key ───────────────────────────
 echo "verifying signature..."
-STATUS="$(gpg --status-fd 1 --verify "${WORKDIR}/${TARBALL}.asc" "${WORKDIR}/${TARBALL}" 2>/dev/null)" || true
-if ! awk -v fpr="${AOO_KEY_FPR}" \
-        '$2=="VALIDSIG" && $NF==fpr {ok=1} END {exit !ok}' <<<"${STATUS}"; then
-	echo "ERROR: Apache OpenOffice signature verification FAILED -- not installing." >&2
-	echo "${STATUS}" >&2
-	exit 1
-fi
-echo "signature OK -- ${TARBALL} signed by ${AOO_KEY_FPR}"
+verify_detached_sig \
+	"${WORKDIR}/${TARBALL}.asc" \
+	"${WORKDIR}/${TARBALL}" \
+	"${AOO_KEY_FPR}" \
+	"${TARBALL}"
 
 # ─── Bind the verified tarball bytes to what gets extracted ──────────────────
 # Close the TOCTOU window between gpg --verify and `tar -xzf`: the tarball
@@ -192,6 +193,10 @@ for i in "${!DEBS[@]}"; do
 done
 
 # ─── Install (apt resolves the local .debs' dependencies) ────────────────────
+# Pass the hashed DEBS array directly instead of re-expanding the *.deb glob,
+# so apt installs *exactly* the files whose SHA-256 was just re-verified above
+# -- closing the TOCTOU window between hash check and install. Re-expanding
+# the glob would pick up any file dropped into ${WORKDIR}/en-US/DEBS/ in the
+# meantime; the array won't.
 echo "installing packages..."
-sudo apt-get install -y "${WORKDIR}"/en-US/DEBS/*.deb
-sudo apt-get install -y "${WORKDIR}"/en-US/DEBS/desktop-integration/*.deb
+sudo apt-get install -y "${DEBS[@]}"

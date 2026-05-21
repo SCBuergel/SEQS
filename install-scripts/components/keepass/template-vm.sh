@@ -3,6 +3,10 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
+# Shared gpg detached-sig verification helper; setup-qubes.sh moves
+# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+. "$(dirname "$0")/verify-gpg.sh"
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 KEEPASSXC_VERSION="2.7.12"
 APT_PROXY="127.0.0.1:8082"
@@ -175,14 +179,11 @@ curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${APPIMAGE}.sig" "${BASE_URL}/${AP
 
 # ─── Verify the signature chains to the pinned KeePassXC release key ─────────
 echo "verifying signature ..."
-STATUS="$(gpg --status-fd 1 --verify "${WORKDIR}/${APPIMAGE}.sig" "${WORKDIR}/${APPIMAGE}" 2>/dev/null)" || true
-if ! awk -v fpr="${KEEPASSXC_KEY_FPR}" \
-        '$2=="VALIDSIG" && $NF==fpr {ok=1} END {exit !ok}' <<<"${STATUS}"; then
-	echo "ERROR: KeePassXC AppImage signature verification FAILED -- not installing." >&2
-	echo "${STATUS}" >&2
-	exit 1
-fi
-echo "signature OK -- ${APPIMAGE} signed by KeePassXC Release key ${KEEPASSXC_KEY_FPR}"
+verify_detached_sig \
+	"${WORKDIR}/${APPIMAGE}.sig" \
+	"${WORKDIR}/${APPIMAGE}" \
+	"${KEEPASSXC_KEY_FPR}" \
+	"${APPIMAGE}"
 
 # ─── Bind the verified bytes to what gets installed ──────────────────────────
 # Close the TOCTOU window between gpg --verify and `sudo install`: the AppImage

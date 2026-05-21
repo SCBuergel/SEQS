@@ -8,11 +8,10 @@ set -Eeuo pipefail
 # (template qube). Names are matched as literal strings, not regex.
 #
 # Usage:
-#   ./delete-vms.sh [--dry-run] [--yes] <name> [<name> ...]
+#   ./delete-vms.sh [--dry-run] <name> [<name> ...]
 #
 # Options:
 #   --dry-run     print what would be killed/removed and exit 0
-#   --yes, -y     skip the interactive "type DELETE" confirmation prompt
 #   -h, --help    show this message
 
 # Prefixes to check for each <name>. Keep in sync with PREFIX_APP_VM /
@@ -24,18 +23,16 @@ PREFIXES=(A Z)
 SHUTDOWN_TIMEOUT=30
 
 DRY_RUN=0
-ASSUME_YES=0
 
 usage() {
 	cat <<EOF
-Usage: $0 [--dry-run] [--yes] <name> [<name> ...]
+Usage: $0 [--dry-run] <name> [<name> ...]
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
 any qube called A-<name> or Z-<name>.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
-  --yes, -y    skip the interactive confirmation prompt
   -h, --help   show this message
 EOF
 }
@@ -45,7 +42,6 @@ ARGS=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--dry-run) DRY_RUN=1 ;;
-		--yes|-y)  ASSUME_YES=1 ;;
 		-h|--help) usage; exit 0 ;;
 		--)        shift; ARGS+=("$@"); break ;;
 		-*)        echo "ERROR: unknown option '$1'" >&2; usage >&2; exit 1 ;;
@@ -114,16 +110,6 @@ for app in "${ARGS[@]}"; do
 	if [ "${DRY_RUN}" -eq 1 ]; then
 		echo "  (dry-run: not killing or removing)"
 		continue
-	fi
-
-	# Explicit confirmation -- accidentally typing 'y' on a footgun-prone
-	# command shouldn't be enough. --yes bypasses for scripted use.
-	if [ "${ASSUME_YES}" -eq 0 ]; then
-		read -rp "Delete the ${#found[@]} qube(s) above? type DELETE to confirm: " confirm
-		if [ "${confirm}" != "DELETE" ]; then
-			echo "  aborted"
-			continue
-		fi
 	fi
 
 	# Surface kill errors instead of silently swallowing them with 2>/dev/null

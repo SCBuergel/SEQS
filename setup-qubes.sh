@@ -129,9 +129,23 @@ LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 # a single OSC / CSI sequence reaching the terminal emulator is enough to
 # reposition the cursor (repaint earlier "OK" lines as something else), ring
 # the bell, set the window title to smuggle keys via paste tricks, or fire
-# OSC 52 clipboard writes. So: strip every C0 control character except TAB
-# and LF, plus DEL, before any VM-controlled byte hits the terminal. UTF-8
-# is preserved (the high-bit range is untouched).
+# OSC 52 clipboard writes. Defense is two-stage:
+#
+#   1. `tr` strips every C0 control character except TAB and LF, plus DEL.
+#      That removes the 7-bit form of ESC (0x1B), so ESC[ (CSI), ESC] (OSC),
+#      BEL, etc. cannot reach the terminal as control bytes.
+#
+#   2. `sed` strips the UTF-8 encoding of the C1 control range
+#      U+0080..U+009F (two-byte sequences `\xc2\x80` .. `\xc2\x9f`). U+009B
+#      is the single-byte CSI, U+009D is single-byte OSC; xterm with
+#      `allowC1Printable: false` (the default) and several other terminals
+#      DO interpret encoded UTF-8 C1 codepoints as control sequences, so
+#      preserving them would have left a parallel channel to the C0 one
+#      stage 1 closes. The LC_ALL=C is required so the byte-range pattern
+#      bypasses sed's locale-aware regex behaviour.
+#
+# Visible UTF-8 (everything in 0x80..0xFF outside the encoded-C1 sequences)
+# is preserved so apt/dpkg log lines stay readable.
 #
 # Heredoc support: a heredoc attached to the vmRun call becomes the
 # function's stdin and is therefore forwarded to qvm-run inside. Callers
@@ -140,9 +154,11 @@ LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 #
 # Exit-code propagation requires `set -o pipefail` in the caller -- the
 # installQube subshell sets it. Without pipefail, a non-zero qvm-run is
-# masked by tr's success and the build silently continues on broken state.
+# masked by tr/sed's success and the build silently continues on broken state.
 function vmRun() {
-	qvm-run "$@" 2>&1 | tr -d '\000-\010\013-\037\177'
+	qvm-run "$@" 2>&1 \
+		| tr -d '\000-\010\013-\037\177' \
+		| LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g'
 }
 
 # fetchFromVM SOURCE_VM FILE [EXE]
@@ -207,6 +223,14 @@ function fetchRunClean() {
 	local DESKTOP_NAME="${5:-}"
 
 	if fetchFromVm ${REPO_VM} ${FILE_PATH}${FILENAME} EXE; then
+		# Enumerate the component directory once. The listing drives BOTH:
+		#   * whether to attempt a menu.desktop fetch (skipping the fetch
+		#     when none exists avoids a noisy `cat: ... No such file` from
+		#     the VM that looks like a real install error in the log);
+		#   * which per-component asset files to ship.
+		local raw_assets=""
+		raw_assets=$(qvm-run -p ${REPO_VM} "ls ${FILE_PATH} 2>/dev/null" 2>/dev/null) || raw_assets=""
+
 		# fetch shared helper libraries so the install script can source them
 		local lib libs=""
 		for lib in ${LIB_FILES}; do
@@ -215,9 +239,14 @@ function fetchRunClean() {
 			fi
 		done
 
-		# optionally fetch a per-component menu.desktop in the same batch
+		# optionally fetch a per-component menu.desktop in the same batch.
+		# Only attempt the fetch if the directory listing shows it -- the
+		# previous unconditional fetch printed `cat: ... menu.desktop:
+		# No such file or directory` to stderr for every component that
+		# carries no menu (most of them) and was easy to mistake for a
+		# real install failure.
 		local has_desktop=0
-		if [ -n "${DESKTOP_NAME}" ]; then
+		if [ -n "${DESKTOP_NAME}" ] && grep -qFx 'menu.desktop' <<< "${raw_assets}"; then
 			if fetchFromVm ${REPO_VM} "${FILE_PATH}menu.desktop"; then
 				has_desktop=1
 			else
@@ -230,8 +259,8 @@ function fetchRunClean() {
 		# validated against the same safe pattern used elsewhere so a hostile
 		# REPO_VM cannot return a filename containing shell metacharacters that
 		# would then be interpolated into a remote qvm-run command.
-		local assets="" asset raw_assets
-		if raw_assets=$(qvm-run -p ${REPO_VM} "ls ${FILE_PATH} 2>/dev/null" 2>/dev/null); then
+		local assets="" asset
+		if [ -n "${raw_assets}" ]; then
 			while IFS= read -r asset; do
 				[ -z "${asset}" ] && continue
 				case "${asset}" in
@@ -274,16 +303,32 @@ function fetchRunClean() {
 	fi
 }
 
-# create the dom0 qrexec policy so any qube may open links in the browser qube
-function setupBrowserPolicy() {
-	local policy="/etc/qubes/policy.d/29-browser.policy"
+# confirmPolicyOverwrite POLICY_PATH NEW_RULE_PREVIEW EXTRA_RATIONALE
+# Single source of truth for "we are about to clobber a qrexec policy file"
+# warnings. Both setupBrowserPolicy and setupUsbKeyboardPolicy go through
+# this helper so the two paths cannot drift apart -- adding a confirmation
+# prompt in one and forgetting it in the other has happened in the past.
+#
+# Behaviour:
+#   * if POLICY_PATH does not exist, returns 0 silently (fresh install --
+#     no clobber, no prompt);
+#   * if it exists, prints a banner with the path, the new rule that will
+#     replace it, the EXTRA_RATIONALE line, and a dump of the current
+#     contents, then BLOCKS on `read` for the operator to type OVERWRITE.
+#     Any other input (including EOF / empty / Ctrl-D) aborts the whole
+#     setup with exit 1 BEFORE any policy write or any qube is built.
+#
+# The exit-on-non-confirm is deliberately strict: these policies sit in
+# dom0 and changes to them are isolation-affecting, so a slipped Enter or
+# a stdin-less invocation must not silently overwrite. To bypass in a
+# scripted context, delete the policy file first.
+function confirmPolicyOverwrite() {
+	local policy="${1}"
+	local new_rule_preview="${2}"
+	local extra_rationale="${3:-}"
+	[ -e "${policy}" ] || return 0
 
-	# If the policy file already exists, loudly warn the user before we
-	# clobber it -- they may have edited it (or another tool may have
-	# written it) since the last setup-qubes.sh run. No backup is taken
-	# and the overwrite still proceeds.
-	if [ -e "${policy}" ]; then
-		cat >&2 <<EOF
+	cat >&2 <<EOF
 
 
 ################################################################################
@@ -296,15 +341,23 @@ function setupBrowserPolicy() {
 ##                                                                            ##
 ##   Any custom rules in this file -- yours or another tool's -- will be     ##
 ##   LOST. No backup is taken.                                                ##
+EOF
+	if [ -n "${extra_rationale}" ]; then
+		# Indent each line of the rationale into the banner frame.
+		while IFS= read -r line; do
+			printf '##   %s\n' "${line}" >&2
+		done <<< "${extra_rationale}"
+	fi
+	cat >&2 <<EOF
 ##                                                                            ##
-##   New contents will be:                                                    ##
-##       qubes.OpenURL * @anyvm ${BROWSER_VM} allow
+##   New rule will be:                                                        ##
+##       ${new_rule_preview}
 ##                                                                            ##
 ##   Current contents:                                                        ##
 ##   ------------------------------------------------------------------       ##
 EOF
-		sed 's/^/##   /' "${policy}" >&2 || true
-		cat >&2 <<EOF
+	sed 's/^/##   /' "${policy}" >&2 || true
+	cat >&2 <<EOF
 ##   ------------------------------------------------------------------       ##
 ##                                                                            ##
 ################################################################################
@@ -312,11 +365,32 @@ EOF
 
 
 EOF
+
+	local confirm
+	# Read explicit confirmation from /dev/tty so that a piped or empty
+	# stdin (e.g. invocation from a wrapper, CI, or someone hitting <Enter>
+	# on a stale terminal) cannot be misread as approval. Anything but the
+	# literal string "OVERWRITE" -- including EOF -- aborts.
+	if ! read -rp "Overwrite ${policy}? type OVERWRITE to confirm (anything else aborts): " confirm </dev/tty; then
+		echo "ERROR: no terminal available to confirm overwrite of ${policy} -- aborting." >&2
+		exit 1
 	fi
+	if [ "${confirm}" != "OVERWRITE" ]; then
+		echo "ERROR: overwrite of ${policy} not confirmed -- aborting before any qube is built." >&2
+		exit 1
+	fi
+}
+
+# create the dom0 qrexec policy so any qube may open links in the browser qube
+function setupBrowserPolicy() {
+	local policy="/etc/qubes/policy.d/29-browser.policy"
+	local rule="qubes.OpenURL * @anyvm ${BROWSER_VM} allow"
+
+	confirmPolicyOverwrite "${policy}" "${rule}" \
+		"This policy concentrates link-handoff into ${BROWSER_VM}. A hand-edited rule (e.g. 'ask' instead of 'allow', or a per-qube exception) getting overwritten silently is a real isolation downgrade."
 
 	echo "allowing all qubes to open links in ${BROWSER_VM}..."
-	echo "qubes.OpenURL * @anyvm ${BROWSER_VM} allow" \
-		| sudo tee "${policy}" > /dev/null
+	echo "${rule}" | sudo tee "${policy}" > /dev/null
 }
 
 # On Qubes 4.3 the shipped /etc/qubes/policy.d/50-config-input.policy silently
@@ -341,16 +415,29 @@ function setupUsbKeyboardPolicy() {
 		echo "sys-usb not found -- skipping USB keyboard policy override."
 		return 0
 	fi
-	echo "installing /etc/qubes/policy.d/30-user-input.policy so USB keyboards prompt before attaching to dom0..."
-	sudo tee /etc/qubes/policy.d/30-user-input.policy > /dev/null <<'EOF'
+
+	local policy="/etc/qubes/policy.d/30-user-input.policy"
+	local rule="qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm"
+
+	# Share the warn+confirm+abort path with setupBrowserPolicy via the
+	# common helper so the two cannot drift -- one with a confirmation
+	# gate and one without is exactly the failure mode (7) flagged. The
+	# USB-keyboard policy controls qubes.InputKeyboard attach from
+	# sys-usb to dom0; overwriting a hand-tightened version of THIS rule
+	# is a worse isolation downgrade than the browser policy, not better.
+	confirmPolicyOverwrite "${policy}" "${rule}" \
+		"This file controls qubes.InputKeyboard attach from sys-usb to dom0. A hand-tightened rule (e.g. pinned to a single trusted keyboard qube, or denied outright) getting overwritten silently is a worse isolation downgrade than the browser policy."
+
+	echo "installing ${policy} so USB keyboards prompt before attaching to dom0..."
+	sudo tee "${policy}" > /dev/null <<'EOF'
 # SEQS override: prompt before attaching a USB keyboard from sys-usb to dom0.
 # Lower numeric prefix (30-) wins over the shipped 50-config-input.policy,
 # which silently denies qubes.InputKeyboard on Qubes 4.3. Managed by
 # setup-qubes.sh; re-running the setup re-writes this file.
 qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm
 EOF
-	sudo chmod 0644 /etc/qubes/policy.d/30-user-input.policy
-	sudo chown root:root /etc/qubes/policy.d/30-user-input.policy
+	sudo chmod 0644 "${policy}"
+	sudo chown root:root "${policy}"
 }
 
 # setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM}

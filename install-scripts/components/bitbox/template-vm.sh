@@ -3,6 +3,10 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
+# Shared gpg detached-sig verification helper; setup-qubes.sh moves
+# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+. "$(dirname "$0")/verify-gpg.sh"
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 BITBOX_VERSION="4.51.0"
 APT_PROXY="127.0.0.1:8082"
@@ -108,14 +112,11 @@ curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${DEB}.asc" "${BASE_URL}/${DEB}.as
 
 # ─── Verify the signature chains to the pinned key ───────────────────────────
 echo "verifying signature..."
-STATUS="$(gpg --status-fd 1 --verify "${WORKDIR}/${DEB}.asc" "${WORKDIR}/${DEB}" 2>/dev/null)" || true
-if ! awk -v fpr="${BITBOX_KEY_FPR}" \
-        '$2=="VALIDSIG" && $NF==fpr {ok=1} END {exit !ok}' <<<"${STATUS}"; then
-	echo "ERROR: BitBoxApp signature verification FAILED -- not installing." >&2
-	echo "${STATUS}" >&2
-	exit 1
-fi
-echo "signature OK -- ${DEB} signed by ShiftCrypto Security ${BITBOX_KEY_FPR}"
+verify_detached_sig \
+	"${WORKDIR}/${DEB}.asc" \
+	"${WORKDIR}/${DEB}" \
+	"${BITBOX_KEY_FPR}" \
+	"${DEB}"
 
 # Bind the verified bytes to what apt actually installs. `apt-get install`
 # below opens the .deb a second time and does NOT re-verify the gpg

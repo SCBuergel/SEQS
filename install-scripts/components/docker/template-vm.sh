@@ -110,6 +110,22 @@ gpg --export "${DOCKER_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
 echo "deb [arch=$(dpkg --print-architecture) signed-by=${KEYRING}] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
 	| sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
+# ─── Lock the Docker repo to its own packages ────────────────────────────────
+# Same pattern as Signal/Element: without this, a compromise of Docker's signing
+# infrastructure could ship a higher-version bash / libc6 / systemd / openssl /
+# etc. and apt would prefer it over Debian's. Default-deny everything from this
+# origin, then re-allow only the docker-* package set (and containerd.io, which
+# Docker's repo ships in place of Debian's containerd).
+sudo tee /etc/apt/preferences.d/docker.pref > /dev/null <<'EOF'
+Package: *
+Pin: origin "download.docker.com"
+Pin-Priority: -1
+
+Package: docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin docker-scan-plugin docker-model-plugin containerd.io
+Pin: origin "download.docker.com"
+Pin-Priority: 500
+EOF
+
 # ─── Install Docker ──────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin

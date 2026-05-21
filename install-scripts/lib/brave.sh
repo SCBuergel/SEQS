@@ -107,6 +107,21 @@ install_brave() {
 	echo "deb [arch=amd64 signed-by=${keyring}] https://brave-browser-apt-release.s3.brave.com/ stable main" \
 		| sudo tee /etc/apt/sources.list.d/brave-browser-release.list > /dev/null
 
+	# Lock the Brave repo to its own packages (same pattern as Signal/Element).
+	# Without this, a compromise of Brave's signing infrastructure could ship a
+	# higher-version bash / libc6 / systemd / etc. and apt would prefer it over
+	# Debian's. Default-deny everything from this origin, then re-allow only the
+	# brave-browser-* package set plus brave-keyring.
+	sudo tee /etc/apt/preferences.d/brave-browser.pref > /dev/null <<'EOF'
+Package: *
+Pin: origin "brave-browser-apt-release.s3.brave.com"
+Pin-Priority: -1
+
+Package: brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev brave-keyring
+Pin: origin "brave-browser-apt-release.s3.brave.com"
+Pin-Priority: 500
+EOF
+
 	sudo apt-get update
 	sudo apt-get install -y brave-browser
 }

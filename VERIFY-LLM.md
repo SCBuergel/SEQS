@@ -213,14 +213,97 @@ dupes=$(sed -n '/^BRAVE_EXTENSIONS=(/,/^)$/p' setup-qubes.sh | grep -oP '"\K[a-z
 Read each verifier script (no automated check; do it manually) and confirm the abort-on-mismatch happens **before** any side effect that would commit the unverified material:
 
 - **`lib/brave.sh` → `install_brave()`** — compares sorted `${got}` against sorted `${expected}` (the three pinned `BRAVE_KEY_FPRS`). On mismatch the function does `rm -f "${tmp}"` and `exit 1` **before** `sudo install -m 0644 "${tmp}" "${keyring}"`.
+- **`lib/verify-gpg.sh` → `verify_detached_sig()`** — the single source of truth for detached-signature verification used by the keepass / bitbox / openoffice installers. Captures `gpg --status-fd 1 --verify`'s exit code explicitly into `$rc` (NO `|| true` masking, unlike the earlier inlined version), then runs an awk filter that:
+  - **requires both** a `[GNUPG:] GOODSIG` line and a `[GNUPG:] VALIDSIG <… primary_fpr>` line whose primary-key fingerprint equals the pin (one or the other alone is insufficient — `VALIDSIG` fires whenever the math works, including for expired/revoked keys);
+  - **rejects** any `[GNUPG:] BADSIG` / `ERRSIG` / `EXPSIG` / `EXPKEYSIG` / `REVKEYSIG` / `KEYEXPIRED` / `KEYREVOKED` / `NO_PUBKEY` line anywhere in the output.
+
+  Any failure path ends in `exit 1` **before** the calling script reaches its install/extract step.
 - **`components/keepass/template-vm.sh`** — two checks:
   1. Embedded-key fingerprint check (`IMPORTED_FPR` vs `KEEPASSXC_KEY_FPR`) → `exit 1` **before** the AppImage download.
-  2. `gpg --status-fd 1 --verify` chain (`awk … VALIDSIG … $NF==fpr`) → `exit 1` **before** `sudo install -m 0755 ... /usr/bin/keepassxc.AppImage`.
-- **`components/bitbox/template-vm.sh`** — analogous two checks, abort **before** `sudo apt-get install -y "${WORKDIR}/${DEB}"`.
-- **`components/openoffice/template-vm.sh`** — analogous two checks, abort **before** `tar -xzf …` / the `apt-get install` of the extracted debs.
+  2. `verify_detached_sig` call (delegated to `lib/verify-gpg.sh`) → `exit 1` **before** `sudo install -m 0755 ... /usr/bin/keepassxc.AppImage`.
+- **`components/bitbox/template-vm.sh`** — analogous two checks (the second via `verify_detached_sig`), abort **before** `sudo apt-get install -y "${WORKDIR}/${DEB}"`.
+- **`components/openoffice/template-vm.sh`** — analogous two checks (the second via `verify_detached_sig`), abort **before** `tar -xzf …` / the `apt-get install -y "${DEBS[@]}"` of the extracted debs. (Note: install passes the hashed `DEBS[@]` array directly — *not* a fresh `*.deb` glob — so the install set is exactly the set whose SHA-256 was re-verified above.)
 - **`components/signal/template-vm.sh`**, **`vscode/template-vm.sh`**, **`docker/template-vm.sh`**, **`element/template-vm.sh`** — single embedded-key check; `exit 1` **before** `gpg --export "${*_KEY_FPR}" | sudo tee "${KEYRING}"` (a bad embedded key must not reach the apt keyring path).
+- **`setup-qubes.sh::setupBrowserPolicy` and `::setupUsbKeyboardPolicy`** — when the target policy file already exists, both functions delegate to `confirmPolicyOverwrite`, which `read`s confirmation from `/dev/tty` and `exit 1`s **before** the `sudo tee` overwrite if the operator types anything other than the literal string `OVERWRITE` (or if no terminal is available). Same factoring as `verify-gpg.sh`: one helper, two callers, no drift.
 
 **PASS:** every abort is strictly before the corresponding irreversible write. **FAIL:** any script writes to disk first and verifies afterwards.
+
+## 9a. Verifier-helper usage parity
+
+The two consolidation helpers (`lib/verify-gpg.sh::verify_detached_sig` and `setup-qubes.sh::confirmPolicyOverwrite`) only protect SEQS if every site that *should* use them actually does. A regression here would re-introduce the inline-awk / no-confirm bugs the helpers were created to fix.
+
+```sh
+# 9a.i -- every component that downloads a tarball / .deb / AppImage and a
+# detached signature must source verify-gpg.sh AND call verify_detached_sig,
+# AND must NOT contain the old inline-awk VALIDSIG pattern.
+for c in keepass bitbox openoffice; do
+    f="install-scripts/components/$c/template-vm.sh"
+    ok=1
+    grep -q '\. "\$(dirname "\$0")/verify-gpg\.sh"' "$f" || { echo "  $c: FAIL (verify-gpg.sh not sourced)"; ok=0; }
+    grep -q 'verify_detached_sig '                    "$f" || { echo "  $c: FAIL (no verify_detached_sig call)"; ok=0; }
+    grep -q 'VALIDSIG.*\$NF==fpr'                     "$f" && { echo "  $c: FAIL (inline awk VALIDSIG check still present -- regression)"; ok=0; }
+    grep -q '|| true'                                 "$f" && { echo "  $c: FAIL (|| true mask still present -- regression)"; ok=0; }
+    [ "$ok" -eq 1 ] && echo "  $c: PASS"
+done
+
+# 9a.ii -- both qrexec-policy installers must funnel through
+# confirmPolicyOverwrite. A direct `sudo tee /etc/qubes/policy.d/...`
+# inside either function (without the helper call earlier in the same
+# function body) is a drift bug.
+for fn in setupBrowserPolicy setupUsbKeyboardPolicy; do
+    body=$(awk -v fn="$fn" '
+        $0 ~ "^function " fn         { in_fn=1; next }
+        in_fn                        { print }
+        in_fn && /^\}/               { in_fn=0 }
+    ' setup-qubes.sh)
+    echo "$body" | grep -q 'confirmPolicyOverwrite ' \
+        && echo "  $fn: PASS" \
+        || echo "  $fn: FAIL (does not call confirmPolicyOverwrite)"
+done
+```
+
+**PASS:** every line `PASS`. **FAIL:** any inline awk / `|| true` mask back in a component, or a policy installer that bypasses the confirm helper.
+
+## 9b. apt-preferences pin parity for third-party repos
+
+Every third-party apt repository SEQS adds must drop a matching `/etc/apt/preferences.d/*.pref` that default-denies the origin (`Pin-Priority: -1`) and re-allows only the specific packages it ships. Without this, a signing-key compromise at the upstream could ship a higher-version `bash` / `libc6` / `systemd` / etc. via that repo and apt would prefer it over Debian's.
+
+```sh
+# For each (file, origin) pair, the file must contain BOTH a
+# Pin-Priority: -1 default-deny AND a re-allow at Pin-Priority: 500,
+# both targeting the same origin string.
+check_apt_pin() {
+    local file="$1" origin="$2"
+    local ok=1
+    grep -qE "Pin: *origin *\"${origin}\"" "$file" || { echo "  $file: FAIL (no Pin: origin \"${origin}\")"; ok=0; }
+    grep -qE 'Pin-Priority: *-1'           "$file" || { echo "  $file: FAIL (no Pin-Priority: -1 default-deny)"; ok=0; }
+    grep -qE 'Pin-Priority: *500'          "$file" || { echo "  $file: FAIL (no Pin-Priority: 500 re-allow)"; ok=0; }
+    [ "$ok" -eq 1 ] && echo "  $file ($origin): PASS"
+}
+check_apt_pin install-scripts/lib/brave.sh                       'brave-browser-apt-release\.s3\.brave\.com'
+check_apt_pin install-scripts/components/docker/template-vm.sh   'download\.docker\.com'
+check_apt_pin install-scripts/components/vscode/template-vm.sh   'packages\.microsoft\.com'
+check_apt_pin install-scripts/components/signal/template-vm.sh   'updates\.signal\.org'
+check_apt_pin install-scripts/components/element/template-vm.sh  'packages\.element\.io'
+```
+
+**PASS:** every line `PASS`. **FAIL:** any third-party apt installer missing its pin file.
+
+## 9c. dom0 terminal sanitizer covers both C0 and UTF-8-encoded C1
+
+`setup-qubes.sh::vmRun` must strip C0 control bytes (the 7-bit form of ESC, BEL, CR, …) **and** the two-byte UTF-8 encoding of the C1 control range U+0080..U+009F (including the single-byte CSI U+009B and OSC U+009D). The previous form stripped only C0; xterm with `allowC1Printable: false` (the default) interprets the UTF-8-encoded C1 codepoints as control sequences, so a sanitizer that doesn't strip them leaves a parallel channel open.
+
+```sh
+# Extract the vmRun function body and check both stages are present.
+body=$(awk '/^function vmRun/{in_fn=1} in_fn{print} in_fn && /^\}/{in_fn=0}' setup-qubes.sh)
+ok=1
+echo "$body" | grep -q "tr -d '\\\\000-\\\\010"                           || { echo "  vmRun: FAIL (C0/DEL strip via tr missing)"; ok=0; }
+echo "$body" | grep -q 'sed -E .*\\xc2\[\\x80-\\x9f\]'                    || { echo "  vmRun: FAIL (UTF-8 C1 strip via sed missing)"; ok=0; }
+echo "$body" | grep -q 'LC_ALL=C'                                         || { echo "  vmRun: FAIL (LC_ALL=C not set for sed -- byte ranges may not match in non-C locale)"; ok=0; }
+[ "$ok" -eq 1 ] && echo "  vmRun sanitizer: PASS"
+```
+
+**PASS:** `vmRun sanitizer: PASS`. **FAIL:** any one stage missing or `LC_ALL=C` absent.
 
 ## 10. README ↔ components coherence
 
@@ -277,18 +360,21 @@ Aggregate the section results into one block:
 
 ```
 SEQS LLM verification report — <date>
- §1 static syntax         : PASS|FAIL
- §2 component tree shape  : PASS|FAIL
- §3 embedded fingerprints : PASS|FAIL
- §4 Brave multi-key pin   : PASS|FAIL
- §5 live upstream pins    : PASS|FAIL (or "skipped, no network")
- §6 TRUST.md path refs    : PASS|FAIL
- §7 qube spec validation  : PASS|FAIL
- §8 BRAVE_EXTENSIONS form : PASS|FAIL
- §9 logic abort-order     : PASS|FAIL
- §10 README ↔ components  : PASS|FAIL
- §11 fetchRunClean call   : PASS|FAIL
- §12 offline flag logic   : PASS|FAIL
+ §1  static syntax              : PASS|FAIL
+ §2  component tree shape       : PASS|FAIL
+ §3  embedded fingerprints      : PASS|FAIL
+ §4  Brave multi-key pin        : PASS|FAIL
+ §5  live upstream pins         : PASS|FAIL (or "skipped, no network")
+ §6  TRUST.md path refs         : PASS|FAIL
+ §7  qube spec validation       : PASS|FAIL
+ §8  BRAVE_EXTENSIONS form      : PASS|FAIL
+ §9  logic abort-order          : PASS|FAIL
+ §9a verifier-helper parity     : PASS|FAIL
+ §9b apt-preferences pin parity : PASS|FAIL
+ §9c vmRun C0+C1 sanitizer      : PASS|FAIL
+ §10 README ↔ components        : PASS|FAIL
+ §11 fetchRunClean call         : PASS|FAIL
+ §12 offline flag logic         : PASS|FAIL
  Notes: <any FAIL details, any human follow-up required>
 ```
 
@@ -297,6 +383,9 @@ SEQS LLM verification report — <date>
 - **`TRUST.md` is the authoritative claim.** Your job is to confirm the code upholds those claims and to flag any drift.
 - **Live-fingerprint FAIL (§5)** usually means an upstream rotated keys. Do **not** silently update the pin. Re-verify from three independent sources following the TRUST.md pattern; only then update the pin and the embedded key block.
 - **Logic-abort FAIL (§9)** is a real bug — a verifier that runs *after* an irreversible write defeats the point.
+- **Verifier-helper FAIL (§9a)** is a real bug. The helpers (`verify_detached_sig`, `confirmPolicyOverwrite`) exist specifically to make verification one-place. A site that bypasses them with inline awk / direct `sudo tee` is the drift the helpers were created to prevent.
+- **apt-pin FAIL (§9b)** is a real bug. A third-party apt repo without a matching `preferences.d/*.pref` means a key-compromise at that upstream can ship arbitrary higher-version system packages and apt will prefer them over Debian's.
+- **Sanitizer FAIL (§9c)** is a real bug. A missing C1 strip leaves the dom0 terminal exposed to UTF-8-encoded CSI/OSC sequences emitted from any compromised installer-side process.
 - **Static-syntax FAIL (§1)** is a real bug.
 - **Coherence FAIL (§6, §10, §11)** is usually doc-vs-code drift; fix whichever side is wrong.
 - **Validation FAIL (§7, §8)** is a real bug if `validateAllQubes` should already catch it; this section catches anything that slipped past at design time.
