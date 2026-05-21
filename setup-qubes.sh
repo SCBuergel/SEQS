@@ -135,7 +135,18 @@ LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 #      That removes the 7-bit form of ESC (0x1B), so ESC[ (CSI), ESC] (OSC),
 #      BEL, etc. cannot reach the terminal as control bytes.
 #
-#   2. `sed` strips the UTF-8 encoding of the C1 control range
+#   2. `iconv -f UTF-8 -t UTF-8 -c` drops any byte that is NOT part of a
+#      valid UTF-8 sequence. The relevant target is a raw single-byte
+#      0x80..0x9F (the 8-bit form of C1 control codes -- 0x9B is CSI,
+#      0x9D is OSC). On a terminal in any 8-bit mode (xterm with
+#      `allowC1Printable: true`, several non-default Konsole/gnome-term
+#      configurations) those raw bytes are interpreted as control
+#      sequences. We cannot just `tr -d '\200-\237'` because the same
+#      byte range is valid UTF-8 continuation; iconv inspects context
+#      and drops only the lone-byte form, preserving multi-byte
+#      characters like "Über" (\xC3\x9C ...) intact.
+#
+#   3. `sed` strips the UTF-8 encoding of the C1 control range
 #      U+0080..U+009F (two-byte sequences `\xc2\x80` .. `\xc2\x9f`). U+009B
 #      is the single-byte CSI, U+009D is single-byte OSC; xterm with
 #      `allowC1Printable: false` (the default) and several other terminals
@@ -157,7 +168,8 @@ LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 # masked by tr/sed's success and the build silently continues on broken state.
 function vmRun() {
 	qvm-run "$@" 2>&1 \
-		| tr -d '\000-\010\013-\037\177' \
+		| LC_ALL=C tr -d '\000-\010\013-\037\177' \
+		| iconv -f UTF-8 -t UTF-8 -c \
 		| LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g'
 }
 
@@ -178,8 +190,15 @@ function fetchFromVm() {
 		echo "ERROR: refusing unsafe SOURCE_VM '${SOURCE_VM}' in fetchFromVm" >&2
 		return 1
 	fi
-	if ! [[ "${FILE}" =~ ^[A-Za-z0-9/][A-Za-z0-9._/-]*$ ]] || [[ "${FILE}" == *..* ]]; then
-		echo "ERROR: refusing unsafe FILE '${FILE}' in fetchFromVm" >&2
+	# Pin FILE strictly under /home/user/SEQS/ -- every legitimate caller
+	# (fetchRunClean, braveExtensionInstall) only ever passes paths under
+	# COMPONENT_PATH or LIB_PATH, both of which live there. An earlier
+	# regex allowed any absolute path; tightening here means a future
+	# caller that interpolates user input cannot turn this primitive into
+	# an arbitrary-file-read against REPO_VM (which can hold secrets in
+	# the qube user's home unrelated to SEQS).
+	if ! [[ "${FILE}" =~ ^/home/user/SEQS/[A-Za-z0-9._/-]+$ ]] || [[ "${FILE}" == *..* ]]; then
+		echo "ERROR: refusing unsafe FILE '${FILE}' in fetchFromVm (must be under /home/user/SEQS/)" >&2
 		return 1
 	fi
 
@@ -403,6 +422,43 @@ EOF
 	fi
 }
 
+# installRootFile DEST CONTENT
+# Atomically install a file with root:root, mode 0644, at DEST, with body
+# CONTENT (a string). Uses sudo install via a user-side mktemp so failures
+# abort with exit 1 instead of silently producing an empty file or one with
+# the wrong owner / mode.
+#
+# Why this exists: the top-level orchestrator does NOT enable `set -e` or
+# `set -o pipefail` (the absence is intentional for the qube-spec loops --
+# one failed qube must not abort all). But the previous policy-installer
+# pattern was `echo X | sudo tee FILE > /dev/null` followed by separate
+# `sudo chmod` and `sudo chown` calls. Without pipefail, a non-zero `sudo`
+# in the pipe is masked by `tee`'s success and the script proceeds to
+# build qubes that depend on the policy. Without `set -e`, a failed
+# chmod / chown leaves the file with surprising ownership or mode.
+# `sudo install` does the write + chown + chmod atomically and we check
+# its exit explicitly.
+function installRootFile() {
+	local dest="$1"
+	local content="$2"
+	local tmp
+	if ! tmp=$(mktemp); then
+		echo "ERROR: mktemp failed while preparing ${dest} -- aborting." >&2
+		exit 1
+	fi
+	if ! printf '%s' "${content}" > "${tmp}"; then
+		rm -f "${tmp}"
+		echo "ERROR: writing temp content for ${dest} failed -- aborting." >&2
+		exit 1
+	fi
+	if ! sudo install -m 0644 -o root -g root "${tmp}" "${dest}"; then
+		rm -f "${tmp}"
+		echo "ERROR: sudo install of ${dest} failed -- aborting before any qube is built." >&2
+		exit 1
+	fi
+	rm -f "${tmp}"
+}
+
 # create the dom0 qrexec policy so any qube may open links in the browser qube
 function setupBrowserPolicy() {
 	local policy="/etc/qubes/policy.d/29-browser.policy"
@@ -412,7 +468,7 @@ function setupBrowserPolicy() {
 		"This policy concentrates link-handoff into ${BROWSER_VM}. A hand-edited rule (e.g. 'ask' instead of 'allow', or a per-qube exception) getting overwritten silently is a real isolation downgrade."
 
 	echo "allowing all qubes to open links in ${BROWSER_VM}..."
-	echo "${rule}" | sudo tee "${policy}" > /dev/null
+	installRootFile "${policy}" "${rule}"$'\n'
 }
 
 # On Qubes 4.3 the shipped /etc/qubes/policy.d/50-config-input.policy silently
@@ -451,15 +507,23 @@ function setupUsbKeyboardPolicy() {
 		"This file controls qubes.InputKeyboard attach from sys-usb to dom0. A hand-tightened rule (e.g. pinned to a single trusted keyboard qube, or denied outright) getting overwritten silently is a worse isolation downgrade than the browser policy."
 
 	echo "installing ${policy} so USB keyboards prompt before attaching to dom0..."
-	sudo tee "${policy}" > /dev/null <<'EOF'
+	local content
+	content=$(cat <<'EOF'
 # SEQS override: prompt before attaching a USB keyboard from sys-usb to dom0.
 # Lower numeric prefix (30-) wins over the shipped 50-config-input.policy,
 # which silently denies qubes.InputKeyboard on Qubes 4.3. Managed by
 # setup-qubes.sh; re-running the setup re-writes this file.
 qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm
 EOF
-	sudo chmod 0644 "${policy}"
-	sudo chown root:root "${policy}"
+)
+	# Atomic install with root:root mode 0644. The previous 3-step pattern
+	# (sudo tee -> sudo chmod -> sudo chown) could leave the file with
+	# wrong owner / mode if any of the three sudo calls failed silently
+	# under the top-level no-set-e/no-pipefail orchestrator -- a writable
+	# /etc/qubes/policy.d/30-user-input.policy is a real isolation
+	# downgrade since the dom0 user could then rewrite the keyboard
+	# policy and 30- outranks 50-config-input.policy.
+	installRootFile "${policy}" "${content}"$'\n'
 }
 
 # setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM}
@@ -476,6 +540,17 @@ function setBrowserQube() {
 	# still resolve it (the system dir is on XDG_DATA_DIRS) but the user
 	# cannot modify it. This matches where the rest of SEQS installs
 	# per-component menu launchers (see fetchRunClean's desktop install).
+	# MimeType: ONLY http/https are forwarded to the browser qube. An earlier
+	# version registered x-scheme-handler/unknown -- which is xdg's catch-all
+	# for any URL scheme the system does not explicitly know -- so any
+	# application in any non-browser qube that called xdg-open with a URL
+	# using an unrecognized scheme (data:, javascript:, vbscript:, file:,
+	# attacker-chosen custom schemes used by hostile installers / phishing
+	# payloads) would be silently ferried into A-brave's URL bar via the
+	# `allow` qrexec policy. The link-handoff that justifies the qrexec
+	# policy is web links specifically; widening to "every unknown scheme"
+	# gave any qube a silent channel for crafted URLs at A-brave from any
+	# code that uses xdg-open.
 	vmRun -u root -p ${APP_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
 [Desktop Entry]
 Encoding=UTF-8
@@ -485,7 +560,7 @@ Terminal=false
 X-MultipleArgs=false
 Type=Application
 Categories=Network;WebBrowser;
-MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
 EOF
 
 	vmRun -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
@@ -717,12 +792,27 @@ function installCleanupService() {
 
 	echo "installing boot/shutdown cleanup service in ${TEMPLATE_VM}..."
 
-	# cleanup script -- the qubes-vm-type guard makes it a no-op in templates
+	# cleanup script -- fail CLOSED, not open: only delete when the VM is
+	# explicitly known to be an AppVM or DispVM. The previous shape was
+	#     [ "\$(qubesdb-read ...)" = "TemplateVM" ] && exit 0
+	# which fails OPEN -- if qubesdb-read errored or returned empty for
+	# any reason (binary missing, qubesdb socket unavailable, perm change,
+	# package removal during an upgrade window) the test would not match
+	# "TemplateVM" and the cleanup would proceed *inside the template*,
+	# wiping the template's persistent /home/user/Downloads (and
+	# QubesIncoming, and anything else in CLEANUP_DIRS), which then
+	# propagates to every downstream app qube. Now: any qubesdb-read
+	# failure or any value other than the explicit AppVM/DispVM set is
+	# treated as "do nothing".
 	vmRun -u root -p ${TEMPLATE_VM} "cat > /usr/local/bin/seqs-cleanup && chmod 0755 /usr/local/bin/seqs-cleanup" <<EOF
 #!/bin/sh
 # SEQS: delete transient directories on app-qube boot and shutdown.
 # Generated by setup-qubes.sh -- edit the SEQS repo, not this copy.
-[ "\$(qubesdb-read /qubes-vm-type 2>/dev/null)" = "TemplateVM" ] && exit 0
+vmtype="\$(qubesdb-read /qubes-vm-type 2>/dev/null)" || exit 0
+case "\$vmtype" in
+	AppVM|DispVM) ;;   # proceed
+	*) exit 0 ;;       # template, standalone, unknown, or read failure: do nothing
+esac
 for d in ${dirs}; do
 	rm -rf -- "\$d"
 done

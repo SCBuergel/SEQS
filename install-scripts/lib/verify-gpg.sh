@@ -104,3 +104,39 @@ verify_detached_sig() {
 
 	echo "signature OK -- ${label} signed by ${pin_fpr}"
 }
+
+# verify_imported_keyring_matches PIN_FPR
+# Verify that the *current* GNUPGHOME keyring contains EXACTLY one primary
+# key whose fingerprint is PIN_FPR. Aborts the calling script if anything
+# else is present.
+#
+# Why this is its own check (parser-shape footgun): the earlier inline
+# pattern
+#       gpg --with-colons --fingerprint | awk '... $1=="fpr" ... exit'
+# parses only the FIRST pub key in the keyring. If the embedded PGP key
+# block in a future commit (accidentally, or maliciously) holds a second
+# key concatenated after the first, the first-key fingerprint check still
+# passes while the keyring quietly holds both. For the signed-by= apt
+# flows (signal/element/docker/vscode) the subsequent `gpg --export
+# "${PIN_FPR}"` re-pins to the verified fingerprint and only that key
+# reaches /usr/share/keyrings/, so a stowaway second key is dropped. But
+# any future flow that omits the re-export step -- or that uses the
+# keyring directly -- would silently trust the smuggled key. This helper
+# requires the keyring to contain EXACTLY the pinned fingerprint so the
+# parser shape can't be the weak link. Same approach lib/brave.sh already
+# uses on Brave's three-key set.
+verify_imported_keyring_matches() {
+	local pin_fpr="${1}"
+	local got expected
+	got="$(gpg --with-colons --fingerprint 2>/dev/null \
+		| awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
+	expected="${pin_fpr}"
+	if [[ "${got}" != "${expected}" ]]; then
+		echo "ERROR: embedded PGP key block must contain exactly one key (${expected}) -- aborting." >&2
+		echo "  expected: ${expected}" >&2
+		echo "  got     :" >&2
+		printf '    %s\n' ${got:-<none>} >&2
+		exit 1
+	fi
+	echo "key verified: ${pin_fpr}"
+}

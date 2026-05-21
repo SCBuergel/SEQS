@@ -103,7 +103,10 @@ load_saved_device() {
 }
 
 save_device() {
-    echo "$1" > "$CONNECTION_FILE"
+    # 0600: the saved file contains the LAN IP:port of the phone -- not a
+    # secret per se, but useful reconnaissance for anyone with read access
+    # to the qube's filesystem. Default umask would leave it 0644.
+    (umask 077 && echo "$1" > "$CONNECTION_FILE")
 }
 
 # ─── Connection helpers ─────────────────────────────────────────────────────
@@ -149,8 +152,50 @@ adb_connect_prompt() {
 # Tracks whether the user has confirmed the saved IP:port this run.
 # First call prompts; subsequent in-run calls (e.g. wifi-blip reconnects
 # during a transfer) skip the prompt -- the user has already approved this
-# session and re-asking on every retry would be noise.
+# session and re-asking on every retry would be noise. We instead verify
+# the hardware serial below so a silent reconnect can't land on a hijacker.
 SAVED_DEVICE_CONFIRMED=0
+
+# Hardware serial captured after the FIRST successful connect; every
+# subsequent in-run reconnect must produce the same serial or we abort.
+# Catches the case where the saved IP:port has been taken over by another
+# host on the LAN between transfers (common on hotel / cafe / coworking
+# networks where DHCP leases roll over, or under a deliberate ARP/DHCP
+# attack). Without this, a silent reconnect would resume the chunked
+# transfer from the attacker's host and the end-of-transfer SHA-256
+# check would compare hashes the attacker produced -- it would print
+# "PASSED" against attacker bytes.
+INITIAL_SERIAL=""
+
+# get_device_serial: read the connected device's hardware serial. Returns
+# empty on failure. ro.serialno is queried via `adb shell`, so a hostile
+# peer could lie -- but a hijacker on the LAN does NOT know the original
+# phone's serial, so a mismatch on reconnect is a strong signal.
+get_device_serial() {
+    timeout "$ADB_TIMEOUT" $ADB shell getprop ro.serialno 2>/dev/null \
+        | tr -d '\r\n' || true
+}
+
+# verify_device_identity: abort if the current device's serial differs
+# from the one captured on first connect. No-op until INITIAL_SERIAL is
+# set (i.e. during the very first connect).
+verify_device_identity() {
+    [[ -z "$INITIAL_SERIAL" ]] && return 0
+    local now
+    now=$(get_device_serial)
+    if [[ -z "$now" ]]; then
+        echo "ERROR: could not read device serial after reconnect -- aborting." >&2
+        exit 1
+    fi
+    if [[ "$now" != "$INITIAL_SERIAL" ]]; then
+        echo "ERROR: device serial CHANGED mid-run!" >&2
+        echo "  expected (start of session): $INITIAL_SERIAL" >&2
+        echo "  got      (after reconnect):  $now" >&2
+        echo "Refusing to continue -- the saved IP:port may have been taken" >&2
+        echo "over by another host on this network." >&2
+        exit 1
+    fi
+}
 
 # Try reconnecting to saved device, return 0 on success. The first time
 # in a given script run it asks for explicit confirmation -- silently
@@ -168,13 +213,18 @@ adb_reconnect_saved() {
         SAVED_DEVICE_CONFIRMED=1
     fi
     timeout "$ADB_TIMEOUT" $ADB connect "$saved" &>/dev/null || true
-    $ADB devices 2>/dev/null | grep -q 'device$'
+    $ADB devices 2>/dev/null | grep -q 'device$' || return 1
+    # Re-verify the hardware serial after the reconnect (no-op on first
+    # successful connect since INITIAL_SERIAL is still empty at that point).
+    verify_device_identity
+    return 0
 }
 
 # Check for connected device; auto-reconnect or prompt as needed
 adb_wait() {
     # Already connected?
     if $ADB devices 2>/dev/null | grep -q 'device$'; then
+        verify_device_identity
         return 0
     fi
 
@@ -191,6 +241,7 @@ adb_wait() {
     local attempt
     for (( attempt=1; attempt<=MAX_RETRIES; attempt++ )); do
         if $ADB devices 2>/dev/null | grep -q 'device$'; then
+            verify_device_identity
             return 0
         fi
         # Try saved reconnect between waits
@@ -207,6 +258,18 @@ adb_wait() {
 
 # ─── Initial connection check ────────────────────────────────────────────────
 adb_wait
+
+# Capture the device serial right after the first successful connect.
+# From here on, every adb_wait re-check (including silent reconnects
+# during the chunk-retry loop) compares against this value via
+# verify_device_identity and aborts on mismatch.
+INITIAL_SERIAL=$(get_device_serial)
+if [[ -z "$INITIAL_SERIAL" ]]; then
+    echo "ERROR: could not read device serial -- aborting." >&2
+    echo "       (adb shell getprop ro.serialno returned empty)" >&2
+    exit 1
+fi
+echo "Device serial captured: $INITIAL_SERIAL"
 
 # ─── Get remote file size ────────────────────────────────────────────────────
 SIZE=$(timeout "$ADB_TIMEOUT" $ADB shell "stat -c%s $REMOTE_Q" 2>/dev/null | tr -d '\r')

@@ -3,6 +3,11 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
+# Shared gpg helper -- shipped next to this script by setup-qubes.sh via
+# the LIB_FILES mechanism. Used to require the embedded key block to
+# contain EXACTLY the pinned fingerprint (and no second smuggled key).
+. "$(dirname "$0")/verify-gpg.sh"
+
 # ─── Docker apt signing key ──────────────────────────────────────────────────
 # Verified on 2026-05-19 against three independent sources, all agreeing on
 # this fingerprint:
@@ -95,14 +100,9 @@ YT90qFF93M3v01BbxP+EIY2/9tiIPbrd
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
-if [[ "${IMPORTED_FPR}" != "${DOCKER_KEY_FPR}" ]]; then
-	echo "ERROR: embedded Docker key fingerprint mismatch -- aborting." >&2
-	echo "  expected: ${DOCKER_KEY_FPR}" >&2
-	echo "  got     : ${IMPORTED_FPR:-<none>}" >&2
-	exit 1
-fi
-echo "Docker signing key verified: ${DOCKER_KEY_FPR}"
+# Require the embedded key block to contain EXACTLY the pinned fingerprint
+# and no other keys (see verify_imported_keyring_matches header).
+verify_imported_keyring_matches "${DOCKER_KEY_FPR}"
 
 # ─── Install the keyring and the repository ──────────────────────────────────
 gpg --export "${DOCKER_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null

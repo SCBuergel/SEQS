@@ -161,15 +161,10 @@ jJ/r1C3KclO7zfWffRsYoowl7jWXLhdHT3/uW9i7kbR3OiiM3pWHbQ3EdJZqvTwJ
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Fail unless the embedded key really is the pinned one (guards against an
-# accidentally edited or corrupted key block above).
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
-if [[ "${IMPORTED_FPR}" != "${KEEPASSXC_KEY_FPR}" ]]; then
-	echo "ERROR: embedded KeePassXC key fingerprint mismatch -- aborting." >&2
-	echo "  expected: ${KEEPASSXC_KEY_FPR}" >&2
-	echo "  got     : ${IMPORTED_FPR:-<none>}" >&2
-	exit 1
-fi
+# Require the embedded key block to contain EXACTLY the pinned fingerprint
+# and no other keys. See verify_imported_keyring_matches header for why
+# checking only the first key is the wrong shape.
+verify_imported_keyring_matches "${KEEPASSXC_KEY_FPR}"
 
 # ─── Download the AppImage and its detached signature ────────────────────────
 # -f makes curl fail on HTTP errors instead of saving an error page as the binary.

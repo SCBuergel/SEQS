@@ -3,6 +3,11 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
+# Shared gpg helper -- shipped next to this script by setup-qubes.sh via
+# the LIB_FILES mechanism. Used to require the embedded key block to
+# contain EXACTLY the pinned fingerprint (and no second smuggled key).
+. "$(dirname "$0")/verify-gpg.sh"
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 KEYRING="/usr/share/keyrings/signal-desktop-keyring.gpg"
 
@@ -89,16 +94,9 @@ N+O606NOXLwcmq5KZL0g
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Fail unless the embedded key really is the pinned one (guards against an
-# accidentally edited or corrupted key block above).
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
-if [[ "${IMPORTED_FPR}" != "${SIGNAL_KEY_FPR}" ]]; then
-	echo "ERROR: embedded Signal key fingerprint mismatch -- aborting." >&2
-	echo "  expected: ${SIGNAL_KEY_FPR}" >&2
-	echo "  got     : ${IMPORTED_FPR:-<none>}" >&2
-	exit 1
-fi
-echo "Signal signing key verified: ${SIGNAL_KEY_FPR}"
+# Require the embedded key block to contain EXACTLY the pinned fingerprint
+# and no other keys (see verify_imported_keyring_matches header).
+verify_imported_keyring_matches "${SIGNAL_KEY_FPR}"
 
 # ─── Install the keyring (binary form apt expects) and the repository ────────
 gpg --export "${SIGNAL_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null

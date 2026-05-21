@@ -131,13 +131,9 @@ L6WGGssH
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
-if [[ "${IMPORTED_FPR}" != "${AOO_KEY_FPR}" ]]; then
-	echo "ERROR: embedded Apache OpenOffice key fingerprint mismatch -- aborting." >&2
-	echo "  expected: ${AOO_KEY_FPR}" >&2
-	echo "  got     : ${IMPORTED_FPR:-<none>}" >&2
-	exit 1
-fi
+# Require the embedded key block to contain EXACTLY the pinned fingerprint
+# and no other keys (see verify_imported_keyring_matches header).
+verify_imported_keyring_matches "${AOO_KEY_FPR}"
 
 # ─── Download the tarball and its detached signature ─────────────────────────
 echo "downloading ${TARBALL}..."
@@ -167,9 +163,38 @@ if [ "${SHA_TARBALL_VERIFIED}" != "${SHA_TARBALL_PREEXTRACT}" ]; then
 	exit 1
 fi
 
+# ─── Validate tar member paths ──────────────────────────────────────────────
+# Defense-in-depth: the tarball is GPG-verified above, so reaching this
+# point requires Apache's release key to be intact. But verification does
+# not constrain *what* the verified tarball contains. A signed evil
+# tarball can name members like '../../etc/cron.d/x' or '/etc/profile.d/x'
+# and -- depending on the running tar version -- extraction would plant
+# files outside ${WORKDIR}. We reject any absolute path or any '..' path
+# segment up-front, so the extract step that follows can only write
+# inside ${WORKDIR}.
+echo "validating tar member paths..."
+unsafe_count=$(tar -tzf "${WORKDIR}/${TARBALL}" \
+	| awk '/^\// || /(^|\/)\.\.(\/|$)/ { print > "/dev/stderr"; n++ } END { print n+0 }')
+if [ "${unsafe_count}" -gt 0 ]; then
+	echo "ERROR: tarball contains ${unsafe_count} unsafe member path(s) above (absolute or '..') -- aborting." >&2
+	exit 1
+fi
+
 # ─── Unpack ──────────────────────────────────────────────────────────────────
+# --no-overwrite-dir : do not replace an existing directory with a non-dir
+#                      member, or change its mode -- blocks a planted dir
+#                      member that aliases a system path
+# --no-same-owner    : ignore owner/group fields in the archive (root/0 by
+#                      default would otherwise apply to extracted files
+#                      when run as root)
+# --no-same-permissions : ignore archive perms; apply umask. Stops a
+#                      world-writable / setuid member from inheriting its
+#                      archive mode.
+# Leading '/' is already stripped by GNU tar by default (-P not given);
+# the validate-list step above also catches it explicitly.
 echo "unpacking..."
-tar -xzf "${WORKDIR}/${TARBALL}" -C "${WORKDIR}"
+tar --no-overwrite-dir --no-same-owner --no-same-permissions \
+	-xzf "${WORKDIR}/${TARBALL}" -C "${WORKDIR}"
 
 # ─── Bind the extracted .debs to what apt-get installs ───────────────────────
 # tar wrote the .debs into the user-owned WORKDIR, so the same TOCTOU concern
@@ -199,4 +224,7 @@ done
 # the glob would pick up any file dropped into ${WORKDIR}/en-US/DEBS/ in the
 # meantime; the array won't.
 echo "installing packages..."
-sudo apt-get install -y "${DEBS[@]}"
+# --no-install-recommends: defense-in-depth against the OpenOffice .debs
+# pulling in unexpected optional packages from configured repos. Same
+# rationale as the BitBox component.
+sudo apt-get install -y --no-install-recommends "${DEBS[@]}"

@@ -97,13 +97,9 @@ jLZugv6bMuMLjA==
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
-if [[ "${IMPORTED_FPR}" != "${BITBOX_KEY_FPR}" ]]; then
-	echo "ERROR: embedded BitBox key fingerprint mismatch -- aborting." >&2
-	echo "  expected: ${BITBOX_KEY_FPR}" >&2
-	echo "  got     : ${IMPORTED_FPR:-<none>}" >&2
-	exit 1
-fi
+# Require the embedded key block to contain EXACTLY the pinned fingerprint
+# and no other keys (see verify_imported_keyring_matches header).
+verify_imported_keyring_matches "${BITBOX_KEY_FPR}"
 
 # ─── Download the .deb and its detached signature ────────────────────────────
 echo "downloading ${DEB}..."
@@ -138,4 +134,10 @@ if [ "${SHA_VERIFIED}" != "${SHA_PREINSTALL}" ]; then
 	echo "  at install: ${SHA_PREINSTALL}" >&2
 	exit 1
 fi
-sudo apt-get install -y "${WORKDIR}/${DEB}"
+# --no-install-recommends: defense-in-depth against the BitBox .deb pulling
+# in unexpected optional packages from whatever third-party repos may be
+# configured in this template later. The per-repo Pin-Priority: -1 + named
+# allowlist pattern (signal/element/docker/vscode/brave) already blocks
+# at the origin level, but Recommends is the next-narrowest knob and is
+# free here -- BitBox declares its own hard deps.
+sudo apt-get install -y --no-install-recommends "${WORKDIR}/${DEB}"

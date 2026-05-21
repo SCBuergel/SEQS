@@ -111,13 +111,21 @@ install_brave() {
 	# Without this, a compromise of Brave's signing infrastructure could ship a
 	# higher-version bash / libc6 / systemd / etc. and apt would prefer it over
 	# Debian's. Default-deny everything from this origin, then re-allow only the
-	# brave-browser-* package set plus brave-keyring.
+	# brave-browser-* package set.
+	# brave-keyring is DELIBERATELY excluded from the allowlist. That package's
+	# job is to manage Brave's apt signing keys; if apt is allowed to upgrade
+	# it, its maintainer scripts can replace /usr/share/keyrings/...gpg (the
+	# exact path our sources.list.d entry references via signed-by=). That
+	# would silently rotate the trust anchor that this script just cross-checked
+	# against three independent sources -- a future `apt upgrade` could swap
+	# keys with no SEQS verification ever firing again. Trust rotation, if
+	# needed, must go through the in-script three-source re-verify.
 	sudo tee /etc/apt/preferences.d/brave-browser.pref > /dev/null <<'EOF'
 Package: *
 Pin: origin "brave-browser-apt-release.s3.brave.com"
 Pin-Priority: -1
 
-Package: brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev brave-keyring
+Package: brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev
 Pin: origin "brave-browser-apt-release.s3.brave.com"
 Pin-Priority: 500
 EOF
