@@ -156,8 +156,9 @@ function fetchFromVm() {
 # AND ${FILE_PATH}menu.desktop exists) that too. Moves them all into VMNAME in
 # one batch, runs FILENAME (which can reference assets via $(dirname "$0")),
 # installs the menu.desktop as /usr/share/applications/${DESKTOP_NAME}.desktop,
-# then cleans QubesIncoming once. Returns non-zero (and skips cleanup) only if
-# FILENAME itself cannot be fetched.
+# then cleans QubesIncoming once. Returns 0 also when FILENAME does not exist
+# for this component (template-vm.sh / app-vm.sh are both optional) -- a real
+# failure inside the success branch propagates through `set -e` in the caller.
 function fetchRunClean() {
 	VMNAME="${1}"
 	APP="${2}"
@@ -224,9 +225,12 @@ function fetchRunClean() {
 		qvm-run -p ${VMNAME} rm ./QubesIncoming -rf
 	else
 		echo "Looks like there is no ${FILENAME} script for ${VMNAME}. You do you. ¯\\_ (ツ)_/¯"
-		rm ${FILENAME}
-		# bubble up errors
-		return 1
+		# template-vm.sh / app-vm.sh are both optional per component, so a
+		# missing FILENAME is a no-op, not an error -- return 0 so the
+		# caller's `set -e` rollback isn't tripped. Use -f because the
+		# fetch may not have written anything to dom0.
+		rm -f "${FILENAME}"
+		return 0
 	fi
 }
 
@@ -580,60 +584,92 @@ function installQube() {
 
 	echo "STARTING BUILD OF ${NAME} from components: ${COMPONENTS}"
 
-	echo "setting up template VM ${TEMPLATE_VM}..."
-	qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
+	# Run the build in a subshell with `set -e` so any failure (qvm-clone,
+	# qvm-create, qvm-start, a component installer inside qvm-run via
+	# fetchRunClean, etc.) aborts at the failure point instead of silently
+	# rolling into the next step on broken state. On non-zero exit the
+	# rollback below removes whichever of the Z-/A- pair got created --
+	# otherwise a re-run is blocked by validateAllQubes refusing to clobber.
+	if (
+		set -e
 
-	# template phase
-	for comp in ${COMPONENTS}; do
-		case "${comp}" in
-			brave-extension-*)
-				braveExtensionInstall "${TEMPLATE_VM}" "${comp#brave-extension-}"
-				;;
-			*)
-				echo "installing component '${comp}' into ${TEMPLATE_VM}..."
-				# fetchRunClean handles an optional menu.desktop in the same fetch/move/run/clean cycle
-				fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh "${comp}"
-				;;
-		esac
-	done
+		echo "setting up template VM ${TEMPLATE_VM}..."
+		qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
 
-	installCleanupService ${TEMPLATE_VM}
+		# template phase
+		for comp in ${COMPONENTS}; do
+			case "${comp}" in
+				brave-extension-*)
+					braveExtensionInstall "${TEMPLATE_VM}" "${comp#brave-extension-}"
+					;;
+				*)
+					echo "installing component '${comp}' into ${TEMPLATE_VM}..."
+					# fetchRunClean handles an optional menu.desktop in the same fetch/move/run/clean cycle
+					fetchRunClean ${TEMPLATE_VM} "${comp}" "${COMPONENT_PATH}${comp}/" template-vm.sh "${comp}"
+					;;
+			esac
+		done
 
-	echo "shutting down template VM..."
-	qvm-shutdown ${TEMPLATE_VM}
-	sleep 4
+		installCleanupService ${TEMPLATE_VM}
 
-	echo "creating app VM ${APP_VM}..."
-	qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
-	if [ "${OFFLINE}" = "offline" ]; then
-		echo "taking app VM offline..."
-		sleep 2
-		qvm-prefs ${APP_VM} netvm none
+		echo "shutting down template VM..."
+		qvm-shutdown ${TEMPLATE_VM}
+		sleep 4
+
+		echo "creating app VM ${APP_VM}..."
+		qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
+		if [ "${OFFLINE}" = "offline" ]; then
+			echo "taking app VM offline..."
+			sleep 2
+			qvm-prefs ${APP_VM} netvm none
+		fi
+
+		echo "starting app VM..."
+		qvm-start ${APP_VM}
+
+		# app-VM phase
+		for comp in ${COMPONENTS}; do
+			case "${comp}" in
+				brave-extension-*)
+					: # brave-extension-* is template-only; no app-vm action
+					;;
+				*)
+					echo "configuring component '${comp}' on ${APP_VM}..."
+					fetchRunClean ${APP_VM} "${comp}" "${COMPONENT_PATH}${comp}/" app-vm.sh
+					;;
+			esac
+		done
+
+		# open web links in the browser qube (except for the browser qube itself)
+		if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
+			setBrowserQube ${APP_VM}
+		fi
+
+		echo "shutting app VM down..."
+		qvm-shutdown ${APP_VM}
+	); then
+		return 0
 	fi
 
-	echo "starting app VM..."
-	qvm-start ${APP_VM}
-
-	# app-VM phase
-	for comp in ${COMPONENTS}; do
-		case "${comp}" in
-			brave-extension-*)
-				: # brave-extension-* is template-only; no app-vm action
-				;;
-			*)
-				echo "configuring component '${comp}' on ${APP_VM}..."
-				fetchRunClean ${APP_VM} "${comp}" "${COMPONENT_PATH}${comp}/" app-vm.sh
-				;;
-		esac
+	# Build failed somewhere above. Kill+remove whichever of the Z-/A- pair
+	# got created. Best-effort: every step is `&>/dev/null || true` so the
+	# rollback never itself fails the run (qubes that were never created
+	# are skipped silently). Kill before remove so qvm-remove does not trip
+	# over a still-running qube; wait up to 30s for shutdown.
+	echo "ERROR: build of '${NAME}' failed -- rolling back ${TEMPLATE_VM} and ${APP_VM}..." >&2
+	qvm-kill "${APP_VM}" &>/dev/null || true
+	qvm-kill "${TEMPLATE_VM}" &>/dev/null || true
+	local deadline=$(( SECONDS + 30 ))
+	while [ "${SECONDS}" -lt "${deadline}" ]; do
+		if ! qvm-check --running "${APP_VM}" &>/dev/null \
+		    && ! qvm-check --running "${TEMPLATE_VM}" &>/dev/null; then
+			break
+		fi
+		sleep 1
 	done
-
-	# open web links in the browser qube (except for the browser qube itself)
-	if [[ "${APP_VM}" != "${BROWSER_VM}" ]]; then
-		setBrowserQube ${APP_VM}
-	fi
-
-	echo "shutting app VM down..."
-	qvm-shutdown ${APP_VM}
+	qvm-remove -f "${APP_VM}" &>/dev/null || true
+	qvm-remove -f "${TEMPLATE_VM}" &>/dev/null || true
+	return 1
 }
 
 cd ~
