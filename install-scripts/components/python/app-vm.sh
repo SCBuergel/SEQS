@@ -29,9 +29,6 @@ echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
 echo "installing Python 3.13.13..."
 pyenv install 3.13.13
 
-echo "setting symlink..."
-sudo ln -s /usr/bin/python3 /usr/local/bin/python
-
 echo "setting global python version..."
 pyenv global 3.13.13
 

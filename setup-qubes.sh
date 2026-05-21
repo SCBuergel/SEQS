@@ -118,6 +118,33 @@ BUILD_TIMEOUT_SECONDS=900
 # scripts can `source` them.
 LIB_PATH="/home/user/SEQS/install-scripts/lib/"
 
+# vmRun -- wrapper around `qvm-run` for any caller that DISPLAYS the VM's
+# stdout/stderr on the dom0 terminal (i.e. anything not captured into a
+# variable or redirected to a file).
+#
+# Why: a single install run pipes the output of apt-get, dpkg post-install
+# scriptlets, gpg, snapd, third-party installer scripts (pyenv.run, nvm,
+# claude.ai/install.sh, Ledger Live download, ...) back through qvm-run to
+# the dom0 terminal. We do not audit any of that downstream output, and even
+# a single OSC / CSI sequence reaching the terminal emulator is enough to
+# reposition the cursor (repaint earlier "OK" lines as something else), ring
+# the bell, set the window title to smuggle keys via paste tricks, or fire
+# OSC 52 clipboard writes. So: strip every C0 control character except TAB
+# and LF, plus DEL, before any VM-controlled byte hits the terminal. UTF-8
+# is preserved (the high-bit range is untouched).
+#
+# Heredoc support: a heredoc attached to the vmRun call becomes the
+# function's stdin and is therefore forwarded to qvm-run inside. Callers
+# that previously used `qvm-run -p VM "cat > file" <<EOF ... EOF` keep that
+# pattern verbatim via vmRun.
+#
+# Exit-code propagation requires `set -o pipefail` in the caller -- the
+# installQube subshell sets it. Without pipefail, a non-zero qvm-run is
+# masked by tr's success and the build silently continues on broken state.
+function vmRun() {
+	qvm-run "$@" 2>&1 | tr -d '\000-\010\013-\037\177'
+}
+
 # fetchFromVM SOURCE_VM FILE [EXE]
 function fetchFromVm() {
 	if [ $# -lt 2 ]; then
@@ -227,15 +254,15 @@ function fetchRunClean() {
 		qvm-move-to-vm ${VMNAME} ${move_files}
 
 		echo "Running ${APP} installer on VM ${VMNAME}..."
-		qvm-run -p ${VMNAME} ./QubesIncoming/dom0/${FILENAME}
+		vmRun -p ${VMNAME} ./QubesIncoming/dom0/${FILENAME}
 
 		if [ "${has_desktop}" -eq 1 ]; then
 			echo "Installing ${DESKTOP_NAME}.desktop launcher..."
-			qvm-run -p ${VMNAME} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${DESKTOP_NAME}.desktop"
+			vmRun -p ${VMNAME} "sudo mv /home/user/QubesIncoming/dom0/menu.desktop /usr/share/applications/${DESKTOP_NAME}.desktop"
 		fi
 
 		echo "Cleaning up ${APP} install files on VM ${VMNAME}..."
-		qvm-run -p ${VMNAME} rm ./QubesIncoming -rf
+		vmRun -p ${VMNAME} rm ./QubesIncoming -rf
 	else
 		echo "Looks like there is no ${FILENAME} script for ${VMNAME}. You do you. ¯\\_ (ツ)_/¯"
 		# template-vm.sh / app-vm.sh are both optional per component, so a
@@ -340,7 +367,7 @@ function setBrowserQube() {
 	# still resolve it (the system dir is on XDG_DATA_DIRS) but the user
 	# cannot modify it. This matches where the rest of SEQS installs
 	# per-component menu launchers (see fetchRunClean's desktop install).
-	qvm-run -u root -p ${APP_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
+	vmRun -u root -p ${APP_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
 [Desktop Entry]
 Encoding=UTF-8
 Name=Open links in ${BROWSER_VM}
@@ -352,7 +379,7 @@ Categories=Network;WebBrowser;
 MimeType=x-scheme-handler/unknown;x-scheme-handler/about;text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
 EOF
 
-	qvm-run -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
+	vmRun -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
 }
 
 # requireOsTemplate -- abort early if the base template to clone is missing
@@ -521,6 +548,41 @@ function validateAllQubes() {
 	echo "All qube specs valid."
 }
 
+# validateCleanupDirs -- refuse to proceed if any CLEANUP_DIRS entry would
+# wipe a path the operator almost certainly did not mean. The generated
+# seqs-cleanup script runs `rm -rf` as root on every app-qube boot AND
+# shutdown, so a typo here is destructive on a recurring schedule.
+#
+# Rule: every entry must be an absolute path strictly under /home/user/ with
+# at least one extra non-empty segment, and may not contain a '..' component.
+# This bounds the blast radius to the qube's user home and refuses obvious
+# footguns like "/home/user", "/etc", "/" or "/home/user/../etc".
+function validateCleanupDirs() {
+	local d errors=0
+	for d in "${CLEANUP_DIRS[@]}"; do
+		[ -z "${d}" ] && continue
+		# Must begin with /home/user/ and have a non-empty segment after it;
+		# the [^/] guards against a trailing-slash-only entry like "/home/user/".
+		if ! [[ "${d}" =~ ^/home/user/[^/].* ]]; then
+			echo "ERROR: CLEANUP_DIRS entry '${d}' is not strictly under /home/user/." >&2
+			errors=$((errors+1))
+			continue
+		fi
+		# Reject any '..' segment so paths like /home/user/../etc cannot
+		# escape the bound check above.
+		if [[ "${d}" == *..* ]]; then
+			echo "ERROR: CLEANUP_DIRS entry '${d}' contains '..'; refusing." >&2
+			errors=$((errors+1))
+		fi
+	done
+	if [ "${errors}" -gt 0 ]; then
+		echo "Refusing to install the boot/shutdown cleanup service with unsafe" >&2
+		echo "CLEANUP_DIRS entries. Each entry must be an absolute path strictly" >&2
+		echo "under /home/user/ with at least one extra path segment and no '..'." >&2
+		exit 1
+	fi
+}
+
 # installCleanupService TEMPLATE_VM -- install a systemd service into the
 # template so every app qube based on it deletes the configured directories
 # on boot and on shutdown. The service is a no-op inside TemplateVMs.
@@ -547,7 +609,7 @@ function installCleanupService() {
 	echo "installing boot/shutdown cleanup service in ${TEMPLATE_VM}..."
 
 	# cleanup script -- the qubes-vm-type guard makes it a no-op in templates
-	qvm-run -u root -p ${TEMPLATE_VM} "cat > /usr/local/bin/seqs-cleanup && chmod 0755 /usr/local/bin/seqs-cleanup" <<EOF
+	vmRun -u root -p ${TEMPLATE_VM} "cat > /usr/local/bin/seqs-cleanup && chmod 0755 /usr/local/bin/seqs-cleanup" <<EOF
 #!/bin/sh
 # SEQS: delete transient directories on app-qube boot and shutdown.
 # Generated by setup-qubes.sh -- edit the SEQS repo, not this copy.
@@ -559,7 +621,7 @@ exit 0
 EOF
 
 	# systemd oneshot: ExecStart runs on boot, ExecStop runs on shutdown
-	qvm-run -u root -p ${TEMPLATE_VM} "cat > /etc/systemd/system/seqs-cleanup.service" <<'EOF'
+	vmRun -u root -p ${TEMPLATE_VM} "cat > /etc/systemd/system/seqs-cleanup.service" <<'EOF'
 [Unit]
 Description=SEQS delete transient directories on boot and shutdown
 RequiresMountsFor=/home
@@ -574,7 +636,7 @@ ExecStop=/usr/local/bin/seqs-cleanup
 WantedBy=multi-user.target
 EOF
 
-	qvm-run -u root -p ${TEMPLATE_VM} "systemctl enable seqs-cleanup.service"
+	vmRun -u root -p ${TEMPLATE_VM} "systemctl enable seqs-cleanup.service"
 }
 
 # braveExtensionInstall VM EXT_NAME -- install one Brave extension into VM.
@@ -603,8 +665,8 @@ function braveExtensionInstall() {
 		return 1
 	fi
 	qvm-move-to-vm "${VM}" brave.sh
-	qvm-run -p "${VM}" ". ./QubesIncoming/dom0/brave.sh && ensure_brave && install_brave_extension '${id}'"
-	qvm-run -p "${VM}" "rm ./QubesIncoming -rf"
+	vmRun -p "${VM}" ". ./QubesIncoming/dom0/brave.sh && ensure_brave && install_brave_extension '${id}'"
+	vmRun -p "${VM}" "rm ./QubesIncoming -rf"
 }
 
 # installQube NAME COLOR component [component ...] [offline]
@@ -657,7 +719,12 @@ function installQube() {
 	local start_seconds=$SECONDS
 
 	(
-		set -e
+		# pipefail so that the vmRun `qvm-run ... | tr -d ...` sanitizer
+		# pipeline cannot mask a non-zero qvm-run exit (cat/tr always
+		# succeed). Without it, a failed VM-side step would be silently
+		# overwritten by the sanitizer's success and the build would
+		# carry on against broken state.
+		set -eo pipefail
 
 		echo "setting up template VM ${TEMPLATE_VM}..."
 		qvm-clone ${OS_TEMPLATE_VM} ${TEMPLATE_VM}
@@ -765,6 +832,55 @@ function installQube() {
 	done
 	qvm-remove -f "${APP_VM}" &>/dev/null || true
 	qvm-remove -f "${TEMPLATE_VM}" &>/dev/null || true
+
+	# Timeout-only escalation: the watchdog killed the subshell but cannot
+	# reach the dom0-side qvm-run processes it spawned, so a root-level
+	# command that was mid-flight inside the qube (apt, dpkg, gpg, a cat>
+	# into /etc/...) may have committed a partial change before being
+	# interrupted. `qvm-remove -f` returning success is not proof that
+	# dpkg locks, /var/lib/qubes state, LVM volume metadata, qrexec
+	# connection slots and dom0 mount entries are all clean. The safe
+	# response on a high-value box is to reboot dom0 before retrying.
+	# Mirror this in TRUST.md whenever the wording here changes.
+	if [ "${elapsed}" -ge "${BUILD_TIMEOUT_SECONDS}" ]; then
+		cat >&2 <<'EOF'
+
+
+################################################################################
+################################################################################
+##                                                                            ##
+##   !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!  WARNING  !! ##
+##                                                                            ##
+##   A build hit the watchdog timeout. The watchdog killed the build          ##
+##   subshell but CANNOT reach the dom0-side qvm-run processes it spawned.    ##
+##   Any root-level command that was mid-flight inside the qube at that       ##
+##   moment (apt-get / dpkg / gpg / cat > /etc/...) may have committed a      ##
+##   PARTIAL CHANGE before being interrupted. qvm-remove -f succeeding is     ##
+##   NOT proof that dpkg locks, /var/lib/qubes state, LVM volume metadata,    ##
+##   qrexec slots and dom0 mount entries are clean.                           ##
+##                                                                            ##
+##   Re-running setup-qubes.sh against the same name now will proceed on      ##
+##   top of that potentially-corrupted dom0 state. There is no logical        ##
+##   interlock -- the 30s shutdown wait masks most cases, not all.            ##
+##                                                                            ##
+##                                                                            ##
+##   >>>  REBOOT dom0 BEFORE RETRYING THIS QUBE.  <<<                         ##
+##                                                                            ##
+##                                                                            ##
+##   After the reboot:                                                        ##
+##     1. sudo qvm-volume info       (confirm no orphan volumes remain)       ##
+##     2. ./delete-vms.sh <name>     (if the rollback left a stale name)      ##
+##     3. then re-run setup-qubes.sh                                          ##
+##                                                                            ##
+##   This warning is also recorded in TRUST.md (setup-qubes.sh entry).        ##
+##                                                                            ##
+################################################################################
+################################################################################
+
+
+EOF
+	fi
+
 	return 1
 }
 
@@ -774,6 +890,7 @@ requireOsTemplate
 requireRepoVm
 discoverLibFiles
 validateAllQubes
+validateCleanupDirs
 
 setupBrowserPolicy
 setupUsbKeyboardPolicy

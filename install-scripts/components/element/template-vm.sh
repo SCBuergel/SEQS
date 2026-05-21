@@ -117,6 +117,23 @@ gpg --export "${ELEMENT_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
 echo "deb [signed-by=${KEYRING}] https://packages.element.io/debian/ default main" \
 	| sudo tee /etc/apt/sources.list.d/element-io.list > /dev/null
 
+# ─── Lock the Element repo to its own packages ───────────────────────────────
+# Defense-in-depth (same pattern as the Signal pin): the signed-by= directive
+# proves only that whatever lands carries Element's signature, not that it is
+# element-desktop. A compromise of Element's signing infrastructure could
+# otherwise ship any package name (e.g. bash, libc6) and apt would honour it
+# if the version is higher than Debian's. Default-deny everything from this
+# origin, then re-allow only element-desktop and element-desktop-nightly.
+sudo tee /etc/apt/preferences.d/element-io.pref > /dev/null <<'EOF'
+Package: *
+Pin: origin "packages.element.io"
+Pin-Priority: -1
+
+Package: element-desktop element-desktop-nightly
+Pin: origin "packages.element.io"
+Pin-Priority: 500
+EOF
+
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y element-desktop

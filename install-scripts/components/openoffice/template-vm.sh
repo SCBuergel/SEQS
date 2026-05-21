@@ -151,10 +151,47 @@ if ! awk -v fpr="${AOO_KEY_FPR}" \
 fi
 echo "signature OK -- ${TARBALL} signed by ${AOO_KEY_FPR}"
 
-# ─── Unpack and install (apt resolves the local .debs' dependencies) ─────────
+# ─── Bind the verified tarball bytes to what gets extracted ──────────────────
+# Close the TOCTOU window between gpg --verify and `tar -xzf`: the tarball
+# sits in a user-owned mktemp dir until extraction. Hash it, drop it to 0400
+# so a tamper attempt has to chmod first, then re-hash immediately before
+# extraction and bail on drift. Same pattern as bitbox/template-vm.sh.
+SHA_TARBALL_VERIFIED="$(sha256sum "${WORKDIR}/${TARBALL}" | awk '{print $1}')"
+chmod 0400 "${WORKDIR}/${TARBALL}"
+SHA_TARBALL_PREEXTRACT="$(sha256sum "${WORKDIR}/${TARBALL}" | awk '{print $1}')"
+if [ "${SHA_TARBALL_VERIFIED}" != "${SHA_TARBALL_PREEXTRACT}" ]; then
+	echo "ERROR: tarball hash changed between gpg --verify and extract -- aborting." >&2
+	echo "  at verify:  ${SHA_TARBALL_VERIFIED}" >&2
+	echo "  at extract: ${SHA_TARBALL_PREEXTRACT}" >&2
+	exit 1
+fi
+
+# ─── Unpack ──────────────────────────────────────────────────────────────────
 echo "unpacking..."
 tar -xzf "${WORKDIR}/${TARBALL}" -C "${WORKDIR}"
 
+# ─── Bind the extracted .debs to what apt-get installs ───────────────────────
+# tar wrote the .debs into the user-owned WORKDIR, so the same TOCTOU concern
+# applies between extraction and `apt-get install`. Snapshot each .deb's
+# SHA-256, lock to 0400, re-hash before install, bail on drift.
+DEBS=( "${WORKDIR}"/en-US/DEBS/*.deb "${WORKDIR}"/en-US/DEBS/desktop-integration/*.deb )
+DEB_SHAS=()
+for deb in "${DEBS[@]}"; do
+	DEB_SHAS+=("$(sha256sum "${deb}" | awk '{print $1}')")
+	chmod 0400 "${deb}"
+done
+for i in "${!DEBS[@]}"; do
+	now="$(sha256sum "${DEBS[$i]}" | awk '{print $1}')"
+	if [ "${DEB_SHAS[$i]}" != "${now}" ]; then
+		echo "ERROR: .deb hash changed between extract and install -- aborting." >&2
+		echo "  file:     ${DEBS[$i]}" >&2
+		echo "  expected: ${DEB_SHAS[$i]}" >&2
+		echo "  got:      ${now}" >&2
+		exit 1
+	fi
+done
+
+# ─── Install (apt resolves the local .debs' dependencies) ────────────────────
 echo "installing packages..."
 sudo apt-get install -y "${WORKDIR}"/en-US/DEBS/*.deb
 sudo apt-get install -y "${WORKDIR}"/en-US/DEBS/desktop-integration/*.deb

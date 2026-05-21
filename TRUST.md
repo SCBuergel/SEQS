@@ -9,14 +9,23 @@ boundaries — copying code into dom0, installing software into templates, wirin
 qubes together — so every crossing is a place where trust is extended. The point
 of this file is to make each assumption explicit and reviewable.
 
-State as of **2026-05-18**.
+State as of **2026-05-21**. (Per-component key-fingerprint verification dates remain as captured inside each entry; this top-line date tracks the document itself.)
+
+## Re-verifying these claims yourself
+
+This file is the *claim*. Two companion documents help you check it before trusting the resulting qubes:
+
+- **[VERIFY-HUMAN.md](VERIFY-HUMAN.md)** — a hands-on walkthrough for the operator: what to read top-to-bottom in what order, cross-check tables for every pinned signing-key fingerprint (with the exact `curl | gpg --show-keys` one-liners), install-time watch points, and the honest residual-risk summary.
+- **[VERIFY-LLM.md](VERIFY-LLM.md)** — a machine-runnable verification protocol (bash + `curl` + `gpg` + `awk`): static syntax, embedded-key-fingerprint vs in-script pin parity, Brave's three-key set, **live upstream fingerprints** still matching the pins (catches upstream key rotation), `TRUST.md` ↔ code path coherence, qube-spec validation parity with `validateAllQubes`, `BRAVE_EXTENSIONS` well-formedness, verifier abort-order audit (every `exit 1` happens strictly *before* the corresponding irreversible write), README ↔ components coherence, and `fetchRunClean`/offline-flag logic. Each section ends with an explicit PASS/FAIL criterion and they aggregate into a single report.
+
+The 📝 *Reviewed* trust level used throughout this document is **not** "the author eyeballed it" — it is "you, the operator, should run VERIFY-HUMAN.md (and ideally VERIFY-LLM.md) before extending dom0 trust to anything here."
 
 ## Trust levels
 
 | Level | Meaning |
 |-------|---------|
 | ✅ Verified | Integrity checked against a cryptographic pin or an independent reference. |
-| 📝 Reviewed | No automated check; trust rests on you having read the committed file. |
+| 📝 Reviewed | No automated check; trust rests on you having read the committed file. See VERIFY-HUMAN.md / VERIFY-LLM.md for how. |
 | ⚠️ TOFU | Fetched over HTTPS; trust on first use — you trust TLS/CA + whoever answered, with no pin. Package-manager signatures apply *afterwards*. |
 | ❌ Unverified | HTTPS transport only; no signature or checksum. Compromise of the host, CDN, mirror, or DNS means code execution. |
 
@@ -33,8 +42,8 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### The QubesOS installation ISO
 - **Trust assumption:** The ISO you installed from is genuine.
-- **Established by:** ⚠️ Qubes publishes a detached signature and checksums, but the README only links the download page — it does **not** instruct you to verify the ISO. Verification is on you.
-- **Residual risk:** A tampered ISO compromises everything from first boot.
+- **Established by:** ✅ The README walks the operator through the full verification protocol (`README.md` §3): fetch the Qubes Master Signing Key, cross-check the QMSK fingerprint `427F 11FD 0FAA 4B08 0123 F01C DDFA 1A3E 3687 9494` against three independent sources (Qubes website, the `qubes-secpack` GitHub repo, `keys.openpgp.org`), trust the QMSK, fetch the release signing key, then `gpg --verify` the ISO. Same three-source pattern as the apt keys in §3.
+- **Residual risk:** A tampered ISO compromises everything from first boot, so the protocol is only as good as the operator's discipline in actually running it. The repo cannot enforce that step — skipping it makes every claim in this document downstream of it false.
 
 ### Qubes update proxy (`127.0.0.1:8082`)
 - **Trust assumption:** The updates proxy and the sys-net/sys-firewall chain relay template downloads honestly.
@@ -47,8 +56,8 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### The SEQS repository contents
 - **Trust assumption:** Every script here does what it claims and nothing else.
-- **Established by:** 📝 You. The README explicitly tells you to read every file first. The repo is not signed.
-- **Residual risk:** Whoever can write to the repo (or the branch you pull) controls dom0 and every template. **Treat repo write-access as dom0-equivalent.**
+- **Established by:** 📝 You. The README explicitly tells you to read every file first; **VERIFY-HUMAN.md** is the structured walkthrough for that read (what to look at, in what order, what to spot-check), and **VERIFY-LLM.md** is the machine-runnable cross-check (key fingerprints, abort-order audit, README↔components coherence, …). The repo is not signed.
+- **Residual risk:** Whoever can write to the repo (or the branch you pull) controls dom0 and every template. **Treat repo write-access as dom0-equivalent.** The VERIFY-* docs guard against in-flight tamper between code and what TRUST.md claims, but they do not establish that the repo URL you cloned from is the one you meant.
 
 ### `REPO_VM` — the qube hosting the repo (default `personal`)
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
@@ -63,7 +72,17 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ### `setup-qubes.sh` (runs in dom0)
 - **Trust assumption:** Orchestrates qube creation/templating correctly and runs only the intended install scripts.
 - **Established by:** 📝 Reviewed.
-- **Residual risk:** Runs with the dom0 user's privileges — `qvm-*` management of every qube, plus `sudo` to write the qrexec browser policy. It also fetches and moves install scripts and `lib/*.sh` into VMs. The per-qube build inside `installQube` runs in a subshell with `set -e`, bounded by a `BUILD_TIMEOUT_SECONDS` watchdog (default 15 min) so a hung `qvm-run`, stuck install script, or network stall can't pin the whole setup; on either failure or timeout the rollback kills + removes whichever of the `Z-`/`A-` pair got created, so re-runs are not blocked by half-built names left behind. Two best-effort caveats: (i) on timeout the watchdog kills the build subshell but not any in-flight dom0-side `qvm-run` it spawned — those linger until the rollback's `qvm-kill` closes the qrexec connection; (ii) the rollback waits up to 30 s for the qubes to shut down, after which `qvm-remove` may fail and the stale name remains — `delete-vms.sh <name>` clears it. The top-level orchestrator (the qube-spec for-loops at the bottom of the script) is not itself `set -Eeuo pipefail`, so a failed `installQube` does not abort the whole run — by design: one failed qube is isolated and the rest still build.
+- **Residual risk:** Runs with the dom0 user's privileges — `qvm-*` management of every qube, plus `sudo` to write the qrexec browser policy. It also fetches and moves install scripts and `lib/*.sh` into VMs. The per-qube build inside `installQube` runs in a subshell with `set -eo pipefail`, bounded by a `BUILD_TIMEOUT_SECONDS` watchdog (default 15 min) so a hung `qvm-run`, stuck install script, or network stall can't pin the whole setup; on either failure or timeout the rollback kills + removes whichever of the `Z-`/`A-` pair got created, so re-runs are not blocked by half-built names left behind. Two best-effort caveats: (i) on timeout the watchdog kills the build subshell but not any in-flight dom0-side `qvm-run` it spawned — those linger until the rollback's `qvm-kill` closes the qrexec connection; (ii) the rollback waits up to 30 s for the qubes to shut down, after which `qvm-remove` may fail and the stale name remains — `delete-vms.sh <name>` clears it. The top-level orchestrator (the qube-spec for-loops at the bottom of the script) is not itself `set -Eeuo pipefail`, so a failed `installQube` does not abort the whole run — by design: one failed qube is isolated and the rest still build.
+
+> ## ⚠️  REBOOT dom0 AFTER A TIMEOUT-TRIGGERED ROLLBACK  ⚠️
+>
+> The watchdog terminates the build subshell, but **cannot kill the dom0-side `qvm-run` processes it spawned** — those are reaped only when the rollback's `qvm-kill` tears the target qube down. Any *root-level* command that was already mid-flight inside the qube at that moment (`apt-get install`, `gpg --import`, `dpkg`, a `cat >` to `/etc/...`) may have committed a partial change before being interrupted. The visible result of `qvm-remove -f` succeeding is not a guarantee that dpkg locks, `/var/lib/qubes` state, LVM volume metadata, qrexec connection slots and dom0 mount entries are all clean.
+>
+> A subsequent re-run of `setup-qubes.sh` against the same name proceeds on top of that potentially-corrupted dom0 state. There is no logical interlock — the 30 s shutdown wait is what masks most of this in practice, not a guarantee.
+>
+> **For a high-value install: reboot dom0 between a timeout-triggered rollback and the next `setup-qubes.sh` run.** After the reboot, run `sudo qvm-volume info` and confirm no orphan volumes belonging to the failed qube remain. Only then retry (`delete-vms.sh <name>` first if the rollback left a stale name).
+>
+> The script prints the same warning at runtime when the timeout actually fires — but the warning scrolls past quickly amid other output, which is why it is also recorded here.
 
 ### `install-scripts/*.sh` (run inside templates / app qubes)
 - **Trust assumption:** Each install script is safe to run as root in its VM.
@@ -100,13 +119,13 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### KeePassXC — AppImage with verified signature ✅
 - **Trust assumption:** The KeePassXC AppImage really was built and released by the KeePassXC team.
-- **Established by:** ✅ `install-scripts/components/keepass/template-vm.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header.
+- **Established by:** ✅ `install-scripts/components/keepass/template-vm.sh` embeds the KeePassXC release signing key, downloads the release's detached `.sig`, and **aborts unless `gpg --verify` confirms the AppImage is signed by that key** (primary fingerprint `BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`). The fingerprint was verified on **2026-05-18** against `keepassxc.org/verifying-signatures/`, a keys.openpgp.org by-fingerprint lookup, and the Arch Linux `keepassxc` PKGBUILD — see the script header. After the gpg check, the script also binds the verified bytes against in-place tamper before install: hash the AppImage, `chmod 0400`, re-hash immediately before `sudo install -m 0755 … /usr/bin/keepassxc.AppImage` and abort on drift (same pattern as BitBox/OpenOffice).
 - **Residual risk:** The version (currently 2.7.12) is pinned in the script; an AppImage does not auto-update, so security fixes arrive only when the pin is bumped and the script re-run. The signing key is embedded in the repo, so it also inherits §2 repo trust.
 
 ### Signal — apt repository with an embedded, verified key ✅
 - **Trust assumption:** Signal's apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
-- **Established by:** ✅ `install-scripts/components/signal/template-vm.sh` embeds the Signal signing key and **aborts unless its fingerprint matches the pinned value** `DBA36B5181D0C816F630E889D980A17457F6FB06`. Signal publishes no fingerprint, so it was cross-checked on **2026-05-18** against the key served at `updates.signal.org`, a keys.openpgp.org by-fingerprint lookup, and Wayback Machine snapshots from 2018/2020/2022 (the same key for 8+ years) — see the script header.
-- **Residual risk:** The pin proves you have Signal's real key; it does not vouch for what Signal builds and signs. The embedded key inherits §2 repo trust.
+- **Established by:** ✅ `install-scripts/components/signal/template-vm.sh` embeds the Signal signing key and **aborts unless its fingerprint matches the pinned value** `DBA36B5181D0C816F630E889D980A17457F6FB06`. Signal publishes no fingerprint, so it was cross-checked on **2026-05-18** against the key served at `updates.signal.org`, a keys.openpgp.org by-fingerprint lookup, and Wayback Machine snapshots from 2018/2020/2022 (the same key for 8+ years) — see the script header. The script also installs `/etc/apt/preferences.d/signal-xenial.pref`, which default-denies the entire `updates.signal.org` origin (`Pin-Priority: -1`) and re-allows only `signal-desktop` / `signal-desktop-beta` at normal priority — defense-in-depth that bounds the repo's reach to a single named package set.
+- **Residual risk:** The key pin proves you have Signal's real key; it does not vouch for what Signal builds and signs. The package pin further bounds a compromised-signing-infrastructure attacker to shipping a hostile `signal-desktop` — they cannot use this repo to publish a higher-version `bash`, `libc6`, `systemd`, etc. that apt would otherwise prefer over Debian's. The embedded key inherits §2 repo trust.
 
 ### Docker — apt repository with an embedded, verified key ✅
 - **Trust assumption:** Docker's apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
@@ -115,8 +134,8 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### Element — apt repository with an embedded, verified key ✅
 - **Trust assumption:** The Element apt signing key is genuine; thereafter apt verifies package signatures and updates flow via normal template `apt upgrade`.
-- **Established by:** ✅ `install-scripts/components/element/template-vm.sh` embeds the Element signing key and **aborts unless its fingerprint matches the pinned value** `12D4CD600C2240A9F4A82071D7B0B66941D01538`. Verified on **2026-05-20** against the key served at `packages.element.io/debian/element-io-archive-keyring.gpg`, a `keyserver.ubuntu.com` by-fingerprint lookup, and a `keys.openpgp.org` by-fingerprint lookup; a Wayback Machine snapshot from 2023 carries the same fingerprint. uid is the historical "riot.im packages <packages@riot.im>" (Element's prior name). Element Desktop is not in the Debian repositories (verified 2026-05-20), so the upstream apt repo is the only mainstream channel; the install procedure matches the Brave/Signal/KeePass pattern.
-- **Residual risk:** The pin proves you have Element's real key; it does not vouch for what Element builds and signs. The embedded key inherits §2 repo trust.
+- **Established by:** ✅ `install-scripts/components/element/template-vm.sh` embeds the Element signing key and **aborts unless its fingerprint matches the pinned value** `12D4CD600C2240A9F4A82071D7B0B66941D01538`. Verified on **2026-05-20** against the key served at `packages.element.io/debian/element-io-archive-keyring.gpg`, a `keyserver.ubuntu.com` by-fingerprint lookup, and a `keys.openpgp.org` by-fingerprint lookup; a Wayback Machine snapshot from 2023 carries the same fingerprint. uid is the historical "riot.im packages <packages@riot.im>" (Element's prior name). Element Desktop is not in the Debian repositories (verified 2026-05-20), so the upstream apt repo is the only mainstream channel; the install procedure matches the Brave/Signal/KeePass pattern. The script also installs `/etc/apt/preferences.d/element-io.pref`, which default-denies the entire `packages.element.io` origin (`Pin-Priority: -1`) and re-allows only `element-desktop` / `element-desktop-nightly` at normal priority — defense-in-depth that bounds the repo's reach to a single named package set.
+- **Residual risk:** The key pin proves you have Element's real key; it does not vouch for what Element builds and signs. The package pin further bounds a compromised-signing-infrastructure attacker to shipping a hostile `element-desktop` — they cannot use this repo to publish a higher-version `bash` or other system package that apt would otherwise prefer over Debian's. The embedded key inherits §2 repo trust.
 
 ### VS Code — apt repository with an embedded, verified key ✅
 - **Trust assumption:** The Microsoft signing key is genuine.
@@ -130,12 +149,12 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### BitBoxApp — .deb with a verified signature ✅
 - **Component:** `install-scripts/components/bitbox/template-vm.sh` — downloads the BitBoxApp `.deb` and its detached `.asc`.
-- **Established by:** ✅ The script embeds the ShiftCrypto Security signing key and **aborts unless `gpg --verify` confirms the `.deb` is signed by it** (fingerprint `DD09E41309750EBFAE0DEF63509249B068D215AE`). Verified on **2026-05-19** against BitBox's own docs (which publish the fingerprint), `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header. Installed via `apt-get` so dependencies resolve. (Not in the default `WALLET_QUBES`; add `bitbox` to a wallet qube's component list to include it.)
+- **Established by:** ✅ The script embeds the ShiftCrypto Security signing key and **aborts unless `gpg --verify` confirms the `.deb` is signed by it** (fingerprint `DD09E41309750EBFAE0DEF63509249B068D215AE`). Verified on **2026-05-19** against BitBox's own docs (which publish the fingerprint), `keyserver.ubuntu.com` and `keys.openpgp.org` — see the script header. Installed via `apt-get` so dependencies resolve. After the gpg check, the script also binds the verified bytes against in-place tamper between verify and install: hash the `.deb`, `chmod 0400`, re-hash immediately before `apt-get install` and abort on drift — `apt-get install` of a local `.deb` does not re-verify the gpg signature, so without this TOCTOU pin the verified file could be swapped in the window. (Not in the default `WALLET_QUBES`; add `bitbox` to a wallet qube's component list to include it.)
 - **Residual risk:** The pinned version (currently 4.51.0) is bumped manually. A crypto wallet — keep its qube isolated.
 
 ### Apache OpenOffice — tarball with a verified signature ✅
 - **Component:** `install-scripts/components/openoffice/template-vm.sh` — downloads the Apache OpenOffice tarball and its detached `.asc` from `downloads.apache.org`.
-- **Established by:** ✅ The script embeds Jim Jagielski's Apache OpenOffice release signing key and **aborts unless `gpg --verify` confirms the tarball is signed by it** (fingerprint `A93D62ECC3C8EA12DB220EC934EA76E6791485A8`). Verified on **2026-05-19** against the Apache OpenOffice `KEYS` file, the Apache committer keyring (`people.apache.org`) and `keyserver.ubuntu.com` — see the script header.
+- **Established by:** ✅ The script embeds Jim Jagielski's Apache OpenOffice release signing key and **aborts unless `gpg --verify` confirms the tarball is signed by it** (fingerprint `A93D62ECC3C8EA12DB220EC934EA76E6791485A8`). Verified on **2026-05-19** against the Apache OpenOffice `KEYS` file, the Apache committer keyring (`people.apache.org`) and `keyserver.ubuntu.com` — see the script header. After the gpg check, the script applies the same TOCTOU pin twice: hash + `chmod 0400` + re-hash on the tarball before `tar -xzf`, and again on every extracted `.deb` (under `en-US/DEBS/` and `…/desktop-integration/`) before `apt-get install`. Without this, the verified tarball or its extracted `.deb`s could be swapped in the window — extraction happens into a user-owned mktemp dir and `apt-get install` of local `.deb`s does not re-verify a gpg signature.
 - **Residual risk:** The pinned version (currently 4.1.16) is bumped manually; Apache OpenOffice releases infrequently.
 
 ### Ledger Live ❌ — unverifiable
@@ -147,7 +166,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ### pyenv (python component) ❌ — accepted tradeoff
 - **Component:** `install-scripts/components/python/app-vm.sh` — `curl -fsSL https://pyenv.run | bash`.
 - **Trust assumption:** Whatever `pyenv.run` serves at run time is benign.
-- **Established by:** ❌ Unverified remote code piped to a shell. **This is a deliberate choice:** pyenv is kept, in preference to the apt `python3` package, for the flexibility of installing and switching Python versions — accepting the weaker trust. (`app-vm.sh` also lacks `set -euo pipefail`, kept off so pyenv's profile sourcing does not abort it.)
+- **Established by:** ❌ Unverified remote code piped to a shell. **This is a deliberate choice:** pyenv is kept, in preference to the apt `python3` package, for the flexibility of installing and switching Python versions — accepting the weaker trust. (`app-vm.sh` uses `set -Eeo pipefail` — `-u` is selectively omitted because pyenv's profile sourcing is not nounset-clean; `-e` and `pipefail` are on, so an `pyenv install` / `pip` failure does abort the build.)
 - **Residual risk:** Full control of the dev qube for whoever controls `pyenv.run` or its redirect target. `pip install` then pulls from PyPI (hash-checked, not signature-verified).
 
 ### Claude Code — native installer (claude-code component) ❌
@@ -178,6 +197,25 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** A deliberate design choice — concentrating link handling in one browser qube *is* the isolation benefit.
 - **Residual risk:** `A-brave` becomes a funnel for hostile links from every qube; its compromise is in scope. The policy allows `@anyvm → A-brave`. Specifically, the policy verb is `allow`, **not `ask`** — any code running in any qube can silently drive `A-brave` to navigate to a chosen URL with no dom0 prompt. A compromised qube can use this to exfiltrate via DNS-in-URL, push the user at a phishing page in `A-brave`, or chain a browser 0-day. `ask` would catch the unexpected programmatic case while leaving normal user-clicked links smooth. Deferred — accepting the silent passthrough for ergonomic handoff.
 
+### USB-keyboard policy override (`qubes.InputKeyboard` from `sys-usb` → dom0) ⚠️
+- **Component:** `setup-qubes.sh`'s `setupUsbKeyboardPolicy` writes `/etc/qubes/policy.d/30-user-input.policy` (Qubes 4.3 only, only when `sys-usb` exists) containing:
+  `qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm`
+- **Trust assumption:** When a USB device claiming to be a keyboard is attached, the operator will reliably distinguish their own keyboard from a hostile one (BadUSB / O.MG cable / mass-storage stick with HID firmware) and decline the attach prompt for the hostile case.
+- **Established by:** A deliberate ergonomic tradeoff. The shipped Qubes 4.3 `50-config-input.policy` *denies* `qubes.InputKeyboard` from `sys-usb` to dom0 outright, so external USB keyboards do not work at all out of the box. The 30- override lowers that to `ask`, matching the mouse/tablet behaviour, so an external keyboard is usable after one confirmation. `default_target=@adminvm` (dom0 pre-selected in the dialog) means a single Enter accepts the attach.
+- **Residual risk:** This is a clear weakening of dom0's input isolation versus the Qubes default. Any USB device that enumerates as a HID keyboard — including a BadUSB / Rubber-Ducky implant or a vendor device with hostile firmware — triggers the same prompt as a legitimate keyboard, and the prompt is biased toward acceptance (default = dom0, single keystroke confirms). A successful accept yields keystroke injection into dom0 = total compromise. Mitigations the operator must apply themselves: never attach unknown USB devices, prefer a PS/2 keyboard or a keyboard permanently on the dom0-attached internal controller, and read the qube selector in the prompt rather than reflexively pressing Enter. Deferred — accepting the BadUSB uplift in exchange for being able to use external USB keyboards on Qubes 4.3 without per-boot manual `qvm-input-keyboard` ceremony.
+
+### Boot / shutdown cleanup service ✅
+- **Component:** `setup-qubes.sh`'s `installCleanupService` writes `/usr/local/bin/seqs-cleanup` (root, 0755) and `/etc/systemd/system/seqs-cleanup.service` into every template; the systemd unit runs `seqs-cleanup` at app-qube boot **and** shutdown. The script is a no-op inside TemplateVMs (`qubesdb-read /qubes-vm-type` guard) and `rm -rf`s each path in the `CLEANUP_DIRS` array from `setup-qubes.sh` (default: `/home/user/QubesIncoming`, `/home/user/Downloads`).
+- **Trust assumption:** Every `CLEANUP_DIRS` entry is genuinely a transient location the operator wants wiped on every boot and shutdown.
+- **Established by:** ✅ `validateCleanupDirs` runs in `setup-qubes.sh`'s pre-flight and refuses any entry that is not an absolute path strictly under `/home/user/` with at least one extra non-empty segment, or that contains a `..` component. So entries like `/home/user`, `/home/user/`, `/etc`, `/`, or `/home/user/../etc` are rejected before any template is built, bounding the destructive blast radius to the qube user's home tree. The generated script also `printf %q`-escapes each path so shell metacharacters in a directory name cannot break out of the cleanup loop.
+- **Residual risk:** Within the validated bound, `seqs-cleanup` runs as root and *will* delete anything the operator put into a `CLEANUP_DIRS` location between boot and shutdown — Downloads vanish on every reboot, including transaction CSV exports, wallet-recovery sheets and downloaded firmware. This is by design (transient = transient), but the operator must internalise that those directories are not for storage.
+
+### dom0 terminal output sanitization ✅
+- **Component:** `setup-qubes.sh` defines `vmRun`, a wrapper around `qvm-run` that pipes the VM's combined stdout/stderr through `tr -d '\000-\010\013-\037\177'` before it reaches dom0's terminal. The `installQube` subshell runs with `set -eo pipefail` so a non-zero `qvm-run` exit cannot be masked by `tr`'s success. Every terminal-bound call site uses `vmRun`; `qvm-run` is reserved for the file-capture and file-redirect sites (`fetchFromVm`, `discoverLibFiles`, `validateAllQubes`'s component listing) where raw bytes are needed and the output is then strictly regex-validated.
+- **Trust assumption:** The dom0 terminal emulator should never have to interpret a byte that came from inside a VM during install.
+- **Established by:** ✅ The `tr` filter strips every C0 control character except TAB and LF, plus DEL. ESC, BEL, CR, FF, SO/SI and the full CSI/OSC sequence space therefore cannot reach the terminal — they appear as the *letters* of the would-be escape sequence (`[0m`, `]52;c;...`) which the terminal renders as plain text. UTF-8 (the 0x80–0xFF range) is preserved, so apt/dpkg log lines stay readable. Sanity-checked at edit time with an injected ESC sequence and a forced non-zero inner exit — pipefail correctly propagated.
+- **Residual risk:** Mitigates a real class of attack: a compromise of any upstream apt repo, a malicious dpkg post-install scriptlet, or any third-party installer the build runs (pyenv.run, nvm, claude.ai/install.sh, the Ledger Live AppImage) emitting crafted ANSI to drive the dom0 terminal — repaint earlier "PASS" lines as "FAIL", set window title to smuggle keys via paste, write the clipboard via OSC 52, etc. The remaining surface is whatever the `qvm-*` management commands themselves (`qvm-clone`, `qvm-create`, `qvm-start`, `qvm-prefs`, `qvm-shutdown`, `qvm-kill`, `qvm-remove`, `qvm-check`, `qvm-move-to-vm`) print to dom0 directly — those are not VM-controlled output, and their messages are deterministic Qubes management strings.
+
 ### ADB file transfer ✅
 - **Component:** `install-scripts/components/adb/template-vm.sh` -- `apt-get install -y adb pv` (Debian-signed). The chunked, resumable `adb-pull` helper (`install-scripts/components/adb/adb-pull.sh`) is shipped as a per-component asset by `fetchRunClean` and installed system-wide to `/usr/bin/adb-pull` in the template.
 - **Qube:** `A-usb-data-transfer` (red label). `sys-usb` is **not** modified; phones are USB-attached to this qube via Qubes' standard device-attach mechanism, isolating the larger ADB code surface from the front-line USB qube.
@@ -185,18 +223,22 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ✅ `adb` and `pv` arrive through normal Debian apt signature verification. The previous unsigned `dl.google.com` platform-tools download path is gone (and so is `utils/switch-to-new-sys-usb.sh`).
 - **Residual risk:** Wireless ADB (the fallback when USB attach isn't an option) exposes a shell-capable channel on the LAN; the `adb-pull` end-of-transfer SHA-256 check catches transport corruption but **not** a malicious peer (both hashes flow through the same ADB channel). Prefer USB-attached ADB; reserve wireless ADB for trusted networks.
 
-### Hardware-wallet udev rules
+### Hardware-wallet udev rules ⚠️
 - **Components:** `install-scripts/components/ledger/template-vm.sh` and `install-scripts/components/trezor/template-vm.sh` install the Ledger and Trezor udev rules respectively.
-- **Trust assumption:** The rule contents (USB vendor/product IDs, permissions) are correct.
-- **Established by:** 📝 Reviewed; mirrors vendor-published rules.
-- **Residual risk:** Low — grants local device access to the user; no network trust involved.
+- **Trust assumption:** Any USB device that enumerates with a Ledger or Trezor VID/PID is the actual hardware wallet the operator intended to attach.
+- **Established by:** 📝 Reviewed; mirrors vendor-published rules. The rules also tighten the upstream `MODE="0666"` to `0660` + `uaccess`/`udev-acl`, so the device is only reachable via the seated user's dynamic ACL rather than by every process on the system — a real improvement over the vendor default.
+- **Residual risk:** udev grants `uaccess` based on USB VID/PID alone, and USB descriptors are entirely self-asserted. Any programmable USB device — BadUSB, an O.MG cable, a flashed Pi Pico, a hostile dev board — can claim `0x2c97` (Ledger) or `0x534c` / `0x1209` (Trezor) and receive the same ACL as the genuine wallet. Concrete consequences:
+    - A device swapped during shipping, in an evil-maid scenario, or on a contaminated cable / port can present itself as the operator's wallet and talk to whatever software is running in `A-wallet-*` until the user catches it: attempt firmware downgrade, probe via crafted hidraw exchanges, or — if the wallet UI is already unlocked when the substitution happens — script-drive interactions with an open signing dialog.
+    - The wallet *protocol* still authenticates the genuine device (passphrase, on-screen confirmation on the Ledger/Trezor itself), so a pure spoofer cannot forge a signed transaction. But it can talk to the host stack, and that surface is non-trivial.
+    - There is no automated signal to the operator that "this isn't my real wallet" — the device tree shows the right name. Treat any unfamiliar physical device the same as an unfamiliar repo: confirm provenance before attaching, and prefer attaching the wallet only when actively using it rather than leaving it persistently bound to `A-wallet-*`.
 
 ---
 
 ## Weakest links, ranked
 
-1. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned. The one remaining unverifiable software download.
-2. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
-3. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
+1. **USB-keyboard policy override** (§4) — weakens the Qubes 4.3 default `deny` on `qubes.InputKeyboard sys-usb → dom0` to `ask default_target=@adminvm`. A BadUSB-class device that enumerates as a HID keyboard yields keystroke injection into dom0 = total compromise if the operator reflexively accepts the attach prompt. Accepted in exchange for external USB keyboards working without per-boot `qvm-input-keyboard` ceremony.
+2. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned. The one remaining unverifiable software download.
+3. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
+4. **`REPO_VM` + cat hack** (§2) — the repo and its host qube are dom0-equivalent in effect; protected only by manual review.
 
 Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp, Apache OpenOffice and Element (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints; only Ledger Live remains unverifiable.

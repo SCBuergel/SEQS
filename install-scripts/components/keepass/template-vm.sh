@@ -184,6 +184,23 @@ if ! awk -v fpr="${KEEPASSXC_KEY_FPR}" \
 fi
 echo "signature OK -- ${APPIMAGE} signed by KeePassXC Release key ${KEEPASSXC_KEY_FPR}"
 
+# ─── Bind the verified bytes to what gets installed ──────────────────────────
+# Close the TOCTOU window between gpg --verify and `sudo install`: the AppImage
+# sits in a user-owned mktemp dir while it waits to be copied to /usr/bin/.
+# Hash the just-verified file, drop it to 0400 so a tamper attempt has to
+# chmod first (louder), then re-hash immediately before the install and bail
+# on drift. Same pattern as bitbox/template-vm.sh.
+SHA_VERIFIED="$(sha256sum "${WORKDIR}/${APPIMAGE}" | awk '{print $1}')"
+chmod 0400 "${WORKDIR}/${APPIMAGE}"
+
+SHA_PREINSTALL="$(sha256sum "${WORKDIR}/${APPIMAGE}" | awk '{print $1}')"
+if [ "${SHA_VERIFIED}" != "${SHA_PREINSTALL}" ]; then
+	echo "ERROR: AppImage hash changed between gpg --verify and install -- aborting." >&2
+	echo "  at verify:  ${SHA_VERIFIED}" >&2
+	echo "  at install: ${SHA_PREINSTALL}" >&2
+	exit 1
+fi
+
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo install -m 0755 "${WORKDIR}/${APPIMAGE}" /usr/bin/keepassxc.AppImage
 echo "installed /usr/bin/keepassxc.AppImage (KeePassXC ${KEEPASSXC_VERSION})"
