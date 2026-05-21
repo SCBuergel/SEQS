@@ -119,6 +119,18 @@ function fetchFromVm() {
 	FILE="${2}"
 	EXE="${3}"
 
+	# Defense-in-depth: both args are interpolated unquoted into the remote
+	# shell command below. Callers also validate upstream; this is the
+	# primitive's own boundary check so a future caller cannot bypass it.
+	if ! [[ "${SOURCE_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+		echo "ERROR: refusing unsafe SOURCE_VM '${SOURCE_VM}' in fetchFromVm" >&2
+		return 1
+	fi
+	if ! [[ "${FILE}" =~ ^[A-Za-z0-9/][A-Za-z0-9._/-]*$ ]] || [[ "${FILE}" == *..* ]]; then
+		echo "ERROR: refusing unsafe FILE '${FILE}' in fetchFromVm" >&2
+		return 1
+	fi
+
 	echo "Fetching ${FILE} from VM ${SOURCE_VM}..."
 	
 	# delete file in case it already exists on dom0 and ignore errors
@@ -184,7 +196,7 @@ function fetchRunClean() {
 				case "${asset}" in
 					template-vm.sh|app-vm.sh|menu.desktop) continue ;;
 				esac
-				if ! [[ "${asset}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+				if ! [[ "${asset}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
 					echo "ERROR: refusing unsafe asset filename from ${REPO_VM}: '${asset}'" >&2
 					exit 1
 				fi
@@ -320,7 +332,7 @@ function discoverLibFiles() {
 	LIB_FILES=""
 	while IFS= read -r lib; do
 		[ -z "${lib}" ] && continue
-		if ! [[ "${lib}" =~ ^[A-Za-z0-9._-]+\.sh$ ]]; then
+		if ! [[ "${lib}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*\.sh$ ]]; then
 			echo "ERROR: refusing unsafe helper-library basename from ${REPO_VM}: '${lib}'" >&2
 			exit 1
 		fi
@@ -350,7 +362,7 @@ function validateAllQubes() {
 	fi
 	while IFS= read -r cname; do
 		[ -z "${cname}" ] && continue
-		if ! [[ "${cname}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		if ! [[ "${cname}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
 			echo "ERROR: refusing unsafe component name from ${REPO_VM}: '${cname}'" >&2
 			exit 1
 		fi
@@ -366,7 +378,7 @@ function validateAllQubes() {
 	for entry in "${BRAVE_EXTENSIONS[@]}"; do
 		ename="${entry%% *}"
 		eid="${entry##* }"
-		if ! [[ "${ename}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		if ! [[ "${ename}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
 			echo "ERROR: BRAVE_EXTENSIONS contains unsafe name '${ename}'." >&2
 			exit 1
 		fi
@@ -415,7 +427,7 @@ function validateAllQubes() {
 			# commands (path + desktop filename), so require a safe identifier
 			# up-front before any further check. brave-extension-<name> follows
 			# the same rule -- the full token must be safe.
-			if ! [[ "${comp}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+			if ! [[ "${comp}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
 				echo "ERROR: qube '${NAME}' references component with unsafe name '${comp}'." >&2
 				errors=$((errors+1))
 				continue
@@ -451,10 +463,17 @@ function validateAllQubes() {
 function installCleanupService() {
 	local TEMPLATE_VM="${1}"
 
-	# build a shell-quoted, space-separated directory list from the config
-	local dirs="" d
+	# build a shell-quoted, space-separated directory list from the config.
+	# printf %q escapes $, `, \, ", spaces, quotes etc. so the generated
+	# seqs-cleanup script can't be hijacked by a path containing shell
+	# metacharacters (CLEANUP_DIRS is dom0-side config, so the worst case
+	# is self-inflicted, but the cleanup runs as root and is worth quoting
+	# robustly).
+	local dirs="" d esc
 	for d in "${CLEANUP_DIRS[@]}"; do
-		[ -n "${d}" ] && dirs="${dirs} \"${d}\""
+		[ -n "${d}" ] || continue
+		printf -v esc '%q' "${d}"
+		dirs="${dirs} ${esc}"
 	done
 	if [ -z "${dirs}" ]; then
 		echo "no cleanup directories configured -- skipping ${TEMPLATE_VM}"

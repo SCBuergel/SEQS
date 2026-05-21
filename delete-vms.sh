@@ -84,9 +84,10 @@ waitForShutdown() {
 for app in "${ARGS[@]}"; do
 	# Reject anything that isn't a safe identifier. $app is interpolated into
 	# qube names and passed straight to qvm-remove -f, so a value like '.*'
-	# must never reach the match loop below.
-	if ! [[ "${app}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-		echo "ERROR: refusing unsafe name '${app}' (allowed: [A-Za-z0-9._-])" >&2
+	# or '-h' must never reach the match loop below. First char must be
+	# alphanumeric or underscore so '.', '..', and leading '-' are rejected.
+	if ! [[ "${app}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+		echo "ERROR: refusing unsafe name '${app}' (allowed: [A-Za-z0-9_][A-Za-z0-9._-]*)" >&2
 		exit 1
 	fi
 
