@@ -328,6 +328,18 @@ function confirmPolicyOverwrite() {
 	local extra_rationale="${3:-}"
 	[ -e "${policy}" ] || return 0
 
+	# _boxedLine TEXT -- emit TEXT inside the 80-char "##   …   ##" frame,
+	# wrapping at word boundaries to fit the 70-char content area
+	# (80 - 5 left padding "##   " - 5 right padding "   ##" = 70).
+	# Each emitted line is exactly 80 chars. Word-unbreakable input >70 chars
+	# still overflows; pass prose, not URLs / long single tokens.
+	_boxedLine() {
+		local text="${1}"
+		while IFS= read -r line; do
+			printf '##   %-70s   ##\n' "${line}" >&2
+		done < <(printf '%s\n' "${text}" | fold -s -w 70)
+	}
+
 	cat >&2 <<EOF
 
 
@@ -336,27 +348,37 @@ function confirmPolicyOverwrite() {
 ##                                                                            ##
 ##   !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!              ##
 ##                                                                            ##
-##   ${policy}
-##   ALREADY EXISTS and is about to be OVERWRITTEN.                           ##
+EOF
+	_boxedLine "${policy}"
+	_boxedLine "ALREADY EXISTS and is about to be OVERWRITTEN."
+	cat >&2 <<EOF
 ##                                                                            ##
-##   Any custom rules in this file -- yours or another tool's -- will be     ##
+##   Any custom rules in this file -- yours or another tool's -- will be      ##
 ##   LOST. No backup is taken.                                                ##
 EOF
 	if [ -n "${extra_rationale}" ]; then
-		# Indent each line of the rationale into the banner frame.
-		while IFS= read -r line; do
-			printf '##   %s\n' "${line}" >&2
+		# Each rationale paragraph is one logical line on input but may be
+		# arbitrarily long; _boxedLine wraps it into the frame.
+		echo "##                                                                            ##" >&2
+		while IFS= read -r para; do
+			_boxedLine "${para}"
 		done <<< "${extra_rationale}"
 	fi
 	cat >&2 <<EOF
 ##                                                                            ##
 ##   New rule will be:                                                        ##
-##       ${new_rule_preview}
+EOF
+	_boxedLine "    ${new_rule_preview}"
+	cat >&2 <<EOF
 ##                                                                            ##
 ##   Current contents:                                                        ##
 ##   ------------------------------------------------------------------       ##
 EOF
-	sed 's/^/##   /' "${policy}" >&2 || true
+	# Frame each line of the live policy file the same way as the rationale,
+	# so long policy lines don't break the box either.
+	while IFS= read -r line || [ -n "${line}" ]; do
+		_boxedLine "${line}"
+	done < "${policy}"
 	cat >&2 <<EOF
 ##   ------------------------------------------------------------------       ##
 ##                                                                            ##
