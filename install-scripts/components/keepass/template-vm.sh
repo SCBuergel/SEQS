@@ -159,7 +159,7 @@ EOF
 
 # Fail unless the embedded key really is the pinned one (guards against an
 # accidentally edited or corrupted key block above).
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')"
+IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
 if [[ "${IMPORTED_FPR}" != "${KEEPASSXC_KEY_FPR}" ]]; then
 	echo "ERROR: embedded KeePassXC key fingerprint mismatch -- aborting." >&2
 	echo "  expected: ${KEEPASSXC_KEY_FPR}" >&2

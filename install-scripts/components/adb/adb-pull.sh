@@ -70,6 +70,14 @@ fi
 REMOTE="$1"
 OUTPUT="$2"
 
+# Single-quote-escaped form of REMOTE for safe interpolation into commands
+# that run inside the device shell (adb shell / adb exec-out concatenates
+# its args with spaces and hands the whole string to the device's shell).
+# Without this, a filename containing ' would break out of the quotes and
+# whatever followed would be parsed by that shell. ${var@Q} (bash 4.4+)
+# produces POSIX-safe single-quoted output with '\'' escapes.
+REMOTE_Q="${REMOTE@Q}"
+
 if [[ -d "$OUTPUT" ]]; then
     OUTPUT="$OUTPUT/$(basename "$REMOTE")"
 fi
@@ -138,11 +146,27 @@ adb_connect_prompt() {
     echo ""
 }
 
-# Try reconnecting to saved device silently, return 0 on success
+# Tracks whether the user has confirmed the saved IP:port this run.
+# First call prompts; subsequent in-run calls (e.g. wifi-blip reconnects
+# during a transfer) skip the prompt -- the user has already approved this
+# session and re-asking on every retry would be noise.
+SAVED_DEVICE_CONFIRMED=0
+
+# Try reconnecting to saved device, return 0 on success. The first time
+# in a given script run it asks for explicit confirmation -- silently
+# auto-reconnecting to whatever IP was last saved was the previous
+# behavior and is risky on networks where the IP may have changed hands.
 adb_reconnect_saved() {
-    local saved
+    local saved ans
     saved=$(load_saved_device)
     [[ -z "$saved" ]] && return 1
+    if [[ "$SAVED_DEVICE_CONFIRMED" -eq 0 ]]; then
+        read -rp "Reconnect to saved device $saved? [Y/n]: " ans
+        case "${ans,,}" in
+            n|no) return 1 ;;
+        esac
+        SAVED_DEVICE_CONFIRMED=1
+    fi
     timeout "$ADB_TIMEOUT" $ADB connect "$saved" &>/dev/null || true
     $ADB devices 2>/dev/null | grep -q 'device$'
 }
@@ -185,7 +209,7 @@ adb_wait() {
 adb_wait
 
 # ─── Get remote file size ────────────────────────────────────────────────────
-SIZE=$(timeout "$ADB_TIMEOUT" $ADB shell stat -c%s "$REMOTE" 2>/dev/null | tr -d '\r')
+SIZE=$(timeout "$ADB_TIMEOUT" $ADB shell "stat -c%s $REMOTE_Q" 2>/dev/null | tr -d '\r')
 if [[ -z "$SIZE" ]] || [[ "$SIZE" -eq 0 ]]; then
     echo "ERROR: Could not stat remote file or file is empty: $REMOTE"
     exit 1
@@ -251,14 +275,14 @@ for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
         # Note: pv writes progress to stderr, so only suppress adb's stderr, not pv's
         if command -v pv &>/dev/null; then
             if ! timeout "$CHUNK_TIMEOUT" \
-                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" 2>/dev/null \
+                $ADB exec-out "dd if=$REMOTE_Q bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" 2>/dev/null \
                 | pv -s "$THIS_CHUNK_BYTES" -p -t -e -r \
                 > "$TMPCHUNK"; then
                 echo "  adb/timeout error"
             fi
         else
             if ! timeout "$CHUNK_TIMEOUT" \
-                $ADB exec-out "dd if='$REMOTE' bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" \
+                $ADB exec-out "dd if=$REMOTE_Q bs=1M skip=$SKIP count=$THIS_CHUNK_MB 2>/dev/null" \
                 > "$TMPCHUNK" 2>/dev/null; then
                 echo "  adb/timeout error"
             fi
@@ -292,11 +316,11 @@ for (( i=START_CHUNK; i<TOTAL_CHUNKS; i++ )); do
 done
 
 echo ""
-echo "Transfer complete. Verifying checksums..."
+echo "Transfer complete. Verifying transport (transport-only -- NOT authenticity)..."
 echo ""
 
 echo -n "Remote SHA-256: "
-REMOTE_SHA=$(timeout 120 $ADB shell sha256sum "$REMOTE" 2>/dev/null | awk '{print $1}' | tr -d '\r')
+REMOTE_SHA=$(timeout 120 $ADB shell "sha256sum $REMOTE_Q" 2>/dev/null | awk '{print $1}' | tr -d '\r')
 echo "$REMOTE_SHA"
 
 echo -n "Local SHA-256:  "
@@ -304,13 +328,19 @@ LOCAL_SHA=$(sha256sum "$OUTPUT" | awk '{print $1}')
 echo "$LOCAL_SHA"
 
 echo ""
-# NOTE: this is a transport-corruption check, not a peer-authenticity check.
+# This is a transport-corruption check, not a peer-authenticity check.
 # Both hashes flow through the same ADB connection -- a hostile peer that
-# served corrupt bytes could also lie about sha256sum.
+# served corrupt bytes could also lie about sha256sum. The output text
+# below states this in-line so it can't be skimmed past.
 if [[ "$REMOTE_SHA" = "$LOCAL_SHA" ]]; then
-    echo "MATCH — transport checksum OK (does not imply peer authenticity)."
+    echo "Hashes match -- transport-corruption check PASSED."
+    echo ""
+    echo "WARNING: this is NOT an authenticity check. Both hashes were"
+    echo "produced over the same ADB channel; a hostile or compromised peer"
+    echo "could have served corrupt bytes and lied about sha256sum to match."
+    echo "Treat the pulled file as no more trustworthy than the device itself."
 else
-    echo "MISMATCH — file may be corrupted."
+    echo "MISMATCH -- file is corrupted or the peer is misbehaving."
     echo "  Local size:  $(stat -c%s "$OUTPUT")"
     echo "  Remote size: $SIZE"
     exit 1

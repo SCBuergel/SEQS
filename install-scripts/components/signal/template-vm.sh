@@ -91,7 +91,7 @@ EOF
 
 # Fail unless the embedded key really is the pinned one (guards against an
 # accidentally edited or corrupted key block above).
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')"
+IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
 if [[ "${IMPORTED_FPR}" != "${SIGNAL_KEY_FPR}" ]]; then
 	echo "ERROR: embedded Signal key fingerprint mismatch -- aborting." >&2
 	echo "  expected: ${SIGNAL_KEY_FPR}" >&2

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# exit on errors, ensure pipe errors surface. 'nounset' is intentionally off:
-# nvm.sh is not nounset-clean when sourced.
-set -Eeo pipefail
+# Full error trapping: exit on errors, undefined variable refs, and pipe
+# failures. nvm.sh and the `nvm` command are NOT nounset-clean, so `set -u`
+# is selectively disabled across that block via `set +u`/`set -u`.
+set -Eeuo pipefail
 
 echo "Installing nvm and Node.js on appVM"
 
@@ -15,8 +16,10 @@ curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.
 
 # load nvm into this shell and install the current LTS Node
 export NVM_DIR="${HOME}/.nvm"
+set +u
 . "${NVM_DIR}/nvm.sh"
 
 echo "installing the current LTS Node..."
 nvm install --lts
 nvm alias default 'lts/*'
+set -u

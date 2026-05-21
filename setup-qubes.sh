@@ -91,14 +91,23 @@ BROWSER_VM="${PREFIX_APP_VM}brave"
 BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Hardening -- transient-directory cleanup at app-qube boot and shutdown,
-# via a systemd service installed into each template. Empty array disables.
+# Hardening
 # ════════════════════════════════════════════════════════════════════════════
 
+# Transient-directory cleanup at app-qube boot and shutdown, via a systemd
+# service installed into each template. Empty array disables.
 CLEANUP_DIRS=(
 	"/home/user/QubesIncoming"
 	"/home/user/Downloads"
 )
+
+# Per-qube build timeout in seconds. A normal component-heavy build (e.g.
+# dev-full with docker+python+node+vscode+claude-code) finishes well under
+# 15 minutes on typical hardware; longer implies a network stall, a hung
+# qvm-run, or a stuck install script. On timeout, installQube's watchdog
+# kills the build subshell and the usual rollback removes the half-built
+# Z-/A- pair.
+BUILD_TIMEOUT_SECONDS=900
 
 # ════════════════════════════════════════════════════════════════════════════
 # Internal -- rarely edited.
@@ -132,19 +141,23 @@ function fetchFromVm() {
 	fi
 
 	echo "Fetching ${FILE} from VM ${SOURCE_VM}..."
-	
-	# delete file in case it already exists on dom0 and ignore errors
-	BASE=$(basename "$FILE")
-	rm $BASE 2>>/dev/null
 
-	# fetch the file via the 'cat' hack to avoid dom0 security precautions 
-	if qvm-run -p ${SOURCE_VM} cat ${FILE} > $BASE; then
+	BASE=$(basename "${FILE}")
+
+	# Write to a temp file first so a partial or failed cat-hack transfer
+	# is never left under the final name. mv on success; rm on failure.
+	# mktemp gives a unique fresh path so no stale-file pre-cleanup is
+	# needed (the previous "rm $BASE 2>>/dev/null" pattern had an unquoted
+	# expansion and an append-redirect typo).
+	TMP=$(mktemp "./.${BASE}.XXXXXX") || return 1
+	if qvm-run -p "${SOURCE_VM}" cat "${FILE}" > "${TMP}"; then
 		# make the file executable if EXE parameter is passed along
-		if [ ! -z "${EXE}" ] && [[ ${EXE} == "EXE" ]]; then
-			chmod +x $BASE
+		if [ -n "${EXE}" ] && [[ "${EXE}" == "EXE" ]]; then
+			chmod +x "${TMP}"
 		fi
+		mv -f "${TMP}" "${BASE}"
 	else
-		# bubble up errors
+		rm -f "${TMP}"
 		return 1
 	fi
 }
@@ -236,9 +249,47 @@ function fetchRunClean() {
 
 # create the dom0 qrexec policy so any qube may open links in the browser qube
 function setupBrowserPolicy() {
+	local policy="/etc/qubes/policy.d/29-browser.policy"
+
+	# If the policy file already exists, loudly warn the user before we
+	# clobber it -- they may have edited it (or another tool may have
+	# written it) since the last setup-qubes.sh run. No backup is taken
+	# and the overwrite still proceeds.
+	if [ -e "${policy}" ]; then
+		cat >&2 <<EOF
+
+
+################################################################################
+################################################################################
+##                                                                            ##
+##   !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!  WARNING  !!!              ##
+##                                                                            ##
+##   ${policy}
+##   ALREADY EXISTS and is about to be OVERWRITTEN.                           ##
+##                                                                            ##
+##   Any custom rules in this file -- yours or another tool's -- will be     ##
+##   LOST. No backup is taken.                                                ##
+##                                                                            ##
+##   New contents will be:                                                    ##
+##       qubes.OpenURL * @anyvm ${BROWSER_VM} allow
+##                                                                            ##
+##   Current contents:                                                        ##
+##   ------------------------------------------------------------------       ##
+EOF
+		sed 's/^/##   /' "${policy}" >&2 || true
+		cat >&2 <<EOF
+##   ------------------------------------------------------------------       ##
+##                                                                            ##
+################################################################################
+################################################################################
+
+
+EOF
+	fi
+
 	echo "allowing all qubes to open links in ${BROWSER_VM}..."
 	echo "qubes.OpenURL * @anyvm ${BROWSER_VM} allow" \
-		| sudo tee /etc/qubes/policy.d/29-browser.policy > /dev/null
+		| sudo tee "${policy}" > /dev/null
 }
 
 # On Qubes 4.3 the shipped /etc/qubes/policy.d/50-config-input.policy silently
@@ -280,7 +331,16 @@ function setBrowserQube() {
 	local APP_VM="${1}"
 
 	echo "configuring ${APP_VM} to open links in ${BROWSER_VM}..."
-	qvm-run -p ${APP_VM} "mkdir -p ~/.local/share/applications && cat > ~/.local/share/applications/${BROWSER_DESKTOP}" <<EOF
+
+	# Install the link-handoff handler to /usr/share/applications/ as root,
+	# mode 0644. Putting it in the user's ~/.local/share/applications/
+	# (the previous location) let anything running as 'user' rewrite the
+	# Exec= line to divert links to a different qube or a local sniffer.
+	# Now the file is root-owned and read-only for the qube user; xdg can
+	# still resolve it (the system dir is on XDG_DATA_DIRS) but the user
+	# cannot modify it. This matches where the rest of SEQS installs
+	# per-component menu launchers (see fetchRunClean's desktop install).
+	qvm-run -u root -p ${APP_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
 [Desktop Entry]
 Encoding=UTF-8
 Name=Open links in ${BROWSER_VM}
@@ -584,13 +644,19 @@ function installQube() {
 
 	echo "STARTING BUILD OF ${NAME} from components: ${COMPONENTS}"
 
-	# Run the build in a subshell with `set -e` so any failure (qvm-clone,
-	# qvm-create, qvm-start, a component installer inside qvm-run via
-	# fetchRunClean, etc.) aborts at the failure point instead of silently
-	# rolling into the next step on broken state. On non-zero exit the
-	# rollback below removes whichever of the Z-/A- pair got created --
-	# otherwise a re-run is blocked by validateAllQubes refusing to clobber.
-	if (
+	# Run the build in a backgrounded subshell with `set -e` so any failure
+	# (qvm-clone, qvm-create, qvm-start, a component installer inside
+	# qvm-run via fetchRunClean, etc.) aborts at the failure point instead
+	# of silently rolling into the next step on broken state. A watchdog
+	# bounds the build at BUILD_TIMEOUT_SECONDS; on either failure or
+	# timeout, the rollback below removes whichever of the Z-/A- pair got
+	# created -- otherwise a re-run is blocked by validateAllQubes refusing
+	# to clobber. The watchdog kills the subshell only; any qvm-run still
+	# pending on dom0 lingers briefly until the rollback's qvm-kill closes
+	# its qrexec connection.
+	local start_seconds=$SECONDS
+
+	(
 		set -e
 
 		echo "setting up template VM ${TEMPLATE_VM}..."
@@ -613,8 +679,10 @@ function installQube() {
 		installCleanupService ${TEMPLATE_VM}
 
 		echo "shutting down template VM..."
-		qvm-shutdown ${TEMPLATE_VM}
-		sleep 4
+		# --wait blocks until the template is actually stopped (bounded by
+		# the qube's shutdown_timeout, default 60 s). Replaces a fixed
+		# `sleep 4` that was a guess and raced under load.
+		qvm-shutdown --wait ${TEMPLATE_VM}
 
 		echo "creating app VM ${APP_VM}..."
 		qvm-create ${APP_VM} --template ${TEMPLATE_VM} --label ${COLOR}
@@ -647,16 +715,44 @@ function installQube() {
 
 		echo "shutting app VM down..."
 		qvm-shutdown ${APP_VM}
-	); then
+	) &
+	local build_pid=$!
+
+	# Watchdog: TERM after the timeout, KILL 5s later as a backstop.
+	(
+		sleep "${BUILD_TIMEOUT_SECONDS}"
+		kill -TERM "${build_pid}" 2>/dev/null
+		sleep 5
+		kill -KILL "${build_pid}" 2>/dev/null
+	) &
+	local killer_pid=$!
+
+	# Wait for the build (or its killer) to finish.
+	wait "${build_pid}" 2>/dev/null
+	local build_exit=$?
+	local elapsed=$(( SECONDS - start_seconds ))
+
+	# Cancel the watchdog if the build finished on its own.
+	kill "${killer_pid}" 2>/dev/null
+	wait "${killer_pid}" 2>/dev/null
+
+	if [ "${build_exit}" -eq 0 ]; then
 		return 0
 	fi
 
-	# Build failed somewhere above. Kill+remove whichever of the Z-/A- pair
-	# got created. Best-effort: every step is `&>/dev/null || true` so the
-	# rollback never itself fails the run (qubes that were never created
-	# are skipped silently). Kill before remove so qvm-remove does not trip
-	# over a still-running qube; wait up to 30s for shutdown.
-	echo "ERROR: build of '${NAME}' failed -- rolling back ${TEMPLATE_VM} and ${APP_VM}..." >&2
+	# Build failed somewhere above (or the watchdog killed it). Diagnose by
+	# elapsed wall time -- if we hit the budget, it was the watchdog.
+	local why="failed (exit ${build_exit})"
+	if [ "${elapsed}" -ge "${BUILD_TIMEOUT_SECONDS}" ]; then
+		why="timed out after ${elapsed}s (limit: ${BUILD_TIMEOUT_SECONDS}s)"
+	fi
+
+	# Kill+remove whichever of the Z-/A- pair got created. Best-effort:
+	# every step is `&>/dev/null || true` so the rollback never itself
+	# fails the run (qubes that were never created are skipped silently).
+	# Kill before remove so qvm-remove does not trip over a still-running
+	# qube; wait up to 30s for shutdown.
+	echo "ERROR: build of '${NAME}' ${why} -- rolling back ${TEMPLATE_VM} and ${APP_VM}..." >&2
 	qvm-kill "${APP_VM}" &>/dev/null || true
 	qvm-kill "${TEMPLATE_VM}" &>/dev/null || true
 	local deadline=$(( SECONDS + 30 ))

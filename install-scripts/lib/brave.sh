@@ -57,7 +57,7 @@ DBF1A116C220B8C7164F98230686B78420038257"
 # install_brave -- add the *verified* Brave apt repository and install the browser.
 install_brave() {
 	local keyring="/usr/share/keyrings/brave-browser-archive-keyring.gpg"
-	local tmp got expected
+	local tmp got expected missing extra
 
 	echo "Installing brave-browser"
 
@@ -79,10 +79,23 @@ install_brave() {
 		| awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
 	expected="$(printf '%s\n' "${BRAVE_KEY_FPRS}" | sort)"
 	if [[ "${got}" != "${expected}" ]]; then
+		# Actionable diff: comm -23 = lines in expected not in got (missing);
+		# comm -13 = lines in got not in expected (extra). Both inputs are
+		# already sorted above.
+		missing="$(comm -23 <(printf '%s\n' "${expected}") <(printf '%s\n' "${got}"))"
+		extra="$(comm -13 <(printf '%s\n' "${expected}") <(printf '%s\n' "${got}"))"
 		echo "ERROR: Brave keyring failed verification -- refusing to install." >&2
 		echo "  source  : ${BRAVE_KEYRING_URL}" >&2
 		echo "  expected:" >&2; printf '    %s\n' ${expected} >&2
 		echo "  got     :" >&2; printf '    %s\n' ${got:-<none>} >&2
+		if [ -n "${missing}" ]; then
+			echo "  missing (pinned but absent from downloaded keyring):" >&2
+			printf '    %s\n' ${missing} >&2
+		fi
+		if [ -n "${extra}" ]; then
+			echo "  extra (present in downloaded keyring but not pinned):" >&2
+			printf '    %s\n' ${extra} >&2
+		fi
 		rm -f "${tmp}"
 		exit 1
 	fi

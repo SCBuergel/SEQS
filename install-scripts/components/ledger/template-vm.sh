@@ -12,8 +12,11 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="2581", ATTRS{idProduct}=="1b7c|2b7c|3b7c|4b
 # Blue, NanoS, Aramis, HW.2, Nano X, NanoSP, Stax, Ledger Test,
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", TAG+="uaccess", TAG+="udev-acl"
 
-# Same, but with hidraw-based library (instead of libusb)
-KERNEL=="hidraw*", ATTRS{idVendor}=="2c97", MODE="0666"
+# Same, but with hidraw-based library (instead of libusb).
+# MODE 0660 + uaccess/udev-acl tags: only root+group can rw via raw perms,
+# and systemd-logind grants the seated user a dynamic ACL via uaccess --
+# tighter than the upstream 0666 which gave any process on the system rw.
+KERNEL=="hidraw*", ATTRS{idVendor}=="2c97", MODE="0660", TAG+="uaccess", TAG+="udev-acl"
 EOF
 
 echo "triggering udevadm..."

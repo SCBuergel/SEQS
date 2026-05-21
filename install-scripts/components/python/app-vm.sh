@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# Error trapping: exit on errors and pipe failures. 'nounset' is left off
+# because `eval "$(pyenv init -)"` and pyenv's profile sourcing are not
+# nounset-clean (the same constraint that applies to nvm in node/app-vm.sh,
+# but pyenv touches profile in more places so the selective wrap would be
+# noisy here).
+set -Eeo pipefail
+
 echo "Installing Python on appVM"
 # pyenv is kept, in preference to the apt python3 package, for the flexibility
 # of installing and switching Python versions -- see TRUST.md. The installer is

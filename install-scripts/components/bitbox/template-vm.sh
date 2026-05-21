@@ -93,7 +93,7 @@ jLZugv6bMuMLjA==
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')"
+IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
 if [[ "${IMPORTED_FPR}" != "${BITBOX_KEY_FPR}" ]]; then
 	echo "ERROR: embedded BitBox key fingerprint mismatch -- aborting." >&2
 	echo "  expected: ${BITBOX_KEY_FPR}" >&2
@@ -117,5 +117,24 @@ if ! awk -v fpr="${BITBOX_KEY_FPR}" \
 fi
 echo "signature OK -- ${DEB} signed by ShiftCrypto Security ${BITBOX_KEY_FPR}"
 
+# Bind the verified bytes to what apt actually installs. `apt-get install`
+# below opens the .deb a second time and does NOT re-verify the gpg
+# signature for a local file path; without binding, there is a TOCTOU
+# window between the check above and that second read. Two cheap defenses:
+#   (a) pin the SHA-256 of the just-verified file and re-check it right
+#       before the apt-get install call -- catches any in-place tampering
+#       (or filesystem corruption) during the window;
+#   (b) drop the file to mode 0400 so a tamper attempt has to chmod first
+#       and is therefore louder.
+SHA_VERIFIED="$(sha256sum "${WORKDIR}/${DEB}" | awk '{print $1}')"
+chmod 0400 "${WORKDIR}/${DEB}"
+
 # ─── Install (apt resolves the .deb's dependencies) ──────────────────────────
+SHA_PREINSTALL="$(sha256sum "${WORKDIR}/${DEB}" | awk '{print $1}')"
+if [ "${SHA_VERIFIED}" != "${SHA_PREINSTALL}" ]; then
+	echo "ERROR: .deb hash changed between gpg --verify and install -- aborting." >&2
+	echo "  at verify:  ${SHA_VERIFIED}" >&2
+	echo "  at install: ${SHA_PREINSTALL}" >&2
+	exit 1
+fi
 sudo apt-get install -y "${WORKDIR}/${DEB}"

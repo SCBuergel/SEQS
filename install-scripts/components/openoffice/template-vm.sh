@@ -127,7 +127,7 @@ L6WGGssH
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')"
+IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; exit}')"
 if [[ "${IMPORTED_FPR}" != "${AOO_KEY_FPR}" ]]; then
 	echo "ERROR: embedded Apache OpenOffice key fingerprint mismatch -- aborting." >&2
 	echo "  expected: ${AOO_KEY_FPR}" >&2
