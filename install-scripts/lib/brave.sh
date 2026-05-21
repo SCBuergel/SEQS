@@ -102,7 +102,8 @@ install_brave() {
 	echo "Brave keyring verified -- $(printf '%s ' ${got})"
 
 	sudo install -m 0644 "${tmp}" "${keyring}"
-	rm -f "${tmp}"
+	# NB: ${tmp} is kept until after apt completes -- see the re-install
+	# step below for why.
 
 	echo "deb [arch=amd64 signed-by=${keyring}] https://brave-browser-apt-release.s3.brave.com/ stable main" \
 		| sudo tee /etc/apt/sources.list.d/brave-browser-release.list > /dev/null
@@ -111,21 +112,28 @@ install_brave() {
 	# Without this, a compromise of Brave's signing infrastructure could ship a
 	# higher-version bash / libc6 / systemd / etc. and apt would prefer it over
 	# Debian's. Default-deny everything from this origin, then re-allow only the
-	# brave-browser-* package set.
-	# brave-keyring is DELIBERATELY excluded from the allowlist. That package's
-	# job is to manage Brave's apt signing keys; if apt is allowed to upgrade
-	# it, its maintainer scripts can replace /usr/share/keyrings/...gpg (the
-	# exact path our sources.list.d entry references via signed-by=). That
-	# would silently rotate the trust anchor that this script just cross-checked
-	# against three independent sources -- a future `apt upgrade` could swap
-	# keys with no SEQS verification ever firing again. Trust rotation, if
-	# needed, must go through the in-script three-source re-verify.
+	# brave-browser-* package set plus brave-keyring.
+	# brave-keyring MUST be allowlisted: brave-browser hard-depends on it
+	# (APT solver 3.0: "brave-browser : Depends: brave-keyring but it is not
+	# installable" when brave-keyring is pinned to -1). Allowing it carries
+	# the risk that its postinst writes /usr/share/keyrings/...gpg -- the
+	# exact path our sources.list.d entry anchors against via signed-by=.
+	# Defense is now layered downstream of the pin instead of via it:
+	#   (1) After apt completes, we re-install the three-source-verified
+	#       keyring on top of whatever brave-keyring's postinst wrote,
+	#       restoring the trust anchor to the bytes we just verified.
+	#   (2) chattr +i then freezes that file, so any future brave-keyring
+	#       upgrade's postinst write fails loudly instead of silently
+	#       rotating the trust anchor. A genuine Brave key rotation will
+	#       surface as a loud apt failure -- re-run this script after
+	#       re-verifying BRAVE_KEY_FPRS against the three independent
+	#       sources documented at the top of this file.
 	sudo tee /etc/apt/preferences.d/brave-browser.pref > /dev/null <<'EOF'
 Package: *
 Pin: origin "brave-browser-apt-release.s3.brave.com"
 Pin-Priority: -1
 
-Package: brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev
+Package: brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev brave-keyring
 Pin: origin "brave-browser-apt-release.s3.brave.com"
 Pin-Priority: 500
 EOF
@@ -133,18 +141,25 @@ EOF
 	sudo apt-get update
 	sudo apt-get install -y brave-browser
 
+	# Restore the verified trust anchor. brave-keyring's postinst (run as a
+	# dependency of brave-browser just above) may have overwritten the
+	# keyring file with whatever keys ship in the installed brave-keyring
+	# deb. Force the on-disk file back to the bytes we three-source
+	# verified before locking it.
+	sudo install -m 0644 "${tmp}" "${keyring}"
+	rm -f "${tmp}"
+
 	# Lock the keyring file against in-place rewrite. The Pin-Priority
-	# allowlist above bounds which package names this repo can ship, and
-	# brave-keyring is DELIBERATELY excluded so apt won't auto-rotate the
-	# trust anchor via that package's maintainer scriptlets. chattr +i is
-	# the next layer: even an allowlisted package (brave-browser) whose
-	# postinst did
+	# allowlist bounds which package names this repo can ship, but cannot
+	# exclude brave-keyring (it is a hard dependency of brave-browser).
+	# chattr +i is the layer that actually prevents silent trust-anchor
+	# rotation: any future package -- brave-keyring upgrade or an
+	# allowlisted brave-browser postinst doing
 	#     cp /usr/share/brave/something.gpg ${keyring}
-	# would now fail loudly instead of silently rotating the key the
-	# signed-by= directive in /etc/apt/sources.list.d/brave-browser-release.list
-	# anchors against. Legitimate key rotation must go through
-	# `sudo chattr -i ${keyring}` + manual re-verify against the three
-	# independent sources documented at the top of this file.
+	# -- will fail loudly when it tries to overwrite this file. Legitimate
+	# key rotation must go through `sudo chattr -i ${keyring}` + manual
+	# re-verify against the three independent sources documented at the
+	# top of this file, then update BRAVE_KEY_FPRS.
 	sudo chattr +i "${keyring}"
 }
 
