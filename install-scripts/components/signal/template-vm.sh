@@ -106,6 +106,24 @@ gpg --export "${SIGNAL_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
 echo "deb [arch=amd64 signed-by=${KEYRING}] https://updates.signal.org/desktop/apt xenial main" \
 	| sudo tee /etc/apt/sources.list.d/signal-xenial.list > /dev/null
 
+# ─── Lock the Signal repo to its own packages ────────────────────────────────
+# Signal's Release file uses a generic "xenial" suite label and a placeholder
+# Origin (literally ". xenial"), so by default this third-party repo has the
+# same apt priority (500) as Debian's main repos -- it could in principle
+# satisfy any package name. The pin file below blocks anything from
+# updates.signal.org by default (Pin-Priority -1), then re-allows only
+# signal-desktop and signal-desktop-beta at normal priority. Defense-in-depth
+# against this repo being repurposed to ship anything other than Signal.
+sudo tee /etc/apt/preferences.d/signal-xenial.pref > /dev/null <<'EOF'
+Package: *
+Pin: origin "updates.signal.org"
+Pin-Priority: -1
+
+Package: signal-desktop signal-desktop-beta
+Pin: origin "updates.signal.org"
+Pin-Priority: 500
+EOF
+
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y signal-desktop
