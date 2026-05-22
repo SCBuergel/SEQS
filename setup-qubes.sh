@@ -232,7 +232,16 @@ function fetchFromVm() {
 	# needed (the previous "rm $BASE 2>>/dev/null" pattern had an unquoted
 	# expansion and an append-redirect typo).
 	TMP=$(mktemp "./.${BASE}.XXXXXX") || return 1
-	if qvm-run -p "${SOURCE_VM}" cat "${FILE}" > "${TMP}"; then
+	# 2>/dev/null on the qvm-run: `qvm-run -p` passes the remote process's
+	# stderr through to dom0's terminal raw. Stdout is captured to ${TMP},
+	# but without this redirect a compromised ${SOURCE_VM} can emit ANSI /
+	# CSI / OSC sequences via stderr (a wrapped cat, an LD_PRELOAD shim, a
+	# remote shell PROMPT_COMMAND) during every component fetch -- same class
+	# of attack the README's bootstrap one-liner closes with the same
+	# 2>/dev/null. vmRun's tr|iconv|sed sanitizer only protects
+	# output-to-terminal qvm-run sites; this one writes to a file and
+	# therefore wasn't routed through vmRun, leaving the stderr channel open.
+	if qvm-run -p "${SOURCE_VM}" cat "${FILE}" > "${TMP}" 2>/dev/null; then
 		# make the file executable if EXE parameter is passed along
 		if [ -n "${EXE}" ] && [[ "${EXE}" == "EXE" ]]; then
 			chmod +x "${TMP}"
@@ -719,6 +728,21 @@ function discoverLibFiles() {
 			echo "ERROR: refusing unsafe helper-library basename from ${REPO_VM}: '${lib}'" >&2
 			exit 1
 		fi
+		# Refuse any lib basename that collides with the canonical per-component
+		# file names fetchRunClean handles separately (FILENAME = template-vm.sh
+		# / app-vm.sh, or the per-component menu.desktop). Libs are fetched
+		# AFTER FILENAME and land in dom0 cwd by basename, so a collision would
+		# overwrite the component's script with the lib (losing the chmod +x
+		# applied by fetchFromVm's EXE branch, and -- worse -- causing
+		# vmRun ... ./QubesIncoming/dom0/${FILENAME} to execute the lib's body
+		# instead of the component's intended one). Symmetric to the
+		# asset-vs-lib check in fetchRunClean.
+		case "${lib}" in
+			template-vm.sh|app-vm.sh|menu.desktop)
+				echo "ERROR: helper library '${LIB_PATH}${lib}' uses a reserved per-component file name -- refusing to ship a lib that would shadow the component script in dom0 cwd." >&2
+				exit 1
+				;;
+		esac
 		LIB_FILES="${LIB_FILES}${lib} "
 	done <<< "${listing}"
 	echo "Helper libraries discovered: ${LIB_FILES:-<none>}"
@@ -749,6 +773,19 @@ function validateAllQubes() {
 			echo "ERROR: refusing unsafe component name from ${REPO_VM}: '${cname}'" >&2
 			exit 1
 		fi
+		# Reserve the trailing-flag tokens. The flag-stripping loop below (and
+		# the matching one in installQube) consumes any trailing 'offline' /
+		# 'no-handoff' arg as a flag, NOT as a component. A component dir
+		# literally named 'offline' or 'no-handoff' placed last in a spec
+		# would therefore be silently classified as a flag and dropped from
+		# the component list -- the qube would build without that component
+		# and without any error. Refuse the namespace collision up front.
+		case "${cname}" in
+			offline|no-handoff)
+				echo "ERROR: component name '${cname}' collides with a trailing-flag token in qube specs -- rename the component directory." >&2
+				exit 1
+				;;
+		esac
 		available_components+="${cname} "
 	done <<< "${raw_components}"
 
