@@ -91,7 +91,7 @@ After install:
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `orange`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.
 - From any non-browser qube, run `qvm-open-in-vm A-brave https://example.com` (or click an http(s) link inside the qube) — it should open in `A-brave`.
-- Reboot any app qube; afterwards `~/QubesIncoming` and `~/Downloads` should be empty (the boot/shutdown cleanup service).
+- Reboot any app qube; afterwards `~/QubesIncoming` should be gone entirely and `~/Downloads` should still exist but be empty (the boot/shutdown cleanup service — `folder:` removes the directory, `contents:` empties it but keeps it). Confirm `/usr/sbin/seqs-cleanup` exists in the app qube (not just the template) and `systemctl status seqs-cleanup` is not failed.
 
 ## 6. Ongoing maintenance
 

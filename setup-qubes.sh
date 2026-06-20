@@ -116,9 +116,14 @@ BROWSER_DESKTOP="open-links-in-browser-qube.desktop"
 
 # Transient-directory cleanup at app-qube boot and shutdown, via a systemd
 # service installed into each template. Empty array disables.
+#
+# Each entry is "MODE:PATH" where MODE selects what gets removed:
+#   folder   -- delete the directory itself, contents and all (rm -rf PATH)
+#   contents -- delete everything inside PATH but keep the directory (so apps
+#               that expect e.g. ~/Downloads to exist don't break)
 CLEANUP_DIRS=(
-	"/home/user/QubesIncoming"
-	"/home/user/Downloads"
+	"folder:/home/user/QubesIncoming"
+	"contents:/home/user/Downloads"
 )
 
 # Per-qube build timeout in seconds. A normal component-heavy build (e.g.
@@ -899,32 +904,51 @@ function validateAllQubes() {
 # seqs-cleanup script runs `rm -rf` as root on every app-qube boot AND
 # shutdown, so a typo here is destructive on a recurring schedule.
 #
-# Rule: every entry must be an absolute path strictly under /home/user/ with
-# at least one extra non-empty segment, and may not contain a '..' component.
-# This bounds the blast radius to the qube's user home and refuses obvious
-# footguns like "/home/user", "/etc", "/" or "/home/user/../etc".
+# Rule: every entry is "MODE:PATH"; MODE must be 'folder' or 'contents', and
+# PATH must be an absolute path strictly under /home/user/ with at least one
+# extra non-empty segment, and may not contain a '..' component. This bounds
+# the blast radius to the qube's user home and refuses obvious footguns like
+# "/home/user", "/etc", "/" or "/home/user/../etc".
 function validateCleanupDirs() {
-	local d errors=0
-	for d in "${CLEANUP_DIRS[@]}"; do
-		[ -z "${d}" ] && continue
-		# Must begin with /home/user/ and have a non-empty segment after it;
-		# the [^/] guards against a trailing-slash-only entry like "/home/user/".
+	local entry mode d errors=0
+	for entry in "${CLEANUP_DIRS[@]}"; do
+		[ -z "${entry}" ] && continue
+		# An entry without a ':' has no mode; "${entry%%:*}" would then equal
+		# the whole string and the path "${entry#*:}" would too, so guard on
+		# the colon explicitly rather than letting a mode-less path through.
+		if [[ "${entry}" != *:* ]]; then
+			echo "ERROR: CLEANUP_DIRS entry '${entry}' is missing a 'MODE:' prefix (folder: or contents:)." >&2
+			errors=$((errors+1))
+			continue
+		fi
+		mode="${entry%%:*}"
+		d="${entry#*:}"
+		# MODE must be one of the two known cleanup behaviours.
+		if [[ "${mode}" != "folder" && "${mode}" != "contents" ]]; then
+			echo "ERROR: CLEANUP_DIRS entry '${entry}' has unknown mode '${mode}' (expected folder or contents)." >&2
+			errors=$((errors+1))
+			continue
+		fi
+		# PATH must begin with /home/user/ and have a non-empty segment after
+		# it; the [^/] guards against a trailing-slash-only entry like
+		# "/home/user/".
 		if ! [[ "${d}" =~ ^/home/user/[^/].* ]]; then
-			echo "ERROR: CLEANUP_DIRS entry '${d}' is not strictly under /home/user/." >&2
+			echo "ERROR: CLEANUP_DIRS entry '${entry}' path is not strictly under /home/user/." >&2
 			errors=$((errors+1))
 			continue
 		fi
 		# Reject any '..' segment so paths like /home/user/../etc cannot
 		# escape the bound check above.
 		if [[ "${d}" == *..* ]]; then
-			echo "ERROR: CLEANUP_DIRS entry '${d}' contains '..'; refusing." >&2
+			echo "ERROR: CLEANUP_DIRS entry '${entry}' path contains '..'; refusing." >&2
 			errors=$((errors+1))
 		fi
 	done
 	if [ "${errors}" -gt 0 ]; then
 		echo "Refusing to install the boot/shutdown cleanup service with unsafe" >&2
-		echo "CLEANUP_DIRS entries. Each entry must be an absolute path strictly" >&2
-		echo "under /home/user/ with at least one extra path segment and no '..'." >&2
+		echo "CLEANUP_DIRS entries. Each entry must be 'MODE:PATH' where MODE is" >&2
+		echo "folder or contents and PATH is an absolute path strictly under" >&2
+		echo "/home/user/ with at least one extra path segment and no '..'." >&2
 		exit 1
 	fi
 }
@@ -935,19 +959,26 @@ function validateCleanupDirs() {
 function installCleanupService() {
 	local TEMPLATE_VM="${1}"
 
-	# build a shell-quoted, space-separated directory list from the config.
-	# printf %q escapes $, `, \, ", spaces, quotes etc. so the generated
-	# seqs-cleanup script can't be hijacked by a path containing shell
-	# metacharacters (CLEANUP_DIRS is dom0-side config, so the worst case
-	# is self-inflicted, but the cleanup runs as root and is worth quoting
-	# robustly).
-	local dirs="" d esc
-	for d in "${CLEANUP_DIRS[@]}"; do
-		[ -n "${d}" ] || continue
+	# build two shell-quoted, space-separated path lists from the config:
+	# one for 'folder' entries (delete the directory itself) and one for
+	# 'contents' entries (empty the directory but keep it). printf %q escapes
+	# $, `, \, ", spaces, quotes etc. so the generated seqs-cleanup script
+	# can't be hijacked by a path containing shell metacharacters
+	# (CLEANUP_DIRS is dom0-side config, so the worst case is self-inflicted,
+	# but the cleanup runs as root and is worth quoting robustly). Entries are
+	# already validated as 'MODE:PATH' by validateCleanupDirs.
+	local folder_dirs="" contents_dirs="" entry mode d esc
+	for entry in "${CLEANUP_DIRS[@]}"; do
+		[ -n "${entry}" ] || continue
+		mode="${entry%%:*}"
+		d="${entry#*:}"
 		printf -v esc '%q' "${d}"
-		dirs="${dirs} ${esc}"
+		case "${mode}" in
+			folder)   folder_dirs="${folder_dirs} ${esc}" ;;
+			contents) contents_dirs="${contents_dirs} ${esc}" ;;
+		esac
 	done
-	if [ -z "${dirs}" ]; then
+	if [ -z "${folder_dirs}" ] && [ -z "${contents_dirs}" ]; then
 		echo "no cleanup directories configured -- skipping ${TEMPLATE_VM}"
 		return 0
 	fi
@@ -966,7 +997,14 @@ function installCleanupService() {
 	# propagates to every downstream app qube. Now: any qubesdb-read
 	# failure or any value other than the explicit AppVM/DispVM set is
 	# treated as "do nothing".
-	vmRun -u root -p ${TEMPLATE_VM} "cat > /usr/local/bin/seqs-cleanup && chmod 0755 /usr/local/bin/seqs-cleanup" <<EOF
+	# IMPORTANT: install the script to /usr/sbin, NOT /usr/local/bin. In a
+	# TemplateBased AppVM/DispVM, /usr/local is bind-mounted to the qube's own
+	# private volume (/rw/usrlocal) and does NOT inherit the template's
+	# /usr/local -- so a script written there in the template is invisible to
+	# every app qube, the systemd unit's ExecStart/ExecStop fail 203/EXEC, and
+	# nothing is ever wiped. /usr/sbin lives on the root (template) volume and
+	# IS inherited by app qubes, so the unit can actually find the script.
+	vmRun -u root -p ${TEMPLATE_VM} "cat > /usr/sbin/seqs-cleanup && chmod 0755 /usr/sbin/seqs-cleanup" <<EOF
 #!/bin/sh
 # SEQS: delete transient directories on app-qube boot and shutdown.
 # Generated by setup-qubes.sh -- edit the SEQS repo, not this copy.
@@ -975,8 +1013,15 @@ case "\$vmtype" in
 	AppVM|DispVM) ;;   # proceed
 	*) exit 0 ;;       # template, standalone, unknown, or read failure: do nothing
 esac
-for d in ${dirs}; do
+# 'folder' entries: remove the directory itself, contents and all.
+for d in ${folder_dirs}; do
 	rm -rf -- "\$d"
+done
+# 'contents' entries: remove everything inside (including dotfiles) but keep
+# the directory itself, so apps that expect the dir to exist don't break.
+# -mindepth 1 excludes the directory itself; -delete handles the rest.
+for d in ${contents_dirs}; do
+	[ -d "\$d" ] && find "\$d" -mindepth 1 -delete
 done
 exit 0
 EOF
@@ -990,8 +1035,8 @@ RequiresMountsFor=/home
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/bin/seqs-cleanup
-ExecStop=/usr/local/bin/seqs-cleanup
+ExecStart=/usr/sbin/seqs-cleanup
+ExecStop=/usr/sbin/seqs-cleanup
 
 [Install]
 WantedBy=multi-user.target
