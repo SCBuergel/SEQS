@@ -648,20 +648,37 @@ EOF
 	installRootFile "${policy}" "${content}"$'\n'
 }
 
-# setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM}
-function setBrowserQube() {
-	local APP_VM="${1}"
+# installBrowserHandler TEMPLATE_VM -- install the link-handoff .desktop
+# handler into TEMPLATE_VM's /usr/share/applications/. Run in the template
+# phase so the file lands on the root volume, which app qubes inherit and
+# which persists across reboots.
+#
+# CRITICAL: this MUST go into the template, not the app qube. /usr/share is on
+# the root volume; in a running AppVM that volume is a read-only template
+# snapshot plus a *volatile* copy-on-write layer that is DISCARDED on shutdown.
+# Writing the handler into the app qube (the previous behaviour) meant it
+# vanished the moment the qube powered off -- and the installer shuts each app
+# qube down as its last build step -- so the file was gone before the user
+# ever clicked a link, while xdg's persistent default (in ~/.config, on the
+# private volume) kept pointing at the now-missing .desktop. Installing it in
+# the template is also exactly where the rest of SEQS puts its per-component
+# menu launchers (see fetchRunClean's desktop install).
+#
+# The handler is identical for every qube (Exec references the fixed
+# ${BROWSER_VM}), so it is installed into every template unconditionally;
+# whether a given app qube actually hands links off is gated per-qube by the
+# xdg default set in setBrowserQube and enforced at the dom0 boundary by the
+# qubes.OpenURL allow/deny policy -- the mere presence of the .desktop does
+# nothing on its own.
+function installBrowserHandler() {
+	local TEMPLATE_VM="${1}"
 
-	echo "configuring ${APP_VM} to open links in ${BROWSER_VM}..."
-
-	# Install the link-handoff handler to /usr/share/applications/ as root,
-	# mode 0644. Putting it in the user's ~/.local/share/applications/
-	# (the previous location) let anything running as 'user' rewrite the
-	# Exec= line to divert links to a different qube or a local sniffer.
-	# Now the file is root-owned and read-only for the qube user; xdg can
-	# still resolve it (the system dir is on XDG_DATA_DIRS) but the user
-	# cannot modify it. This matches where the rest of SEQS installs
-	# per-component menu launchers (see fetchRunClean's desktop install).
+	# Install as root, mode 0644. Putting it in the user's
+	# ~/.local/share/applications/ (an even earlier location) let anything
+	# running as 'user' rewrite the Exec= line to divert links to a different
+	# qube or a local sniffer. Now the file is root-owned and read-only for
+	# the qube user; xdg can still resolve it (the system dir is on
+	# XDG_DATA_DIRS) but the user cannot modify it.
 	# MimeType: ONLY http/https are forwarded to the browser qube. An earlier
 	# version registered x-scheme-handler/unknown -- which is xdg's catch-all
 	# for any URL scheme the system does not explicitly know -- so any
@@ -673,7 +690,8 @@ function setBrowserQube() {
 	# policy is web links specifically; widening to "every unknown scheme"
 	# gave any qube a silent channel for crafted URLs at A-brave from any
 	# code that uses xdg-open.
-	vmRun -u root -p ${APP_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
+	echo "installing link-handoff handler in ${TEMPLATE_VM}..."
+	vmRun -u root -p ${TEMPLATE_VM} "cat > /usr/share/applications/${BROWSER_DESKTOP} && chown root:root /usr/share/applications/${BROWSER_DESKTOP} && chmod 0644 /usr/share/applications/${BROWSER_DESKTOP}" <<EOF
 [Desktop Entry]
 Encoding=UTF-8
 Name=Open links in ${BROWSER_VM}
@@ -684,6 +702,19 @@ Type=Application
 Categories=Network;WebBrowser;
 MimeType=x-scheme-handler/http;x-scheme-handler/https;
 EOF
+}
+
+# setBrowserQube APP_VM -- make APP_VM open all web links in ${BROWSER_VM} by
+# setting xdg's default web browser to the handoff handler. The handler file
+# itself is installed once per template by installBrowserHandler; here we only
+# flip the per-qube default. xdg-settings writes to ~/.config/mimeapps.list,
+# which is on the private volume and therefore persists across reboots -- so
+# this call must run per app qube, not in the template (the template's /home
+# is not inherited by app qubes).
+function setBrowserQube() {
+	local APP_VM="${1}"
+
+	echo "configuring ${APP_VM} to open links in ${BROWSER_VM}..."
 
 	vmRun -p ${APP_VM} "xdg-settings set default-web-browser ${BROWSER_DESKTOP}"
 }
@@ -1172,6 +1203,7 @@ function installQube() {
 			esac
 		done
 
+		installBrowserHandler ${TEMPLATE_VM}
 		installCleanupService ${TEMPLATE_VM}
 
 		echo "shutting down template VM..."
