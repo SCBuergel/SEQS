@@ -63,6 +63,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
 - **Established by:** 📝 Your choice of qube; configurable at the top of `setup-qubes.sh`.
 - **Residual risk:** dom0 runs whatever this qube serves (see the cat hack below). A compromised `REPO_VM` = compromised dom0. A dedicated, minimal qube is preferable to a daily-driver.
+- **Disclaimer for the operator:** On an **absolutely fresh Qubes install**, the default `personal` qube has no usage history and is a fine `REPO_VM` out of the box. The default exists for that case. But if `personal` is **actually in use** — browsing, opening documents, holding files — it is a daily-driver attack surface and should **not** be the build's root of trust. Replace it: host the repo in a dedicated, minimal, network-light qube (e.g. a fresh AppVM on a trusted template used only for this purpose) and set `REPO_VM` at the top of `setup-qubes.sh` to it. The smaller and less-exposed the repo qube, the smaller the "REPO_VM = dom0" blast radius.
 
 ### The dom0 "cat hack" copy
 - **Trust assumption:** `qvm-run -p REPO_VM cat <file>` returns the genuine file.

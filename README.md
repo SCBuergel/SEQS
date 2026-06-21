@@ -38,8 +38,10 @@ I set up a template VM for every software that I want to use and then create an 
 
 **WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understand everything and consider all actions to be safe!**
 
+> **A note on which qube hosts the repo (`REPO_VM`, default `personal`).** dom0 runs whatever this qube serves, so it is the root of trust for the entire build — a compromise of it is a compromise of dom0 and every template. On an **absolutely fresh Qubes install**, the stock `personal` qube has done nothing yet and is a perfectly fine default. But if your `personal` qube is **actually in use** — it browses the web, opens documents, holds files — then it is a daily-driver attack surface you do not want as dom0's root of trust. In that case, host the repo in a **dedicated, minimal, network-light qube** (e.g. a fresh AppVM on a trusted template that you use only for this) and set `REPO_VM` at the top of `setup-qubes.sh` accordingly. Don't run the install from a `personal` qube that has a browsing/usage history.
+
 In order to set up everything in an automated fashion:
-1. Download this repo into the home directory of your `personal` app VM
+1. Download this repo into the home directory of your repo qube (`personal` by default — see the note above)
 2. Open dom0 terminal and type the following one-liner (this is a [common hack to copy files from an app VM into dom0](https://www.qubes-os.org/doc/how-to-copy-from-dom0/#copying-to-dom0)):
 ```
 qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' 2>/dev/null > s.sh && chmod +x s.sh && ./s.sh
