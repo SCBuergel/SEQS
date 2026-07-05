@@ -102,13 +102,12 @@ Trust/exposure improvements delivered:
 
 ## TODO — decisions/polish left for you as the author
 
-1. **Documentation is deliberately untouched.** README.md (bootstrap
-   one-liner still fetches `setup-qubes.sh` — that still works, but the
-   config-editing instructions now point at the wrong place), TRUST.md
-   (entries for `vmRun`, `fetchFromVm`, watchdog/rollback are stale; the new
-   trust surface is: one tar transfer + entry validation + the review gate +
-   the qubes-mgmt-salt stack itself), VERIFY-HUMAN.md / VERIFY-LLM.md (file
-   inventory changed).
+1. **Documentation has been updated for the Salt flow** (README install
+   section + config format, TRUST.md §2/§4/weakest-links, VERIFY-HUMAN
+   walkthrough, VERIFY-LLM runnable checks retargeted at the pillar/states).
+   Worth a read-through in your own voice, and re-date TRUST.md if you
+   change claims. The VERIFY-LLM offline sections were re-run against this
+   tree and pass; the live-fingerprint section (§5) still needs network.
 2. **Transfer verification story**: setup-qubes.sh prints the tarball SHA256
    and diffs re-fetches against the installed tree, but the FIRST fetch is
    only hash-displayed, not content-verified. Decide whether to go further:

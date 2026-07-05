@@ -34,7 +34,7 @@
 6. After connecting to wifi, the system update icon should appear in the tray on the top right, run all updates and reboot
 
 ## Install software
-I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `Z-[AppName]` and my app VMs are prefixed `A-[AppName]`. This repository contains a range of scripts that set up template VMs and app VMs for several software packages. In order to create them, you are copying files from an app VM to your dom0.
+I set up a template VM for every software that I want to use and then create an app VM that I actually run for using the software. To keep the Qubes menu and Qubes manager clean, all my template VMs are prefixed `Z-[AppName]` and my app VMs are prefixed `A-[AppName]`. This repository builds them through the Qubes-native Salt management stack: a thin dom0 runner (`setup-qubes.sh`) fetches the repo **once**, installs a Salt state/pillar tree into `/srv`, and then `qubesctl` does all qube creation and software provisioning declaratively. In order to bootstrap, you are copying one file from an app VM to your dom0.
 
 **WARNING: Please note that this is a potential security threat as it exposes your dom0 environment to running a bunch of scripts which I do not guarantee to be safe, so please check all files by yourself and only proceed if you understand everything and consider all actions to be safe!**
 
@@ -46,15 +46,22 @@ In order to set up everything in an automated fashion:
 ```
 qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' 2>/dev/null > s.sh && chmod +x s.sh && ./s.sh
 ```
-The `2>/dev/null` on the `qvm-run` step is deliberate. The fetch happens BEFORE `setup-qubes.sh` exists in dom0 (and therefore before its `vmRun` sanitizer is available), so any bytes the source qube writes to stderr land directly on the dom0 terminal. A compromised `personal` qube could otherwise emit ANSI / CSI / OSC sequences (window-title smuggling, OSC 52 clipboard write, repaint earlier lines) during the `cat` — the same class of attack `vmRun` later defends against on every VM→dom0 path. Dropping stderr closes that bootstrap window. If the `cat` fails, `s.sh` ends up empty/partial and `./s.sh` fails loudly enough on its own.
+The `2>/dev/null` on the `qvm-run` step is deliberate. The fetch happens BEFORE `setup-qubes.sh` exists in dom0 (and therefore before its `sanitize()` terminal filter is available), so any bytes the source qube writes to stderr land directly on the dom0 terminal. A compromised `personal` qube could otherwise emit ANSI / CSI / OSC sequences (window-title smuggling, OSC 52 clipboard write, repaint earlier lines) during the `cat` — the same class of attack `sanitize()` later defends against on every display path. Dropping stderr closes that bootstrap window. If the `cat` fails, `s.sh` ends up empty/partial and `./s.sh` fails loudly enough on its own.
 3. Some software packages require you to reboot the app VM once to actually work.
 
-The script will download the individual install scripts into dom0 and from there to newly created template VMs. The template VMs are then used to set up app VMs for proper isolation.
+What the runner then does, in order:
 
-Control the actual software packages that are installed at the bottom of the `setup-qubes.sh` file.
+1. **Fetch (once):** a single `tar` transfer of `salt/` + `install-scripts/` from the repo qube, with every archive entry validated (regular files/dirs only, safe charset, no `..`) before extraction. The transfer SHA256 is printed for out-of-band comparison.
+2. **Review gate:** on a re-fetch the incoming tree is diffed against what is already installed in `/srv` and you must type `CONTINUE`; the first fetch asks for `CONTINUE` after the hash display. For a full audit, run `./setup-qubes.sh --fetch-only`, read `/srv/salt/seqs` and `/srv/pillar/seqs` at leisure, then apply with `./setup-qubes.sh --skip-fetch` (which never contacts the repo qube).
+3. **dom0 state** (`qubesctl state.apply seqs.dom0`): validates the whole configuration up front, installs the qrexec policies, clones templates and creates app qubes. Air-gapped (`offline`) qubes are independently re-verified by the runner before anything is provisioned.
+4. **Per-qube provisioning** (`qubesctl --skip-dom0 --targets=... state.apply seqs.qube`): installs the software inside each template, then each app qube, through Qubes' disposable management VM — dom0 never executes or parses anything a qube produces.
+
+Re-running `setup-qubes.sh` **converges**: finished components are skipped via completion markers in `/rw/config/seqs/`, existing qubes are reconfigured rather than rebuilt, and qubes not created by SEQS are refused (no-clobber via the `seqs-managed` qvm-feature).
+
+Control the actual software packages that are installed in `salt/pillar/seqs/config.sls` (installed to `/srv/pillar/seqs/config.sls`) — all configuration lives in that one file.
 
 ### Composing qubes from components
-Every qube the setup builds is composed by `installQube` from one or more **components** in `install-scripts/components/<name>/`. Single-tool qubes are 1-component; mix-and-match qubes (wallet, developer) list several. The composer clones the base template, runs each component's `template-vm.sh` (system-wide install) in the template, installs any `menu.desktop` it carries, then runs each `app-vm.sh` (per-app-qube setup) in the app qube, and wires up the browser-link policy and cleanup service.
+Every qube the setup builds is composed from one or more **components** in `install-scripts/components/<name>/`. Single-tool qubes are 1-component; mix-and-match qubes (wallet, developer) list several. The `seqs.dom0` state clones the base template and creates the app qube; the `seqs.qube` state then runs each component's `template-vm.sh` (system-wide install) in the template, installs any `menu.desktop` it carries, runs each `app-vm.sh` (per-app-qube setup) in the app qube, and wires up the browser-link policy and cleanup service.
 
 Available components today:
 
@@ -77,24 +84,23 @@ Available components today:
 | `vscode`       | Visual Studio Code |
 | `claude-code`  | Claude Code (native installer) |
 
-**Three config blocks at the top of `setup-qubes.sh`:**
+**Configuration lives in `salt/pillar/seqs/config.sls`:**
 
-`WALLET_QUBES` and `DEV_QUBES` — arrays of qube specs, one per line, format `"NAME COLOR component component ..."`. Add a line to spin up a new combination; edit a line to add/remove components from an existing qube:
+`qube_list` — one entry per qube, format `{'name': ..., 'label': ..., 'components': [...]}` plus optional flags. Add an entry to spin up a new combination; edit an entry to add/remove components from an existing qube:
 ```
-WALLET_QUBES=(
-    "wallets  orange  ledger trezor brave-extension-metamask brave-extension-rabby"
-)
-DEV_QUBES=(
-    "dev-full    gray  docker python node vscode claude-code"
-    "dev-backend gray  docker python"
-)
+{%- set qube_list = [
+  {'name': 'keepass',       'label': 'black',  'components': ['keepass'], 'offline': True},
+  {'name': 'dev-full',      'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
+  {'name': 'wallet-ledger', 'label': 'gray',   'components': ['ledger', 'brave-extension-rabby'], 'no_handoff': True},
+] %}
 ```
+Per-qube flags: `'offline': True` detaches the app qube from netvm (air gap; implies `no_handoff`, and the runner re-verifies the air gap after the dom0 apply); `'no_handoff': True` disables the browser-link handoff for that qube both at the qube's xdg config and via a dom0 qrexec deny rule. Duplicate names abort the pre-flight.
 
-`BRAVE_EXTENSIONS` — name → Chrome Web Store ID for each Brave wallet extension. Reference them in wallet qube specs as `brave-extension-<name>`; the composer auto-installs Brave on the first such reference in a qube. To **enable** an extension in a qube: add `brave-extension-<name>` to that qube's `WALLET_QUBES` line. To **retire** an extension entirely: remove its line from `BRAVE_EXTENSIONS`. To **add** a new extension (e.g. Ambire): add a `BRAVE_EXTENSIONS` line, then reference it as `brave-extension-ambire` in any wallet qube.
+`brave_extensions` — name → Chrome Web Store ID for each Brave wallet extension. Reference them in qube specs as `brave-extension-<name>`; Brave is auto-installed on the first such reference in a qube. To **enable** an extension in a qube: add `brave-extension-<name>` to that qube's component list. To **retire** an extension entirely: remove its line from `brave_extensions`. To **add** a new extension (e.g. Ambire): add a `brave_extensions` line, then reference it as `brave-extension-ambire` in any wallet qube.
 
-Single-component qubes (Brave, KeePass, Signal, Telegram, Element, OpenOffice, Xournal++) are direct `installQube NAME COLOR component` calls at the bottom of `setup-qubes.sh`. A trailing `offline` flag (used for KeePass) detaches the app qube from netvm.
+After editing the config, re-run `./setup-qubes.sh` (or edit the installed copy in `/srv/pillar/seqs/config.sls` in dom0 and re-run with `--skip-fetch`).
 
-> **Browser-link handoff requires `A-brave`.** `setup-qubes.sh` configures every non-browser qube to open web links in `BROWSER_VM` (default `A-brave`) via the dom0 qrexec policy `qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `SINGLE_QUBES`, also change `BROWSER_VM` at the top of the script to a browser qube you do have — otherwise links from every other qube will fail to open.
+> **Browser-link handoff requires `A-brave`.** The `seqs.dom0` state configures every non-browser qube to open web links in `browser_vm` (default `A-brave`) via the dom0 qrexec policy `qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `qube_list`, also change `browser_vm` in `config.sls` to a browser qube you do have — the pre-flight refuses a `browser_vm` that is neither configured nor already existing.
 
 ### Adding a new component
 Create `install-scripts/components/<name>/` containing an optional `template-vm.sh` (system-wide install in the template), an optional `app-vm.sh` (per-app-VM setup in `$HOME`/`/rw`), and an optional `menu.desktop` (installed as `/usr/share/applications/<name>.desktop`). Reference `<name>` in any qube spec. If the component needs Brave, it can `source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave` for idempotent installation).
@@ -105,6 +111,7 @@ The following script cleans up VMs while debugging and setting up installers:
 ```
 ./delete-vms.sh keepass telegram wallets
 ```
+Note that re-running `setup-qubes.sh` converges on its own — you only need `delete-vms.sh` to rebuild a qube from scratch (a deleted qube's `seqs-managed` marker and completion markers die with it, so the next run recreates it cleanly).
 
 ### Wireguard BW monitor in tray
 ![Screenshot of Qubes tray showing download and upload stats](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
