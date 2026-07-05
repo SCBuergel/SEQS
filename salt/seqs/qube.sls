@@ -61,6 +61,11 @@ seqs-noop:
 {% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\.desktop$') is none %}
 {%   do errors.append("unsafe browser_desktop '" ~ browser_desktop ~ "'") %}
 {% endif %}
+{# timeout is interpolated into the cmd.run states below as a bare YAML
+   value -- anything but a number could smuggle extra YAML keys in. #}
+{% if timeout is not number %}
+{%   do errors.append("component_timeout must be a number, got '" ~ timeout ~ "'") %}
+{% endif %}
 {% if role == 'template' %}
 {%   for e in cleanup_dirs %}
 {%     if e.get('mode') not in ['folder', 'contents']

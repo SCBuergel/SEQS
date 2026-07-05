@@ -129,9 +129,13 @@ runQubesctl() {
 	sudo qubesctl "$@" 2>&1 | sanitize | tee "${out}"
 	rc="${PIPESTATUS[0]}"
 	# 'Result: False' is printed per failed state; the summary 'Failed: N'
-	# may carry stripped-color residue like '[0;31m' before the count.
+	# is only interesting when N > 0. Salt colorizes the VALUE, so after
+	# sanitize() strips the ESC bytes these lines read e.g.
+	# 'Result: [0;31mFalse' / 'Failed:   [0;31m1[0;39m' -- allow any mix of
+	# whitespace and color residue between the key and the value, but never
+	# skip over a real character (a '0' count cannot false-positive).
 	if [ "${rc}" -eq 0 ] \
-			&& grep -qE 'Result:[[:space:]]*False|Failed:[[:space:]]*(\[[0-9;]*m)?[1-9]' "${out}"; then
+			&& grep -qE 'Result:([[:space:]]|\[[0-9;]*m)*False|Failed:([[:space:]]|\[[0-9;]*m)*[1-9]' "${out}"; then
 		echo "NOTE: qubesctl exited 0 but its output reports failed states -- treating as failure." >&2
 		rc=1
 	fi
@@ -252,9 +256,14 @@ fetchSaltTree() {
 
 	echo "Installing salt tree into ${SALT_TREE} and ${PILLAR_TREE}..."
 	sudo rm -rf "${SALT_TREE}" "${PILLAR_TREE}" || die "could not clear old trees"
-	sudo mkdir -p /srv/salt /srv/pillar || die "mkdir failed"
-	sudo cp -r "${newsalt}" "${SALT_TREE}" || die "install of ${SALT_TREE} failed"
-	sudo cp -r "${newpillar}" "${PILLAR_TREE}" || die "install of ${PILLAR_TREE} failed"
+	# Marker first: .seqs-managed means "SEQS owns this path", NOT "tree is
+	# complete" -- if the copy below is interrupted, the next run must wipe
+	# and reinstall its own half-written tree, not refuse it (same lockout
+	# class the qube intent markers in seqs.dom0 prevent).
+	sudo mkdir -p "${SALT_TREE}" "${PILLAR_TREE}" || die "mkdir failed"
+	sudo touch "${SALT_TREE}/.seqs-managed" "${PILLAR_TREE}/.seqs-managed" || die "marker write failed"
+	sudo cp -r "${newsalt}/." "${SALT_TREE}/" || die "install of ${SALT_TREE} failed"
+	sudo cp -r "${newpillar}/." "${PILLAR_TREE}/" || die "install of ${PILLAR_TREE} failed"
 	sudo chown -R root:root "${SALT_TREE}" "${PILLAR_TREE}"
 	sudo chmod -R go-w "${SALT_TREE}" "${PILLAR_TREE}"
 
@@ -273,8 +282,25 @@ fetchSaltTree() {
 # same strictness as the old confirmPolicyOverwrite, enforced BEFORE salt
 # runs at all.
 confirmPolicyTakeover() {
+	# 30-user-input.policy is only ever written by seqs.dom0 on Qubes 4.3
+	# with sys-usb present (mirrors the gate in salt/seqs/dom0.sls). On any
+	# other system a hand-written copy would trigger a recurring takeover
+	# prompt for a file salt never touches -- skip it there. Only skip when
+	# the release is POSITIVELY known: an unreadable release keeps the
+	# prompt (fail safe, worst case one unnecessary confirmation).
+	local usb_applies=1 release
+	release="$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)" || true
+	if [ -n "${release}" ]; then
+		if [ "${release}" != "4.3" ] || ! qvm-check -q -- sys-usb >/dev/null 2>&1; then
+			usb_applies=0
+		fi
+	fi
+
 	local p unmanaged=()
 	for p in "${POLICY_FILES[@]}"; do
+		if [ "${usb_applies}" -eq 0 ] && [ "${p}" = "/etc/qubes/policy.d/30-user-input.policy" ]; then
+			continue
+		fi
 		if [ -e "${p}" ] && ! sudo grep -q "${MANAGED_MARKER}" "${p}"; then
 			unmanaged+=("${p}")
 		fi
@@ -342,9 +368,13 @@ verifyAirgap() {
 	local vm nv
 	for vm in "${OFFLINE_TARGETS[@]}"; do
 		nv="$(qvm-prefs -- "${vm}" netvm 2>/dev/null || true)"
-		if [ -n "${nv}" ] && [ "${nv}" != "None" ]; then
-			die "offline qube '${vm}' still has netvm '${nv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)"
-		fi
+		# qvm-prefs prints an unset netvm as an empty string on current
+		# releases; accept 'None'/'none' spellings too. Anything else is a
+		# live netvm.
+		case "${nv,,}" in
+			''|none) ;;
+			*) die "offline qube '${vm}' still has netvm '${nv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;
+		esac
 	done
 	if [ "${#OFFLINE_TARGETS[@]}" -gt 0 ]; then
 		echo "Air gap verified: no netvm on ${OFFLINE_TARGETS[*]}."

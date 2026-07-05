@@ -295,7 +295,7 @@ seqs-app-{{ name }}:
 seqs-offline-{{ name }}:
   cmd.run:
     - name: qvm-prefs -- {{ app }} netvm none
-    - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; [ -z "$n" ] || [ "$n" = "None" ]
+    - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}
