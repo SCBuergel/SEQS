@@ -93,6 +93,23 @@
 {%         do errors.append("qube '" ~ name ~ "' references unknown component '" ~ comp ~ "' (no /srv/salt/seqs/files/components/" ~ comp ~ "/)") %}
 {%       endif %}
 {%     endfor %}
+{#     Optional outbound allowlist ('firewall' key): validate before any
+       entry is interpolated into a qvm-firewall command below. #}
+{%     set fw = q.get('firewall') %}
+{%     if fw is not none %}
+{%       if fw is string or fw is not sequence %}
+{%         do errors.append("qube '" ~ name ~ "': 'firewall' must be a list of allowlist entries") %}
+{%       else %}
+{%         if q.get('offline') %}
+{%           do errors.append("qube '" ~ name ~ "' sets both 'offline' and 'firewall' -- contradictory: offline removes the netvm entirely, there is no egress to filter") %}
+{%         endif %}
+{%         for e in fw %}
+{%           if e not in ['dns', 'icmp'] and (e | string | regex_match('^[A-Za-z0-9._-]+(:[0-9]{1,5})?$')) is none %}
+{%             do errors.append("qube '" ~ name ~ "' has invalid firewall entry '" ~ e ~ "' (expected hostname/IPv4 with optional :port, or the tokens 'dns' / 'icmp')") %}
+{%           endif %}
+{%         endfor %}
+{%       endif %}
+{%     endif %}
 {#     No-clobber guard: the old script refused to touch a pre-existing
        Z-NAME / A-NAME. Salt converges instead of refusing, so we only adopt
        qubes that carry the 'seqs-managed' feature this state sets right
@@ -296,6 +313,54 @@ seqs-offline-{{ name }}:
   cmd.run:
     - name: qvm-prefs -- {{ app }} netvm none
     - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+
+{%   set fw = q.get('firewall') %}
+{%   if fw is not none %}
+{%     set fwrules = [] %}
+{%     for e in fw %}
+{%       if e == 'dns' %}{% do fwrules.append('accept specialtarget=dns') %}
+{%       elif e == 'icmp' %}{% do fwrules.append('accept proto=icmp') %}
+{%       elif ':' in e %}{% set fwh = e.split(':', 1) %}{% do fwrules.append('accept dsthost=' ~ fwh[0] ~ ' proto=tcp dstports=' ~ fwh[1]) %}
+{%       else %}{% do fwrules.append('accept dsthost=' ~ e) %}
+{%       endif %}
+{%     endfor %}
+{%     set fwmarker = 'rules=' ~ (fwrules | join('; ')) %}
+# Outbound allowlist (config 'firewall'): default-deny egress with one
+# accept per entry. Entries were charset-validated in the pre-flight, so
+# the interpolations below cannot break out of the command line. Hostname
+# rules are resolved by the qubes-firewall service in the netvm, not in
+# dom0. qvm-firewall does NOT gate qrexec -- the OpenURL back-channel is
+# closed separately via no_handoff. The marker file makes an unchanged
+# ruleset a no-op on re-runs; editing the config rewrites it.
+seqs-firewall-{{ name }}:
+  cmd.run:
+    - name: |
+        set -e
+        qvm-firewall -- {{ app }} reset
+        qvm-firewall -- {{ app }} del --rule-no 0
+{%     for r in fwrules %}
+        qvm-firewall -- {{ app }} add {{ r }}
+{%     endfor %}
+        qvm-firewall -- {{ app }} add drop
+        mkdir -p /var/lib/seqs/firewall
+        printf '%s' '{{ fwmarker }}' > /var/lib/seqs/firewall/{{ app }}
+    - unless: test "$(cat /var/lib/seqs/firewall/{{ app }} 2>/dev/null)" = '{{ fwmarker }}'
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   elif salt['file.file_exists']('/var/lib/seqs/firewall/' ~ app) %}
+# The 'firewall' key was removed from this qube's config: revert to the
+# Qubes default (allow-all) and drop the marker, so config and reality
+# converge. Only fires while a SEQS marker exists -- a ruleset the operator
+# set by hand (no marker) is never touched.
+seqs-firewall-clear-{{ name }}:
+  cmd.run:
+    - name: |
+        set -e
+        qvm-firewall -- {{ app }} reset
+        rm -f /var/lib/seqs/firewall/{{ app }}
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}

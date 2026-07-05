@@ -112,7 +112,9 @@ verify_imported_keyring_matches "${ELEMENT_KEY_FPR}"
 # ─── Install the keyring (binary form apt expects) and the repository ────────
 gpg --export "${ELEMENT_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
 
-echo "deb [signed-by=${KEYRING}] https://packages.element.io/debian/ default main" \
+# arch=amd64: same restriction Signal/Brave/VS Code carry -- apt then never
+# fetches or trusts other-architecture indexes from this origin.
+echo "deb [arch=amd64 signed-by=${KEYRING}] https://packages.element.io/debian/ default main" \
 	| sudo tee /etc/apt/sources.list.d/element-io.list > /dev/null
 
 # ─── Lock the Element repo to its own packages ───────────────────────────────

@@ -34,8 +34,15 @@ echo "Installing KeePassXC ${KEEPASSXC_VERSION} from AppImage"
 sudo apt-get update
 # gpg: needed to verify the release signature below
 command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
-# AppImage runtime needs FUSE 2 (libfuse2t64 on Debian 13, libfuse2 on Debian 12)
-sudo apt-get install -y libfuse2t64 2>/dev/null || sudo apt-get install -y libfuse2
+# AppImage runtime needs FUSE 2 (libfuse2t64 on Debian 13, libfuse2 on
+# Debian 12). Pick by availability instead of `install || install` with
+# suppressed stderr -- that pattern hid the real apt error when the actual
+# install failed for an unrelated reason (proxy down, dpkg lock, ...).
+if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+	sudo apt-get install -y libfuse2t64
+else
+	sudo apt-get install -y libfuse2
+fi
 
 # ─── Throwaway working directories ───────────────────────────────────────────
 GNUPGHOME="$(mktemp -d)"

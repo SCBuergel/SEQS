@@ -7,10 +7,13 @@ echo "Adding Ledger udev rules..."
 
 cat << EOF | sudo tee /etc/udev/rules.d/20-hw1.rules
 # HW.1, Nano
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="2581", ATTRS{idProduct}=="1b7c|2b7c|3b7c|4b7c", TAG+="uaccess", TAG+="udev-acl"
+# MODE 0660 on the usb nodes too (not just hidraw below): without it the
+# node keeps the udev default mode and only the ACL layer restricts access
+# -- same tightening the Trezor rules already carry on their usb lines.
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2581", ATTRS{idProduct}=="1b7c|2b7c|3b7c|4b7c", MODE="0660", TAG+="uaccess", TAG+="udev-acl"
 
 # Blue, NanoS, Aramis, HW.2, Nano X, NanoSP, Stax, Ledger Test,
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", TAG+="uaccess", TAG+="udev-acl"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", MODE="0660", TAG+="uaccess", TAG+="udev-acl"
 
 # Same, but with hidraw-based library (instead of libusb).
 # MODE 0660 + uaccess/udev-acl tags: only root+group can rw via raw perms,
@@ -26,10 +29,17 @@ echo "reloading rules..."
 sudo udevadm control --reload-rules
 
 # Ledger Live AppImage needs FUSE 2 at runtime.
-# Debian 13 ships it as libfuse2t64; Debian 12 as libfuse2.
+# Debian 13 ships it as libfuse2t64; Debian 12 as libfuse2. Pick by
+# availability instead of `install || install` with suppressed stderr --
+# that pattern hid the real apt error when the actual install failed for
+# an unrelated reason (proxy down, dpkg lock, ...).
 echo "installing FUSE 2 runtime for the Ledger Live AppImage..."
 sudo apt-get update
-sudo apt-get install -y libfuse2t64 2>/dev/null || sudo apt-get install -y libfuse2
+if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+	sudo apt-get install -y libfuse2t64
+else
+	sudo apt-get install -y libfuse2
+fi
 
 # curl is needed for the download below.
 sudo apt-get install -y curl

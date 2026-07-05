@@ -29,6 +29,26 @@ Per-qube flags:
   no_handoff: True -- no xdg link-handoff to the browser qube, AND a dom0
                       qrexec deny rule blocks qubes.OpenURL from this qube
                       (see seqs/dom0.sls, 28-browser-suppress.policy).
+  firewall: [...]  -- optional outbound allowlist for the app qube. When the
+                      key is PRESENT the qube gets default-deny egress with
+                      one accept rule per entry (applied via qvm-firewall);
+                      when ABSENT the Qubes default (allow all) is kept, and
+                      a previously applied SEQS allowlist is reverted.
+                      Entries:
+                        'host.example.com'   accept to that host (any port)
+                        '10.137.0.51'        accept to that IPv4
+                        'host:443'           accept tcp to that host:port
+                        'dns'                accept DNS resolution
+                        'icmp'               accept ICMP (ping / path MTU)
+                      'dns' is needed if the qube must resolve hostnames
+                      itself, but DNS is also an exfiltration channel
+                      (tunneling) -- prefer IP entries without 'dns' where
+                      practical. Contradicts 'offline' (validated). Note
+                      qvm-firewall does NOT gate qrexec; the OpenURL
+                      back-channel is closed separately by no_handoff.
+                      Recommended for the wallet qubes once you know your
+                      RPC endpoints, e.g.:
+                        'firewall': ['dns', 'rpc.example.com:443']
 
 Qube specs are a LIST (not a dict) so that a duplicate name cannot silently
 shadow an earlier entry: duplicates are collected into config_errors below

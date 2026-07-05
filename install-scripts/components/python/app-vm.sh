@@ -13,18 +13,25 @@ echo "Installing Python on appVM"
 # an unverified curl|bash; -fsSL at least makes it fail on an HTTP error.
 curl -fsSL https://pyenv.run | bash
 
+# Guarded appends: a re-run (e.g. after deleting the component's
+# /rw/config/seqs marker) must not stack duplicate pyenv blocks into the
+# profile files.
 echo "setting .profile..."
-echo -e "\
+if ! grep -q 'PYENV_ROOT' ~/.profile 2>/dev/null; then
+	echo -e "\
 export PYENV_ROOT=\"\$HOME/.pyenv\"\n\
 command -v pyenv >/dev/null || export PATH=\"\$PYENV_ROOT/bin:\$PATH\"\n\
 eval \"\$(pyenv init -)\"" >> ~/.profile
+fi
 
 echo "reloading .profile twice..."
 source ~/.profile
 source ~/.profile
 
 echo "setting .bashrc..."
-echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
+if ! grep -q 'pyenv virtualenv-init' ~/.bashrc 2>/dev/null; then
+	echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
+fi
 
 echo "installing Python 3.13.13..."
 pyenv install 3.13.13
