@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Mock qvm-check [--running] [-q] [--] NAME. Two backends:
+#   SEQS_MOCK_STATE set -> stateful inventory file, one "<name> running|halted"
+#                          per line, mutated by the qvm-kill/qvm-remove mocks
+#                          (--running additionally requires the running state);
+#   otherwise           -> exit 0 iff NAME is in the space-separated
+#                          SEQS_MOCK_EXISTING list (default: base template only).
+name=""; running=0
+for a in "$@"; do case "$a" in --running) running=1 ;; -q|--) ;; *) name="$a" ;; esac; done
+if [ -n "${SEQS_MOCK_STATE:-}" ]; then
+	[ -f "${SEQS_MOCK_STATE}" ] || exit 1
+	if [ "${running}" -eq 1 ]; then
+		grep -qxF "${name} running" "${SEQS_MOCK_STATE}"
+	else
+		cut -d' ' -f1 "${SEQS_MOCK_STATE}" | grep -qxF "${name}"
+	fi
+	exit $?
+fi
+existing=" ${SEQS_MOCK_EXISTING:-debian-13-xfce} "
+[[ "$existing" == *" $name "* ]] && exit 0 || exit 1

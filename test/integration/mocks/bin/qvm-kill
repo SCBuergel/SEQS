@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Mock qvm-kill NAME: mark the qube halted in the SEQS_MOCK_STATE inventory.
+name=""; for a in "$@"; do case "$a" in -*|--) ;; *) name="$a" ;; esac; done
+[ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 0
+tmp="${SEQS_MOCK_STATE}.tmp"
+sed "s/^${name} running$/${name} halted/" "${SEQS_MOCK_STATE}" > "${tmp}"
+mv "${tmp}" "${SEQS_MOCK_STATE}"

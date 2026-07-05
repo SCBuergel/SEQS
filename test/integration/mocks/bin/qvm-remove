@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Mock qvm-remove [-f] NAME: drop the qube from the SEQS_MOCK_STATE inventory.
+# Exits non-zero for a qube that does not exist, like the real tool.
+name=""; for a in "$@"; do case "$a" in -*|--) ;; *) name="$a" ;; esac; done
+[ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
+grep -q "^${name} " "${SEQS_MOCK_STATE}" || exit 1
+tmp="${SEQS_MOCK_STATE}.tmp"
+grep -v "^${name} " "${SEQS_MOCK_STATE}" > "${tmp}"
+mv "${tmp}" "${SEQS_MOCK_STATE}"
+exit 0

@@ -105,6 +105,13 @@ After editing the config, re-run `./setup-qubes.sh` (or edit the installed copy 
 ### Adding a new component
 Create `install-scripts/components/<name>/` containing an optional `template-vm.sh` (system-wide install in the template), an optional `app-vm.sh` (per-app-VM setup in `$HOME`/`/rw`), and an optional `menu.desktop` (installed as `/usr/share/applications/<name>.desktop`). Reference `<name>` in any qube spec. If the component needs Brave, it can `source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave` for idempotent installation).
 
+## Testing changes
+Before reinstalling on real hardware, run the offline test harness — it renders the Salt states, checks the config against the repo, unit-tests the runner's helpers, and drives the real `setup-qubes.sh` end to end against a mock dom0, all in under a second and with no Qubes:
+```
+./test/run-tests.sh
+```
+This catches the overwhelming majority of "I edited the installer and broke it" mistakes (Jinja/YAML errors, a component referenced but not wired up, prefix drift between config and top files, broken validation branches, shell-syntax slips, tar-validation/air-gap regressions). To see exactly what Salt would generate for a given qube, use `test/render_states.py qube Z-brave`. See [`test/README.md`](test/README.md) for the full layer breakdown and the hardware-bound end-to-end path (Layer 5) that the harness intentionally can't run for you.
+
 ## Helpers
 ### delete-vms.sh
 The following script cleans up VMs while debugging and setting up installers:

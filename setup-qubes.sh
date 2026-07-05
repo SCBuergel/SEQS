@@ -66,13 +66,16 @@ set -uo pipefail
 
 # Qube that holds the SEQS repo. Only contacted during the fetch step.
 # See README: do not use an in-use daily-driver qube for this.
-REPO_VM="personal"
-REPO_PATH="/home/user/SEQS"
+REPO_VM="${SEQS_REPO_VM:-personal}"
+REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 
-SALT_TREE="/srv/salt/seqs"
-PILLAR_TREE="/srv/pillar/seqs"
+# Filesystem roots. The SEQS_* overrides exist so the test harness can run the
+# whole flow inside a scratch directory (see test/integration/); a normal dom0
+# install sets none of them and gets the real /srv + /var/lib/seqs paths.
+SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
+PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
 # Written by the seqs.dom0 state; lists the qubes to provision, in order.
-TARGETS_FILE="/var/lib/seqs/targets"
+TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"
 
 # Policy files owned by the seqs.dom0 state. A file that exists WITHOUT the
 # managed marker was written by the operator or another tool -- never
@@ -396,6 +399,14 @@ shutdownAll() {
 # ════════════════════════════════════════════════════════════════════════════
 # Main
 # ════════════════════════════════════════════════════════════════════════════
+
+# Test hook: when sourced by the unit-test harness with SEQS_SOURCE_ONLY=1, stop
+# here so the helper functions above are available WITHOUT running the
+# installer. `return` succeeds only in a sourced context; a normal `./setup-
+# qubes.sh` invocation never sets the var and falls through to Main unchanged.
+if [ "${SEQS_SOURCE_ONLY:-0}" = "1" ]; then
+	return 0 2>/dev/null || true
+fi
 
 SKIP_FETCH=0
 FETCH_ONLY=0

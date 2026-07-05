@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Mock qvm-run: the installer's ONLY VM->dom0 dataflow is
+#   qvm-run -p REPO_VM "tar -C REPO_PATH -cf - salt install-scripts"
+# Emit that archive on stdout. SEQS_MOCK_TAR (a path) overrides the payload so a
+# scenario can feed a hostile archive; otherwise tar the real repo tree.
+if [ -n "${SEQS_MOCK_TAR:-}" ]; then
+  cat "${SEQS_MOCK_TAR}"
+else
+  tar -C "${SEQS_REPO_ROOT:?SEQS_REPO_ROOT unset}" -cf - salt install-scripts
+fi

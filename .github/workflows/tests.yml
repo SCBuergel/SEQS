@@ -1,0 +1,28 @@
+name: tests
+
+# Runs the Qubes-free layers of the SEQS test harness (lint, salt render,
+# bash units, mock-dom0 integration) on every push / PR. None of this needs a
+# real Qubes machine -- see test/README.md for the hardware-bound Layer 5.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade jinja2 pyyaml
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run test harness
+        run: ./test/run-tests.sh

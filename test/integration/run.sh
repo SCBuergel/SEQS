@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Layer 4 -- integration test: run the REAL setup-qubes.sh end to end against a
+# sandbox dom0 built from mock qvm-*/qubesctl/sudo commands (test/integration/
+# mocks/bin) and scratch /srv + /var/lib paths (SEQS_* overrides).
+#
+# This exercises the parts no amount of Salt-rendering can: the fetch ->
+# tar-validation -> review-gate -> install -> apply -> readTargets ->
+# verifyAirgap control flow of the runner itself. It does NOT prove software
+# installs correctly inside a qube (that needs real Qubes -- see test/README.md
+# "Layer 5").
+
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "${HERE}/../.." && pwd)"
+
+PASS=0; FAIL=0
+ok()  { PASS=$((PASS+1)); }
+bad() { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$*"; }
+
+# A fresh sandbox + environment for one run of setup-qubes.sh.
+new_sandbox() {
+	SBX="$(mktemp -d)"
+	export SEQS_SALT_TREE="${SBX}/srv/salt/seqs"
+	export SEQS_PILLAR_TREE="${SBX}/srv/pillar/seqs"
+	export SEQS_TARGETS_FILE="${SBX}/var/lib/seqs/targets"
+	export SEQS_REPO_VM="personal"
+	export SEQS_REPO_ROOT="${REPO}"
+	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
+	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
+	export SEQS_MOCK_EXISTING="debian-13-xfce"
+}
+REPO_ORIG_PATH="${PATH}"
+
+run_setup() {  # runs setup-qubes.sh under a pty, capturing combined output
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" "$@"
+}
+
+# ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
+echo "== scenario: fresh full install (fetch + validate + gate + apply) =="
+new_sandbox
+out="$(run_setup 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
+grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
+grep -q "Salt tree installed" <<<"$out" && ok || bad "expected the salt tree to be installed"
+grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
+grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
+# The tree really landed in the sandbox /srv, root markers and all.
+[ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "dom0.sls not installed into sandbox /srv"
+[ -f "${SEQS_SALT_TREE}/.seqs-managed" ] && ok || bad "missing .seqs-managed marker"
+[ -f "${SEQS_SALT_TREE}/files/components/brave/template-vm.sh" ] && ok \
+	|| bad "component payload not staged into files/"
+[ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "targets file not written by dom0 apply"
+grep -q "app A-keepass offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+	|| bad "keepass should be listed offline in targets"
+rm -rf "${SBX}"
+
+# ── Scenario 2: --skip-fetch before any install must refuse ────────────────
+echo "== scenario: --skip-fetch with nothing installed refuses =="
+new_sandbox
+out="$(run_setup --skip-fetch 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "--skip-fetch should fail when /srv is empty"
+grep -q "not installed yet" <<<"$out" && ok || bad "expected 'not installed yet' message"
+rm -rf "${SBX}"
+
+# ── Scenario 3: hostile archive is rejected at the tar-validation gate ──────
+echo "== scenario: malicious archive (path traversal) is rejected pre-install =="
+new_sandbox
+evil="$(mktemp -d)"
+mkdir -p "${evil}/salt"
+ln -s /etc/passwd "${evil}/salt/steal"   # symlink entry -> non-regular, must reject
+export SEQS_MOCK_TAR="${SBX}/evil.tar"
+tar -C "${evil}" -cf "${SEQS_MOCK_TAR}" salt
+out="$(run_setup 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
+grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
+[ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
+rm -rf "${SBX}" "${evil}"
+
+# ── Scenario 4: air-gap verification fails closed ──────────────────────────
+echo "== scenario: a live netvm on an offline qube halts provisioning =="
+new_sandbox
+export SEQS_MOCK_NETVM="sys-firewall"   # keepass 'offline' but netvm present
+out="$(run_setup 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a netvm"
+grep -qi "air gap NOT in effect" <<<"$out" && ok || bad "expected an air-gap failure message"
+rm -rf "${SBX}"
+
+# ── Scenario 5: identical re-fetch skips the review-gate prompt ────────────
+echo "== scenario: re-running with an identical tree needs no confirmation =="
+new_sandbox
+run_setup >/dev/null 2>&1            # first install (auto-confirmed via pty)
+out="$(run_setup 2>&1)"; rc=$?       # second run: tree identical
+[ "$rc" -eq 0 ] && ok || bad "identical re-run should succeed"
+grep -q "identical to the tree already installed" <<<"$out" && ok \
+	|| bad "expected the 'identical tree' fast-path message on re-run"
+rm -rf "${SBX}"
+
+# ── Scenario 6: delete-vms.sh removes only the named A-/Z- qubes ────────────
+# delete-vms.sh is the destructive half of the tooling, so its guard rails get
+# a scenario of their own. The mock inventory (SEQS_MOCK_STATE) is stateful:
+# qvm-kill marks a qube halted, qvm-remove drops it, qvm-check reads it back.
+echo "== scenario: delete-vms.sh touches only the named A-/Z- qubes =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+printf '%s\n' "A-keepass running" "Z-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
+# Dry-run: announces itself, exits 0, changes nothing.
+out="$(bash "${REPO}/delete-vms.sh" --dry-run keepass 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "dry-run exited non-zero ($rc)"
+grep -q "dry-run: not killing or removing" <<<"$out" && ok || bad "expected the dry-run notice"
+grep -qxF "A-keepass running" "${SEQS_MOCK_STATE}" && ok || bad "dry-run must not touch the inventory"
+# Real run: A-keepass (running) and Z-keepass go, unrelated A-brave stays.
+out="$(bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
+grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
+grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
+grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
+# Unsafe name: refused before anything is looked up.
+out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
+grep -q "refusing unsafe name" <<<"$out" && ok || bad "expected the unsafe-name error"
+rm -rf "${SBX}"
+
+echo
+echo "integration tests: ${PASS} passed, ${FAIL} failed"
+[ "${FAIL}" -eq 0 ]

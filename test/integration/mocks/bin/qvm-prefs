@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Mock qvm-prefs -- VM netvm : echo the air-gap state. Default empty (= no
+# netvm), so verifyAirgap passes; set SEQS_MOCK_NETVM to simulate a live netvm.
+echo "${SEQS_MOCK_NETVM:-}"

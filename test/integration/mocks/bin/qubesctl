@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Mock qubesctl. Emulates just enough of the Salt runs for setup-qubes.sh's
+# orchestration to proceed: the dom0 apply writes the targets file (derived
+# from the REAL pillar via the render lib, so it stays truthful), and every
+# apply prints a clean summary that the runner's failure-regex won't trip.
+args="$*"
+case "$args" in
+  *"top.enable"*)
+    echo "local: enabled seqs.config" ;;
+  *"state.apply seqs.dom0"*)
+    python3 - "$SEQS_REPO_ROOT" "$SEQS_TARGETS_FILE" <<'PY'
+import sys, os
+sys.path.insert(0, os.path.join(sys.argv[1], "test", "lib"))
+import salt_render as sr
+seqs = sr.render_pillar("dom0")
+ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
+lines = ["# Managed by SEQS (mock).",
+         "# Format: <template|app> <qube-name> [offline]"]
+for n in seqs["qubes"]:
+    lines.append("template %s%s" % (ptpl, n))
+for n, q in seqs["qubes"].items():
+    lines.append("app %s%s%s" % (papp, n, " offline" if q.get("offline") else ""))
+os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
+open(sys.argv[2], "w").write("\n".join(lines) + "\n")
+PY
+    echo "dom0: Succeeded: 12  Failed: 0" ;;
+  *"state.apply seqs.qube"*)
+    echo "qube apply: Succeeded: 3  Failed: 0" ;;
+  *)
+    echo "qubesctl mock: $args" ;;
+esac
+exit 0
