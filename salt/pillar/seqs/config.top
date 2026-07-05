@@ -1,0 +1,12 @@
+# SEQS pillar top. Enabled once by setup-qubes.sh via
+#   sudo qubesctl top.enable seqs.config pillar=true
+# NOTE: the Z-*/A-* globs must match prefix_template / prefix_app in
+# config.sls -- if you change the prefixes there, change them here too
+# (top files cannot read pillar, so the prefixes are duplicated).
+base:
+  dom0:
+    - seqs.config
+  'Z-*':
+    - seqs.config
+  'A-*':
+    - seqs.config

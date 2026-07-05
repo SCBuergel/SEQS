@@ -1,0 +1,7 @@
+# Optional highstate integration: setup-qubes.sh applies seqs.dom0 explicitly
+# (state.apply) and does NOT enable this top, so SEQS never hijacks an
+# existing `qubesctl state.highstate` configuration. If you prefer highstate:
+#   sudo qubesctl top.enable seqs.dom0
+base:
+  dom0:
+    - seqs.dom0

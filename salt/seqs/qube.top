@@ -1,0 +1,10 @@
+# Optional highstate integration: setup-qubes.sh applies seqs.qube explicitly
+# per target (state.apply) and does NOT enable this top. If you prefer
+# highstate: sudo qubesctl top.enable seqs.qube
+# NOTE: the Z-*/A-* globs must match prefix_template / prefix_app in
+# /srv/pillar/seqs/config.sls (top files cannot read pillar).
+base:
+  'Z-*':
+    - seqs.qube
+  'A-*':
+    - seqs.qube
