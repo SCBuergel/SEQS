@@ -1,85 +1,34 @@
 #!/usr/bin/env bash
 
-# ════════════════════════════════════════════════════════════════════════════
 # SEQS -- Qubes Salt based setup (dom0 entry point).
-# ════════════════════════════════════════════════════════════════════════════
 #
-# This replaces the old imperative installer (a ~1400-line dom0 bash script
-# that repeatedly pulled files from a live app qube and piped VM output
-# through the dom0 terminal) with the Qubes-native Salt management stack.
-# The old script is preserved in git history.
-#
-# What this script does, and why the trust story is better:
-#
-#   1. FETCH (once): a single `tar` transfer of salt/ + install-scripts/ from
-#      REPO_VM into dom0, with every archive entry validated (regular
-#      files/dirs only, safe charset, no '..', no absolute paths) before
-#      extraction. This is the ONLY VM->dom0 data flow in the whole system;
-#      the old installer re-fetched scripts, libs, assets and directory
-#      listings from the (untrusted) repo qube throughout the entire build
-#      and interpolated its listings into remote shell commands.
-#
-#   2. REVIEW GATE: before the fetched tree becomes root-owned salt code, a
-#      re-fetch is diffed against the tree already installed in /srv and an
-#      explicit CONTINUE confirmation is required (first fetch: hash display
-#      + confirmation; use --fetch-only for a full pre-apply audit).
-#
-#   3. INSTALL: the verified tree is copied to /srv/salt/seqs and
-#      /srv/pillar/seqs. From here on the build has NO dependency on
-#      REPO_VM. Re-runs with --skip-fetch never contact it at all.
-#
-#   4. APPLY dom0: `qubesctl state.apply seqs.dom0` validates the pillar
-#      config, installs the qrexec policies, clones templates and creates
-#      app qubes -- declaratively and idempotently. Re-runs converge instead
-#      of refusing; pre-existing qubes NOT created by SEQS are refused via
-#      the 'seqs-managed' feature guard (with intent markers so an
-#      interrupted run can be resumed, not locked out). Air-gapped qubes are
-#      re-verified here in the runner before anything is provisioned.
-#
-#   5. APPLY qubes: `qubesctl --skip-dom0 --targets=... state.apply
-#      seqs.qube` provisions each template, then each app qube. Qubes salt
-#      runs this through a DISPOSABLE management VM over qrexec: dom0 pushes
-#      states and files down; dom0 never executes, parses, or interpolates
-#      anything a target qube produces. The entire fetchFromVm / vmRun /
-#      listing-validation machinery of the old installer is gone because the
-#      dataflow it defended no longer exists. (qubesctl's own summary output
-#      is still routed through the terminal sanitizer below -- see sanitize().)
-#
-# All configuration (which qubes, colors, components, wallet extensions,
-# cleanup dirs, prefixes, base template) now lives in ONE place:
-#   salt/pillar/seqs/config.sls   (installed to /srv/pillar/seqs/config.sls)
-# Edit it in the repo qube and re-run this script, or edit the installed
-# copy in dom0 and re-run with --skip-fetch.
+# Fetches salt/ + install-scripts/ from REPO_VM once (single validated tar),
+# installs them under /srv, then drives qubesctl to create every qube and
+# provision its software. All software config lives in salt/pillar/seqs/config.sls.
+# How each phase works and why the trust story holds: docs/architecture.md.
 #
 # Usage:
 #   ./setup-qubes.sh                fetch + install + apply everything
-#   ./setup-qubes.sh --fetch-only   fetch + install to /srv, then stop so the
-#                                   operator can review before applying
-#   ./setup-qubes.sh --skip-fetch   apply from the tree already in /srv
-#                                   (no contact with REPO_VM at all)
+#   ./setup-qubes.sh --fetch-only   fetch + install to /srv, then stop for review
+#   ./setup-qubes.sh --skip-fetch   apply from /srv (never contacts REPO_VM)
+#   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
 
-# ════════════════════════════════════════════════════════════════════════════
-# Config -- usually set once when first installing SEQS.
-# ════════════════════════════════════════════════════════════════════════════
-
-# Qube that holds the SEQS repo. Only contacted during the fetch step.
-# See README: do not use an in-use daily-driver qube for this.
+# ---- Config -- usually set once when first installing SEQS. -----------------
+# REPO_VM/REPO_PATH: where this repo lives; only contacted during the fetch
+# step. Do NOT use an in-use daily-driver qube -- see README §2.1.
 REPO_VM="${SEQS_REPO_VM:-personal}"
 REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 
-# Filesystem roots. The SEQS_* overrides exist so the test harness can run the
-# whole flow inside a scratch directory (see test/integration/); a normal dom0
-# install sets none of them and gets the real /srv + /var/lib/seqs paths.
+# Filesystem roots. The SEQS_* overrides let the test harness run in a scratch
+# dir; a normal dom0 install sets none and gets the real /srv + /var/lib paths.
 SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
 PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
-# Written by the seqs.dom0 state; lists the qubes to provision, in order.
-TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"
+TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"  # written by seqs.dom0
 
-# Policy files owned by the seqs.dom0 state. A file that exists WITHOUT the
-# managed marker was written by the operator or another tool -- never
-# overwrite it without explicit confirmation.
+# Policy files owned by seqs.dom0. A file WITHOUT the marker was written by the
+# operator or another tool -- never overwrite without confirmation.
 MANAGED_MARKER="Managed by SEQS"
 POLICY_FILES=(
 	"/etc/qubes/policy.d/28-browser-suppress.policy"
@@ -87,32 +36,26 @@ POLICY_FILES=(
 	"/etc/qubes/policy.d/30-user-input.policy"
 )
 
-# ════════════════════════════════════════════════════════════════════════════
-# Helpers
-# ════════════════════════════════════════════════════════════════════════════
+# ---- Helpers ----------------------------------------------------------------
 
-# sanitize -- strip terminal-control bytes from anything that reaches the
-# dom0 terminal. Same three-stage defense as the old vmRun (C0 controls
-# except TAB/LF, raw 8-bit C1 bytes via iconv, UTF-8-encoded C1 codepoints
-# via sed). qubesctl output embeds strings produced inside target qubes
-# (installer stdout captured by salt), so this stays load-bearing even
-# though no VM output is *executed* in dom0 any more.
+# sanitize -- strip terminal-control bytes from anything reaching the dom0
+# terminal (C0 controls except TAB/LF, raw 8-bit C1 via iconv, UTF-8-encoded
+# C1 via sed). qubesctl output embeds strings produced inside target qubes,
+# so this is load-bearing on every display path.
 sanitize() {
 	LC_ALL=C tr -d '\000-\010\013-\037\177' \
 		| iconv -f UTF-8 -t UTF-8 -c \
 		| LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g'
 }
 
-# die MESSAGE -- error messages can embed attacker-influenced strings (tar
-# entry names), so they are sanitized too.
+# die MESSAGE -- sanitized because messages can embed tar entry names.
 die() {
 	printf 'ERROR: %s\n' "$*" | sanitize >&2
 	exit 1
 }
 
-# confirm PROMPT WORD -- require the operator to type WORD on the terminal.
-# Reads from /dev/tty so a piped or empty stdin cannot be misread as
-# approval; EOF or anything else aborts.
+# confirm PROMPT WORD -- require the operator to type WORD. Reads from /dev/tty
+# so a piped or empty stdin cannot be misread as approval; EOF/anything else aborts.
 confirm() {
 	local answer
 	if ! read -rp "$1" answer </dev/tty; then
@@ -122,21 +65,17 @@ confirm() {
 }
 
 # runQubesctl ARGS... -- qubesctl with sanitized output and reliable failure
-# detection. The exit code alone is not trusted: qubesctl/salt-call versions
-# differ in whether a failed state propagates non-zero, so the (sanitized)
-# output is also scanned for salt's own failure markers. False negatives
-# provision a broken system; a false positive merely makes you re-run.
+# detection. The exit code alone is not trusted (qubesctl/salt-call versions
+# differ on whether a failed state exits non-zero), so the output is also
+# scanned for salt's own failure markers.
 runQubesctl() {
 	local out rc
 	out=$(mktemp /tmp/seqs-qubesctl.XXXXXX) || die "mktemp failed"
 	sudo qubesctl "$@" 2>&1 | sanitize | tee "${out}"
 	rc="${PIPESTATUS[0]}"
-	# 'Result: False' is printed per failed state; the summary 'Failed: N'
-	# is only interesting when N > 0. Salt colorizes the VALUE, so after
-	# sanitize() strips the ESC bytes these lines read e.g.
-	# 'Result: [0;31mFalse' / 'Failed:   [0;31m1[0;39m' -- allow any mix of
-	# whitespace and color residue between the key and the value, but never
-	# skip over a real character (a '0' count cannot false-positive).
+	# 'Result: False' prints per failed state; 'Failed: N' matters when N > 0.
+	# Salt colorizes the value, so allow whitespace/color residue between key
+	# and value (sanitize() has already stripped the ESC bytes).
 	if [ "${rc}" -eq 0 ] \
 			&& grep -qE 'Result:([[:space:]]|\[[0-9;]*m)*False|Failed:([[:space:]]|\[[0-9;]*m)*[1-9]' "${out}"; then
 		echo "NOTE: qubesctl exited 0 but its output reports failed states -- treating as failure." >&2
@@ -151,41 +90,33 @@ joinCsv() {
 	echo "$*"
 }
 
-# ════════════════════════════════════════════════════════════════════════════
-# Phase 1 -- fetch the salt tree from REPO_VM (single verified tar transfer)
-# ════════════════════════════════════════════════════════════════════════════
+# ---- Phase 1 -- fetch the salt tree from REPO_VM (single verified tar) -------
 
 fetchSaltTree() {
 	local tarball stage
 	tarball=$(mktemp /tmp/seqs-fetch.XXXXXX.tar) || die "mktemp failed"
 	stage=$(mktemp -d /tmp/seqs-stage.XXXXXX) || die "mktemp -d failed"
 
-	echo "Fetching salt tree from ${REPO_VM}:${REPO_PATH} (single tar transfer)..."
-	# 2>/dev/null: same bootstrap-window defense as the README one-liner --
-	# the source qube's stderr must never reach the dom0 terminal raw.
+	echo "==> Fetching salt tree from ${REPO_VM}:${REPO_PATH}"
+	# 2>/dev/null: bootstrap-window defense -- the source qube's stderr must
+	# never reach the dom0 terminal raw (docs/architecture.md#bootstrap-window).
 	if ! qvm-run -p "${REPO_VM}" "tar -C ${REPO_PATH} -cf - salt install-scripts" 2>/dev/null > "${tarball}"; then
 		rm -rf "${tarball}" "${stage}"
 		die "could not fetch salt/ + install-scripts/ from ${REPO_VM}:${REPO_PATH} -- does the repo exist there? (see REPO_VM at the top of this script)"
 	fi
 
-	echo ""
-	echo "Transfer SHA256 (verify against a copy you trust -- e.g. run"
-	echo "  tar -C ${REPO_PATH} -cf - salt install-scripts | sha256sum"
-	echo "on a SECOND, independent machine holding the same git commit; hashing"
-	echo "inside ${REPO_VM} itself proves nothing if that qube is compromised):"
-	sha256sum "${tarball}"
-	echo ""
+	echo "    Transfer SHA256 (compare on a second machine at the same commit;"
+	echo "    hashing inside ${REPO_VM} proves nothing if that qube is compromised):"
+	printf '    '; sha256sum "${tarball}"
 
 	tar -tf "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
 
-	# Validate EVERY entry before extraction: regular files and directories
-	# only (no symlinks/hardlinks/devices), paths rooted at salt/ or
-	# install-scripts/, safe charset, no '..', no spaces. A hostile REPO_VM
-	# controls this archive; tar extraction in dom0 is the attack surface.
-	# tvf lines are '<perms> <owner> <size> <date> <time> <path>' -- a
-	# seventh field means the path contains whitespace: reject, since no
-	# legitimate SEQS file does and the charset check below couldn't see
-	# the full name after field splitting.
+	# Validate EVERY entry before extraction: regular files/dirs only (no
+	# symlinks/hardlinks/devices), paths rooted at salt/ or install-scripts/,
+	# safe charset, no '..'. A hostile REPO_VM controls this archive; tar
+	# extraction in dom0 is the attack surface. tvf lines are
+	# '<perms> <owner> <size> <date> <time> <path>' -- a 7th field means
+	# whitespace in the name: reject (no legitimate SEQS file has one).
 	local perms f_owner f_size f_date f_time path extra
 	while read -r perms f_owner f_size f_date f_time path extra; do
 		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
@@ -232,11 +163,9 @@ fetchSaltTree() {
 		fi
 	done
 
-	# Review gate. The fetched tree comes from a qube this setup deliberately
-	# does not trust, and once installed it runs as root -- so nothing is
-	# installed without an explicit go-ahead. On a re-fetch the operator sees
-	# exactly what changed vs the tree already reviewed; an identical
-	# re-fetch skips the prompt (nothing new is being trusted).
+	# Review gate: the tree runs as root once installed, so require an explicit
+	# go-ahead. A re-fetch shows exactly what changed vs the reviewed tree; an
+	# identical re-fetch skips the prompt (nothing new is being trusted).
 	local diffout
 	if [ -d "${SALT_TREE}" ] || [ -d "${PILLAR_TREE}" ]; then
 		diffout="$( { diff -r "${SALT_TREE}" "${newsalt}" 2>&1; \
@@ -257,12 +186,11 @@ fetchSaltTree() {
 		confirm "Install the fetched tree into /srv? type CONTINUE to confirm (anything else aborts): " "CONTINUE"
 	fi
 
-	echo "Installing salt tree into ${SALT_TREE} and ${PILLAR_TREE}..."
+	echo "==> Installing salt tree into ${SALT_TREE} and ${PILLAR_TREE}"
 	sudo rm -rf "${SALT_TREE}" "${PILLAR_TREE}" || die "could not clear old trees"
-	# Marker first: .seqs-managed means "SEQS owns this path", NOT "tree is
-	# complete" -- if the copy below is interrupted, the next run must wipe
-	# and reinstall its own half-written tree, not refuse it (same lockout
-	# class the qube intent markers in seqs.dom0 prevent).
+	# Marker first: .seqs-managed means "SEQS owns this path", not "tree is
+	# complete" -- an interrupted copy must be wiped and reinstalled next run,
+	# not refused.
 	sudo mkdir -p "${SALT_TREE}" "${PILLAR_TREE}" || die "mkdir failed"
 	sudo touch "${SALT_TREE}/.seqs-managed" "${PILLAR_TREE}/.seqs-managed" || die "marker write failed"
 	sudo cp -r "${newsalt}/." "${SALT_TREE}/" || die "install of ${SALT_TREE} failed"
@@ -271,26 +199,21 @@ fetchSaltTree() {
 	sudo chmod -R go-w "${SALT_TREE}" "${PILLAR_TREE}"
 
 	rm -rf "${tarball}" "${stage}"
-	echo "Salt tree installed."
+	echo "    Salt tree installed."
 }
 
-# ════════════════════════════════════════════════════════════════════════════
-# Phase 2 -- policy takeover confirmation
-# ════════════════════════════════════════════════════════════════════════════
+# ---- Phase 2 -- policy takeover confirmation --------------------------------
 
-# The seqs.dom0 state owns the qrexec policy files listed in POLICY_FILES and
-# will converge them on every apply. Files it wrote carry MANAGED_MARKER. A
-# file that exists WITHOUT the marker is the operator's (or another tool's):
-# block here, show it, and require a literal OVERWRITE before proceeding --
-# same strictness as the old confirmPolicyOverwrite, enforced BEFORE salt
-# runs at all.
+# seqs.dom0 owns the qrexec policy files in POLICY_FILES and converges them on
+# every apply. Files it wrote carry MANAGED_MARKER; a file WITHOUT the marker
+# is the operator's -- block, show it, and require a literal OVERWRITE before
+# salt runs.
 confirmPolicyTakeover() {
-	# 30-user-input.policy is only ever written by seqs.dom0 on Qubes 4.3
-	# with sys-usb present (mirrors the gate in salt/seqs/dom0.sls). On any
-	# other system a hand-written copy would trigger a recurring takeover
-	# prompt for a file salt never touches -- skip it there. Only skip when
-	# the release is POSITIVELY known: an unreadable release keeps the
-	# prompt (fail safe, worst case one unnecessary confirmation).
+	# 30-user-input.policy is only written on Qubes 4.3 with sys-usb present
+	# (mirrors the gate in salt/seqs/dom0.sls); skip it elsewhere so a
+	# hand-written copy doesn't trigger a recurring prompt for a file salt never
+	# touches. Only skip when the release is positively known -- an unreadable
+	# release keeps the prompt (fail safe).
 	local usb_applies=1 release
 	release="$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)" || true
 	if [ -n "${release}" ]; then
@@ -332,9 +255,7 @@ confirmPolicyTakeover() {
 	confirm "Overwrite the file(s) above? type OVERWRITE to confirm (anything else aborts): " "OVERWRITE"
 }
 
-# ════════════════════════════════════════════════════════════════════════════
-# Phase 3 -- apply
-# ════════════════════════════════════════════════════════════════════════════
+# ---- Phase 3 -- apply -------------------------------------------------------
 
 readTargets() {
 	TEMPLATE_TARGETS=()
@@ -344,8 +265,7 @@ readTargets() {
 	local kind name flags flag
 	while read -r kind name flags; do
 		case "${kind}" in ''|\#*) continue ;; esac
-		# Names are re-validated even though the file is root-written by our
-		# own state -- they get interpolated into qubesctl/qvm-* commands.
+		# Re-validated (root-written, but interpolated into qubesctl/qvm-* commands).
 		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe qube name in ${TARGETS_FILE}: '${name}'"
 		case "${kind}" in
 			template) TEMPLATE_TARGETS+=("${name}") ;;
@@ -362,33 +282,28 @@ readTargets() {
 	[ "${#TEMPLATE_TARGETS[@]}" -gt 0 ] || die "no templates listed in ${TARGETS_FILE}"
 }
 
-# verifyAirgap -- independent post-apply check that every 'offline' qube
-# really has no netvm. The dom0 state sets this (seqs-offline-*), but the
-# exact qvm-prefs semantics are release-dependent and this is the single
-# most security-critical pref in the whole setup (wallet/vault air gap) --
-# so the runner refuses to provision anything if it is not in effect.
+# verifyAirgap -- independent post-apply check that every 'offline' qube really
+# has no netvm. The dom0 state sets this, but qvm-prefs semantics are
+# release-dependent and this is the most security-critical pref in the setup
+# (wallet/vault air gap), so refuse to provision anything if it is not in effect.
 verifyAirgap() {
 	local vm nv
 	for vm in "${OFFLINE_TARGETS[@]}"; do
 		nv="$(qvm-prefs -- "${vm}" netvm 2>/dev/null || true)"
-		# qvm-prefs prints an unset netvm as an empty string on current
-		# releases; accept 'None'/'none' spellings too. Anything else is a
-		# live netvm.
+		# Unset netvm prints as empty on current releases; accept None/none too.
 		case "${nv,,}" in
 			''|none) ;;
 			*) die "offline qube '${vm}' still has netvm '${nv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;
 		esac
 	done
 	if [ "${#OFFLINE_TARGETS[@]}" -gt 0 ]; then
-		echo "Air gap verified: no netvm on ${OFFLINE_TARGETS[*]}."
+		echo "    Air gap verified: no netvm on ${OFFLINE_TARGETS[*]}."
 	fi
 	return 0
 }
 
-# shutdownAll VM... -- deterministic barrier between provisioning phases.
-# qubesctl shuts down qubes it started, but app qubes snapshot their
-# template's root volume at start time, so templates must be verifiably
-# halted (changes committed) before any app qube boots. Belt and braces.
+# shutdownAll VM... -- barrier between phases: templates must be verifiably
+# halted (root volume committed) before any app qube snapshots them at start.
 shutdownAll() {
 	local vm
 	for vm in "$@"; do
@@ -396,52 +311,53 @@ shutdownAll() {
 	done
 }
 
-# ════════════════════════════════════════════════════════════════════════════
-# Main
-# ════════════════════════════════════════════════════════════════════════════
+# ---- Main -------------------------------------------------------------------
 
-# Test hook: when sourced by the unit-test harness with SEQS_SOURCE_ONLY=1, stop
-# here so the helper functions above are available WITHOUT running the
-# installer. `return` succeeds only in a sourced context; a normal `./setup-
-# qubes.sh` invocation never sets the var and falls through to Main unchanged.
+# Test hook: sourced with SEQS_SOURCE_ONLY=1, stop here so the helpers above are
+# available without running the installer (`return` works only when sourced).
 if [ "${SEQS_SOURCE_ONLY:-0}" = "1" ]; then
 	return 0 2>/dev/null || true
 fi
 
 SKIP_FETCH=0
 FETCH_ONLY=0
+VERBOSE="${SEQS_VERBOSE:-0}"
 for arg in "$@"; do
 	case "${arg}" in
 		--skip-fetch) SKIP_FETCH=1 ;;
 		--fetch-only) FETCH_ONLY=1 ;;
-		*) die "unknown argument '${arg}' (supported: --skip-fetch, --fetch-only)" ;;
+		--verbose) VERBOSE=1 ;;
+		*) die "unknown argument '${arg}' (supported: --skip-fetch, --fetch-only, --verbose)" ;;
 	esac
 done
+
+# By default qubesctl prints only its per-VM summary, keeping the run readable;
+# --verbose (or SEQS_VERBOSE=1) restores the full per-state Salt output for
+# debugging a failed provision. Failure is still detected either way (the
+# 'Failed: N' summary line the runner greps is always printed).
+QUBE_APPLY_OPTS=()
+[ "${VERBOSE}" -eq 1 ] && QUBE_APPLY_OPTS+=(--show-output)
 [ "${SKIP_FETCH}" -eq 1 ] && [ "${FETCH_ONLY}" -eq 1 ] && die "--skip-fetch and --fetch-only are mutually exclusive"
 
 if [ "${SKIP_FETCH}" -eq 1 ]; then
 	[ -d "${SALT_TREE}" ] && [ -d "${PILLAR_TREE}" ] \
 		|| die "--skip-fetch given but ${SALT_TREE} / ${PILLAR_TREE} not installed yet -- run without flags first"
-	echo "Skipping fetch -- applying from the tree already in ${SALT_TREE}."
+	echo "==> Skipping fetch -- applying from the tree already in ${SALT_TREE}"
 else
 	fetchSaltTree
 fi
 
 if [ "${FETCH_ONLY}" -eq 1 ]; then
 	echo ""
-	echo "Fetch-only: salt tree installed but nothing applied."
-	echo "Review ${SALT_TREE} and ${PILLAR_TREE}, then re-run with --skip-fetch."
+	echo "Fetch-only: salt tree installed but nothing applied. Review"
+	echo "${SALT_TREE} and ${PILLAR_TREE}, then re-run with --skip-fetch."
 	exit 0
 fi
 
 echo ""
-echo "Enabling SEQS pillar top (idempotent)..."
+echo "==> [1/3] Applying dom0 state (policies, qube creation)"
 runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
-
 confirmPolicyTakeover
-
-echo ""
-echo "Applying dom0 state (validation, qrexec policies, qube creation)..."
 runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
 
 readTargets
@@ -449,13 +365,12 @@ verifyAirgap
 FAILED=0
 
 echo ""
-echo "Provisioning ${#TEMPLATE_TARGETS[@]} template(s) via the disposable management VM:"
-printf '  %s\n' "${TEMPLATE_TARGETS[@]}"
-if ! runQubesctl --skip-dom0 --show-output \
+echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
+if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${TEMPLATE_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one template failed to provision (see output above)." >&2
-	echo "Re-running this script converges: finished components are skipped via" >&2
-	echo "their /rw/config/seqs markers; only the failed part re-runs." >&2
+	echo "WARNING: at least one template failed to provision (see summary above;" >&2
+	echo "         re-run with --verbose for full per-state output)." >&2
+	echo "         Re-run to converge -- finished components are skipped." >&2
 	FAILED=1
 fi
 
@@ -463,11 +378,11 @@ fi
 shutdownAll "${TEMPLATE_TARGETS[@]}"
 
 echo ""
-echo "Provisioning ${#APP_TARGETS[@]} app qube(s):"
-printf '  %s\n' "${APP_TARGETS[@]}"
-if ! runQubesctl --skip-dom0 --show-output \
+echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
+if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${APP_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one app qube failed to provision (see output above)." >&2
+	echo "WARNING: at least one app qube failed to provision (see summary above;" >&2
+	echo "         re-run with --verbose for full per-state output)." >&2
 	FAILED=1
 fi
 
@@ -475,9 +390,9 @@ shutdownAll "${APP_TARGETS[@]}"
 
 echo ""
 if [ "${FAILED}" -eq 0 ]; then
-	echo "SEQS setup complete. All targets provisioned."
+	echo "==> SEQS setup complete. All targets provisioned."
 else
-	echo "SEQS setup finished WITH FAILURES -- see warnings above. Fix and re-run"
-	echo "(the whole flow is convergent; nothing needs manual rollback first)."
+	echo "==> SEQS setup finished WITH FAILURES -- see warnings above." >&2
+	echo "    Fix and re-run (the flow is convergent; no manual rollback needed)." >&2
 	exit 1
 fi

@@ -304,19 +304,19 @@ grep -qF 'sudo qubesctl "$@" 2>&1 | sanitize' setup-qubes.sh \
 
 **PASS:** `sanitize: PASS`. **FAIL:** any one stage missing, `LC_ALL=C` absent, or a qubesctl path that bypasses the filter.
 
-## 10. README ↔ components coherence
+## 10. Docs ↔ components coherence
 
-Every component listed in the README's component table must exist on disk, and every on-disk component should appear in the table.
+Every component listed in `docs/configuration.md`'s component table must exist on disk, and every on-disk component should appear in the table.
 
 ```sh
 # Extract just the FIRST backtick'd token per table row (the component name),
 # not every backtick'd token (which would pick up package names in the
 # description column).
-table=$(awk '/^\| Component \|/,/^$/' README.md \
+table=$(awk '/^\| Component \|/,/^$/' docs/configuration.md \
         | sed -nE 's/^\| `([a-z][a-z0-9-]*)`.*/\1/p' | sort -u)
 disk=$(ls install-scripts/components/ | sort -u)
-diff <(echo "$table") <(echo "$disk") && echo "  README table: PASS" \
-                                       || echo "  README table: FAIL (diff above)"
+diff <(echo "$table") <(echo "$disk") && echo "  components table: PASS" \
+                                       || echo "  components table: FAIL (diff above)"
 ```
 
 ## 11. Component staging contract (lib overlay + menu.desktop)

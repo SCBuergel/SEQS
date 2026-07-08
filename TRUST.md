@@ -42,7 +42,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### The QubesOS installation ISO
 - **Trust assumption:** The ISO you installed from is genuine.
-- **Established by:** ✅ The README walks the operator through the full verification protocol (`README.md` §3): fetch the Qubes Master Signing Key, cross-check the QMSK fingerprint `427F 11FD 0FAA 4B08 0123 F01C DDFA 1A3E 3687 9494` against three independent sources (Qubes website, the `qubes-secpack` GitHub repo, `keys.openpgp.org`), trust the QMSK, fetch the release signing key, then `gpg --verify` the ISO. Same three-source pattern as the apt keys in §3.
+- **Established by:** ✅ [`docs/install-qubes.md`](docs/install-qubes.md#2-verify-the-iso-before-flashing-it) walks the operator through the full verification protocol: fetch the Qubes Master Signing Key, cross-check the QMSK fingerprint `427F 11FD 0FAA 4B08 0123 F01C DDFA 1A3E 3687 9494` against three independent sources (Qubes website, the `qubes-secpack` GitHub repo, `keys.openpgp.org`), trust the QMSK, fetch the release signing key, then `gpg --verify` the ISO. Same three-source pattern as the apt keys.
 - **Residual risk:** A tampered ISO compromises everything from first boot, so the protocol is only as good as the operator's discipline in actually running it. The repo cannot enforce that step — skipping it makes every claim in this document downstream of it false.
 
 ### Qubes update proxy (`127.0.0.1:8082`)
