@@ -188,7 +188,7 @@ seqs-browser-handler:
         Categories=Network;WebBrowser;
         MimeType=x-scheme-handler/http;x-scheme-handler/https;
 
-{% if cleanup_dirs %}
+{% if cleanup_dirs and not spec.get('preserve_incoming') %}
 # ── Boot/shutdown cleanup of transient directories.
 # Fails CLOSED: only deletes when the VM is explicitly an AppVM/DispVM, so a
 # qubesdb-read failure inside the template never wipes template state.

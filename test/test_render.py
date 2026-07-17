@@ -11,6 +11,7 @@ Run directly: `python3 test/test_render.py` (exits non-zero on failure).
 """
 import os
 import sys
+import copy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import salt_render as sr  # noqa: E402
@@ -75,6 +76,10 @@ def test_pillar_slicing():
 
     stray = render_pillar("A-not-a-seqs-qube")
     check(stray == {}, "a stray A-* qube with no spec should get an empty pillar")
+
+    staging = render_pillar("A-qr-staging")
+    check(staging.get("spec", {}).get("preserve_incoming") is True,
+          "qr-staging must preserve the ciphertext across physical shutdown")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +156,42 @@ def test_dom0_usb_policy_release_gated():
     _, offnousb = render_state("dom0", "dom0", Scenario(release="4.3", sys_usb=False))
     check("seqs-policy-usb-keyboard" not in offnousb,
           "4.3 without sys-usb must not install the USB keyboard policy")
+
+
+def test_dom0_sequential_qr_mode():
+    case("dom0.sls: sequential QR mode renders strict, staged, fail-closed machinery")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "sequential",
+        "webcam_usb_controller": "00_14.0",
+        "webcam_usb_no_strict_reset": False,
+    })
+    text, parsed = render_state(
+        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed,
+          "well-formed sequential configuration must pass validation")
+    for state in ("seqs-policy-qr-input-deny", "seqs-policy-qr-filecopy",
+                  "seqs-webcam-usb-backend", "seqs-qr-sequential-scanner",
+                  "seqs-qr-sequential-config", "seqs-qr-sequential-script"):
+        check(state in parsed, "sequential mode should render %s" % state)
+    check("qubes.Filecopy" in text and "A-qr-staging" in text,
+          "scanner filecopy must be restricted to offline staging")
+    check("no-strict-reset=true" not in text,
+          "sequential mode must never render no-strict-reset")
+
+
+def test_dom0_sequential_qr_rejects_weak_reset():
+    case("dom0.sls: sequential QR mode rejects no-strict-reset")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "sequential",
+        "webcam_usb_controller": "00_14.0",
+        "webcam_usb_no_strict_reset": True,
+    })
+    _, parsed = render_state(
+        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+    check("seqs-validation-failed" in parsed,
+          "sequential + no-strict-reset must fail pre-flight")
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +290,13 @@ def test_qube_app_offline_no_browser_default():
     check("seqs-default-browser" not in parsed,
           "offline/no_handoff qube must not set a link-handoff default browser")
     check("seqs-marker-dir" in parsed, "app qube still gets the marker dir")
+
+
+def test_qube_staging_preserves_incoming():
+    case("qube.sls: qr-staging does not install transient incoming cleanup")
+    _, template = render_state("qube", "Z-qr-staging")
+    check("seqs-cleanup-script" not in template,
+          "qr-staging template must not erase received ciphertext at shutdown")
 
 
 def test_qube_app_sets_browser_default():

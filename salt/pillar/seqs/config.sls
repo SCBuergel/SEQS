@@ -70,19 +70,27 @@ validateAllQubes.
 {%- set component_timeout = 900 %}
 
 {#- Secure QR transfer. The display and scanner entries below are offline
-    DisposableVM templates. Set webcam_usb_controller to the dedicated USB
-    controller BDF identified in dom0 (qvm-pci), e.g. '03_00.0', to have SEQS
-    create sys-usb-webcam and move that controller to it. Empty is deliberately
-    safe-by-default: software cannot determine which ports/controllers are safe.
+    DisposableVM templates. Select a mode only after following the hardware
+    qualification guide in docs/secure-qr-transfer.md:
+      disabled   no webcam PCI assignment (safe default)
+      dedicated  controller is used only by the webcam (resilient path)
+      sequential keyboard and webcam time-share one controller, with a cold
+                 power-off boundary (reduced-assurance fallback)
+    Set webcam_usb_controller to the physical dom0 BDF identified with qvm-pci,
+    e.g. '03_00.0'. Software cannot determine which controller is safe.
     Do not confuse this physical dom0 BDF with a qvm-usb device path (e.g.
     sys-usb:4-3) or the virtual PCI address visible inside sys-usb. Follow the
     identification and stop-condition guide in docs/secure-qr-transfer.md.
     no_strict_reset weakens reset isolation and must only be enabled if the
-    controller cannot otherwise be attached. #}
+    controller cannot otherwise be attached; sequential mode forbids it. #}
+{%- set webcam_usb_mode = 'disabled' %}
 {%- set webcam_usb_controller = '' %}
 {%- set webcam_usb_no_strict_reset = False %}
 {%- set webcam_usb_qube = 'sys-usb-webcam' %}
 {%- set webcam_scanner_dvm = prefix_app ~ 'qr-camera' %}
+{%- set webcam_normal_usb_qube = 'sys-usb' %}
+{%- set webcam_sequential_scanner = 'seqs-qr-scanner' %}
+{%- set webcam_staging_qube = prefix_app ~ 'qr-staging' %}
 
 {%- set qube_list = [
   {'name': 'brave',             'label': 'red',    'components': ['brave']},
@@ -95,6 +103,7 @@ validateAllQubes.
   {'name': 'keepass',           'label': 'black',  'components': ['keepass'], 'offline': True},
   {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True},
   {'name': 'qr-camera',         'label': 'red',    'components': ['qr-camera'], 'offline': True, 'dispvm_template': True},
+  {'name': 'qr-staging',        'label': 'red',    'components': [], 'offline': True, 'preserve_incoming': True},
   {'name': 'dev-full',          'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
   {'name': 'wallet-ledger',     'label': 'gray',   'components': ['ledger', 'brave-extension-rabby'], 'no_handoff': True},
   {'name': 'wallet-trezor',     'label': 'gray',   'components': ['trezor', 'brave-extension-rabby'], 'no_handoff': True},
@@ -163,9 +172,13 @@ seqs:
   brave_extensions: {{ brave_extensions | tojson }}
   cleanup_dirs: {{ cleanup_dirs | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'
+  webcam_usb_mode: '{{ webcam_usb_mode }}'
   webcam_usb_no_strict_reset: {{ webcam_usb_no_strict_reset | tojson }}
   webcam_usb_qube: '{{ webcam_usb_qube }}'
   webcam_scanner_dvm: '{{ webcam_scanner_dvm }}'
+  webcam_normal_usb_qube: '{{ webcam_normal_usb_qube }}'
+  webcam_sequential_scanner: '{{ webcam_sequential_scanner }}'
+  webcam_staging_qube: '{{ webcam_staging_qube }}'
 {%- else %}
 {%-   set ns = namespace(role='', base='') %}
 {%-   if id.startswith(prefix_template) %}

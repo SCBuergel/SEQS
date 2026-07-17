@@ -21,28 +21,60 @@
 {% set qmap = seqs.get('qubes', {}) %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
+{% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
 {% set webcam_usb_qube = seqs.get('webcam_usb_qube', 'sys-usb-webcam') %}
 {% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', '') %}
+{% set webcam_normal_usb_qube = seqs.get('webcam_normal_usb_qube', 'sys-usb') %}
+{% set webcam_sequential_scanner = seqs.get('webcam_sequential_scanner', 'seqs-qr-scanner') %}
+{% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}
 
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
 {% set labels = ['red', 'orange', 'yellow', 'green', 'gray', 'blue', 'purple', 'black'] %}
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
 
+{% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
+{%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
+{% endif %}
+{% if webcam_mode == 'disabled' and webcam_controller %}
+{%   do errors.append("webcam_usb_controller is set while webcam_usb_mode is disabled -- select a mode or clear the controller") %}
+{% endif %}
+{% if webcam_mode in ['dedicated', 'sequential'] and not webcam_controller %}
+{%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' requires webcam_usb_controller") %}
+{% endif %}
 {% if webcam_controller and webcam_controller | regex_match('^[0-9A-Fa-f]{2}_[0-9A-Fa-f]{2}\.[0-7]$') is none %}
 {%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a qvm-pci BDF such as 03_00.0)") %}
 {% endif %}
-{% if webcam_usb_qube | regex_match(name_re) is none %}
-{%   do errors.append("webcam_usb_qube '" ~ webcam_usb_qube ~ "' has an unsafe name") %}
-{% endif %}
+{% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_sequential_scanner', webcam_sequential_scanner), ('webcam_staging_qube', webcam_staging_qube)] %}
+{%   if value | regex_match(name_re) is none %}
+{%     do errors.append(field ~ " '" ~ value ~ "' has an unsafe name") %}
+{%   endif %}
+{% endfor %}
 {% if webcam_controller and (not webcam_scanner_dvm or webcam_scanner_dvm | regex_match(name_re) is none) %}
 {%   do errors.append("webcam_scanner_dvm is missing or unsafe") %}
 {% endif %}
 {% if webcam_controller and 'qr-camera' not in qmap %}
 {%   do errors.append("webcam_usb_controller is configured but the required qr-camera qube is absent") %}
 {% endif %}
+{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap %}
+{%   do errors.append("sequential webcam mode requires the qr-staging qube") %}
+{% endif %}
+{% if webcam_mode == 'sequential' and (not qmap.get('qr-staging', {}).get('offline') or not qmap.get('qr-staging', {}).get('preserve_incoming')) %}
+{%   do errors.append("sequential webcam mode requires qr-staging to be offline with preserve_incoming enabled") %}
+{% endif %}
+{% if webcam_mode == 'sequential' and webcam_no_strict_reset %}
+{%   do errors.append("sequential webcam mode forbids webcam_usb_no_strict_reset -- safe controller reuse requires strict reset") %}
+{% endif %}
+{% if webcam_mode == 'sequential' and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_normal_usb_qube) != 0 %}
+{%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
+{% endif %}
+{% for special in [webcam_usb_qube] + ([webcam_sequential_scanner] if webcam_mode == 'sequential' else []) %}
+{%   if webcam_mode in ['dedicated', 'sequential'] and salt['cmd.retcode']('qvm-check -q -- ' ~ special) == 0 and salt['cmd.shell']('qvm-features -- ' ~ special ~ ' seqs-managed 2>/dev/null') | trim != '1' %}
+{%     do errors.append("special qube '" ~ special ~ "' already exists but is not marked seqs-managed -- refusing to adopt it") %}
+{%   endif %}
+{% endfor %}
 
 {# ── Errors detected while the pillar itself was compiled (duplicate qube
      names etc. -- see qube_list handling in pillar config.sls). ────────── #}
@@ -175,6 +207,53 @@ seqs-validation-failed:
 # WITHOUT the "Managed by SEQS" header is never silently overwritten -- the
 # runner refuses to invoke this state until the operator confirms. After
 # that, salt owns these files and re-applies converge them.
+
+{% if webcam_mode in ['dedicated', 'sequential'] %}
+# The camera-exposed backend must never become an input source for dom0, even
+# if a keyboard or mouse is accidentally left on the selected controller.
+seqs-policy-qr-input-deny:
+  file.managed:
+    - name: /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
+        qubes.InputKeyboard  *  {{ webcam_usb_qube }}  @adminvm  deny
+        qubes.InputMouse     *  {{ webcam_usb_qube }}  @adminvm  deny
+        qubes.InputTablet    *  {{ webcam_usb_qube }}  @adminvm  deny
+        qubes.Filecopy       *  {{ webcam_usb_qube }}  @anyvm    deny
+{% if webcam_mode == 'sequential' %}
+        qubes.InputKeyboard  *  {{ webcam_sequential_scanner }}  @adminvm  deny
+        qubes.InputMouse     *  {{ webcam_sequential_scanner }}  @adminvm  deny
+        qubes.InputTablet    *  {{ webcam_sequential_scanner }}  @adminvm  deny
+{% endif %}
+{% else %}
+seqs-policy-qr-input-deny:
+  cmd.run:
+    - name: rm -f /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
+    - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
+{% endif %}
+
+{% if webcam_mode == 'sequential' %}
+# The untrusted named scanner gets exactly one outbound operation: file copy to
+# the offline staging qube. It has no general file-copy permission elsewhere.
+seqs-policy-qr-filecopy:
+  file.managed:
+    - name: /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
+        qubes.Filecopy  *  {{ webcam_sequential_scanner }}  {{ webcam_staging_qube }}  allow
+        qubes.Filecopy  *  {{ webcam_sequential_scanner }}  @anyvm  deny
+{% else %}
+seqs-policy-qr-filecopy:
+  cmd.run:
+    - name: rm -f /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
+    - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
+{% endif %}
 
 seqs-policy-browser:
   file.managed:
@@ -398,11 +477,12 @@ seqs-tag-app-{{ name }}:
 {%   endif %}
 {% endfor %}
 
-{% if webcam_controller %}
+{% if webcam_mode in ['dedicated', 'sequential'] %}
 # A named disposable USB backend is created only after the operator explicitly
-# configures a dedicated controller BDF. The command deliberately detaches that
-# controller from any current backend before the persistent assignment; the
-# documentation requires proving first that it does not carry input/boot devices.
+# configures a controller BDF and mode. Dedicated mode removes the controller
+# from its old backend. Sequential mode leaves the normal sys-usb assignment in
+# place and assigns the same PCI device to an autostart-disabled webcam backend;
+# the ceremony enforces that only one owner runs at a time.
 seqs-webcam-usb-backend:
   cmd.run:
     - name: |
@@ -416,16 +496,94 @@ seqs-webcam-usb-backend:
         qvm-prefs -- {{ webcam_usb_qube }} autostart false
         qvm-features -- {{ webcam_usb_qube }} appmenus-dispvm ''
         qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
-        current="$(qvm-pci 2>/dev/null | awk '$1 ~ /:{{ webcam_controller | replace('.', '\\.') }}$/ {sub(/:.*/, "", $1); print $1; exit}')"
-        if [ -n "$current" ] && [ "$current" != "{{ webcam_usb_qube }}" ]; then
-          qvm-shutdown --wait "$current" || true
-          qvm-pci detach "$current" dom0:{{ webcam_controller }}
-        fi
+{% if webcam_mode == 'dedicated' %}
+        # Remove persistent assignments from other qubes. qvm-pci's display
+        # begins with dom0:BDF and has a free-form description, so it is not a
+        # reliable owner parser; query each qube's pcidevs preference instead.
+        for current in $(qvm-ls --raw-list); do
+          printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
+          [ "$current" = "{{ webcam_usb_qube }}" ] && continue
+          if qvm-prefs -- "$current" pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}'; then
+            qvm-shutdown --wait "$current" || true
+            qvm-pci detach --persistent "$current" dom0:{{ webcam_controller }}
+          fi
+        done
+{% else %}
+        # Sequential mode is valid only when this is already the physical
+        # controller used by the configured normal USB backend.
+        qvm-prefs -- {{ webcam_normal_usb_qube }} pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}' || {
+          echo 'Configured controller is not assigned to {{ webcam_normal_usb_qube }}' >&2
+          exit 1
+        }
+{% endif %}
         qvm-shutdown --wait {{ webcam_usb_qube }} || true
+{% if webcam_mode == 'sequential' %}
+        # Remove any prior weak attachment options, then recreate the webcam
+        # assignment with Qubes' strict-reset default. The normal sys-usb
+        # assignment remains; only one owner may run at a time.
+        qvm-pci detach --persistent {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
+{% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
-    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-pci 2>/dev/null | grep -q '^{{ webcam_usb_qube }}:{{ webcam_controller }}[[:space:]]'
+{% if webcam_mode == 'dedicated' %}
+    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-prefs -- {{ webcam_usb_qube }} pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}'
+{% endif %}
     - require:
       - qvm: seqs-app-qr-camera
+{% endif %}
+
+{% if webcam_mode == 'sequential' %}
+seqs-qr-sequential-scanner:
+  cmd.run:
+    - name: |
+        set -e
+        if ! qvm-check -q -- {{ webcam_sequential_scanner }}; then
+          qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_sequential_scanner }}
+        fi
+        qvm-prefs -- {{ webcam_sequential_scanner }} netvm none
+        qvm-prefs -- {{ webcam_sequential_scanner }} autostart false
+        qvm-features -- {{ webcam_sequential_scanner }} appmenus-dispvm ''
+        qvm-features -- {{ webcam_sequential_scanner }} seqs-managed 1
+    - unless: n="$(qvm-prefs -- {{ webcam_sequential_scanner }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_sequential_scanner }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; }
+    - require:
+      - qvm: seqs-app-qr-camera
+
+seqs-qr-sequential-config-dir:
+  file.directory:
+    - name: /etc/seqs
+    - user: root
+    - group: root
+    - mode: '0700'
+
+seqs-qr-sequential-config:
+  file.managed:
+    - name: /etc/seqs/qr-sequential.conf
+    - user: root
+    - group: root
+    - mode: '0600'
+    - require:
+      - file: seqs-qr-sequential-config-dir
+    - contents: |
+        # Managed by SEQS. Shell-safe values were regex-validated at render time.
+        CONTROLLER='{{ webcam_controller }}'
+        NORMAL_USB_QUBE='{{ webcam_normal_usb_qube }}'
+        WEBCAM_USB_QUBE='{{ webcam_usb_qube }}'
+        SCANNER_QUBE='{{ webcam_sequential_scanner }}'
+        STAGING_QUBE='{{ webcam_staging_qube }}'
+
+seqs-qr-sequential-script:
+  file.managed:
+    - name: /usr/local/sbin/seqs-qr-sequential
+    - source: salt://seqs/files/qr-sequential.sh
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: seqs-qr-sequential-config
+{% else %}
+seqs-qr-sequential-config:
+  cmd.run:
+    - name: rm -f /etc/seqs/qr-sequential.conf /usr/local/sbin/seqs-qr-sequential
+    - onlyif: test -e /etc/seqs/qr-sequential.conf -o -e /usr/local/sbin/seqs-qr-sequential
 {% endif %}
 
 # ── Target list for the runner ─────────────────────────────────────────────

@@ -50,6 +50,15 @@ flags:
 
 Duplicate names abort the pre-flight.
 
+## Secure QR USB modes
+
+`webcam_usb_mode` is `disabled` by default. After completing the qualification
+test in [secure QR transfer](secure-qr-transfer.md#start-here-determine-which-path-the-machine-qualifies-for),
+select `dedicated` for a webcam-only physical controller or `sequential` for
+the reduced-assurance shared-controller ceremony. Both require a verified
+physical `webcam_usb_controller` BDF. Sequential mode requires strict PCI reset
+and intentionally powers off rather than restoring normal USB input in place.
+
 ## `brave_extensions`
 
 Maps name → Chrome Web Store ID for each Brave wallet extension. Reference them

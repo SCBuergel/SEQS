@@ -31,6 +31,8 @@ TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"  # written by seqs.do
 # operator or another tool -- never overwrite without confirmation.
 MANAGED_MARKER="Managed by SEQS"
 POLICY_FILES=(
+	"/etc/qubes/policy.d/00-seqs-qr-input-deny.policy"
+	"/etc/qubes/policy.d/01-seqs-qr-filecopy.policy"
 	"/etc/qubes/policy.d/28-browser-suppress.policy"
 	"/etc/qubes/policy.d/29-browser.policy"
 	"/etc/qubes/policy.d/30-user-input.policy"

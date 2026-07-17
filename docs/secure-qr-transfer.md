@@ -7,10 +7,58 @@ SEQS provisions two offline DisposableVM templates for one-way QR transfers:
   scan ciphertext.
 
 The webcam backend, `sys-usb-webcam`, is also disposable. SEQS creates it and
-assigns its controller only when `webcam_usb_controller` is configured in
-`salt/pillar/seqs/config.sls`. Leaving that value empty is intentional: no
-software can safely infer which physical ports share a controller with a
-keyboard, boot disk, or other critical device.
+assigns its controller only when an active `webcam_usb_mode` and
+`webcam_usb_controller` are configured in `salt/pillar/seqs/config.sls`.
+Leaving the mode disabled and controller empty is intentional: no software can
+safely infer which physical ports share a controller with a keyboard, boot
+disk, or other critical device.
+
+## Start here: determine which path the machine qualifies for
+
+Make this determination before installing or configuring a webcam controller.
+
+The **resilient dedicated-controller path** qualifies only if the physical port
+used by the webcam reaches a PCI USB controller that carries none of these:
+
+- keyboard or mouse;
+- Qubes boot/storage device;
+- USB AEM or boot device; or
+- any device required to operate the machine.
+
+Test every candidate socket as described under [detailed hardware
+identification](#detailed-hardware-identification). If the webcam moves between
+device paths such as `4-3`, `4-2`, and `4-7` while the keyboard is also `4-*`,
+all tested sockets share root bus 4 and the machine does **not** qualify. A USB
+hub, extension, Bluetooth dongle, or USB-to-PS/2 adapter does not create another
+controller. A separately assignable PCIe USB card normally does.
+
+Choose exactly one configuration:
+
+```jinja
+# No webcam controller automation; QR templates are still installed.
+{%- set webcam_usb_mode = 'disabled' %}
+{%- set webcam_usb_controller = '' %}
+```
+
+```jinja
+# Preferred: webcam controller never carries keyboard input.
+{%- set webcam_usb_mode = 'dedicated' %}
+{%- set webcam_usb_controller = '03_00.0' %}
+```
+
+```jinja
+# Reduced-assurance fallback: one controller is reused sequentially, with a
+# mandatory complete power-off before keyboard use resumes.
+{%- set webcam_usb_mode = 'sequential' %}
+{%- set webcam_usb_controller = '00_14.0' %}
+{%- set webcam_usb_no_strict_reset = False %}
+```
+
+Use only a verified physical dom0 BDF. Sequential mode is for a machine whose
+keyboard and webcam sockets share that controller. It is rejected by setup if
+`webcam_usb_no_strict_reset` is enabled. It reduces risk through temporal
+isolation and a cold-power boundary, but it is not equivalent to permanent
+hardware separation.
 
 ## Adding this to an existing SEQS installation
 
@@ -54,11 +102,13 @@ may be shut down. Apply only the reviewed local tree:
 ```
 
 The expected new persistent objects are `Z-qr-display`, `A-qr-display`,
-`Z-qr-camera`, and `A-qr-camera`; the two `A-*` qubes are templates from which
-fresh transfer disposables are launched. `sys-usb-webcam` is additionally
-created only when a verified controller BDF is configured.
+`Z-qr-camera`, `A-qr-camera`, `Z-qr-staging`, and `A-qr-staging`; the display
+and camera `A-*` qubes are templates from which fresh transfer disposables are
+launched. `A-qr-staging` is the offline persistent landing zone used by the
+sequential path. `sys-usb-webcam` is additionally created only when a verified
+controller BDF and active mode are configured.
 
-## One-time hardware identification
+## Detailed hardware identification
 
 Do not put a value in `webcam_usb_controller` until completing this section.
 There are three different identifiers involved, and they are easy to confuse:
@@ -148,7 +198,7 @@ Use the matching physical address in Qubes underscore notation: physical
 IDs and cannot be distinguished confidently, do not guess—test by assigning
 hardware only with a recovery plan, or use a different/add-in controller.
 
-### 4. Decide whether this machine qualifies
+### 4. Confirm whether this machine qualifies for the resilient path
 
 The preferred arrangement qualifies only when the webcam port reaches a
 physical controller that does not carry any keyboard, mouse, boot/AEM device,
@@ -177,6 +227,7 @@ devices use the shared USB controller.
 Set the identified BDF (using Qubes' underscore notation) and rerun setup:
 
 ```jinja
+{%- set webcam_usb_mode = 'dedicated' %}
 {%- set webcam_usb_controller = '03_00.0' %}
 ```
 
@@ -199,6 +250,91 @@ qvm-prefs sys-usb-webcam netvm
 Also run `qvm-usb`: the webcam must be under `sys-usb-webcam`, while every USB
 keyboard and mouse must remain under another backend. If an input device moved
 with the camera controller, stop—the selected controller was not dedicated.
+
+## Reduced-assurance sequential-controller path
+
+Use this only when hardware testing proves that the webcam and USB input must
+share one physical controller and adding a dedicated controller is not
+practical. The same PCI controller is assigned persistently to both the normal
+USB qube and `sys-usb-webcam`, but the orchestration permits only one owner to
+run at a time.
+
+SEQS additionally creates:
+
+- `seqs-qr-scanner`, a named offline scanner DisposableVM;
+- `A-qr-staging`, an offline persistent qube that receives only ciphertext;
+- `/usr/local/sbin/seqs-qr-sequential`, the fail-closed dom0 ceremony; and
+- qrexec rules denying camera-backend input to dom0 and allowing the scanner
+  to copy files only to `A-qr-staging`.
+
+The terminal action after any controller exposure—success or failure—is a
+physical power-off. The script never starts normal `sys-usb` again in that
+boot. This is deliberate: immediate reassignment would rely only on controller
+reset and would restore trusted input while the camera-exposed hardware might
+retain state.
+
+### Sequential ceremony
+
+Before running it:
+
+1. Finish the source-machine encryption and display setup below.
+2. Put the paper passphrase and both hashes completely away.
+3. Ensure the webcam is physically unplugged.
+4. Ensure `A-qr-staging` has no prior
+   `~/QubesIncoming/seqs-qr-scanner/key.asc`.
+5. Close unrelated work; the machine will power off without returning to the
+   normal keyboard backend.
+
+In dom0, with normal keyboard input still working:
+
+```bash
+sudo /usr/local/sbin/seqs-qr-sequential
+```
+
+Review the displayed controller/qube names and type `START`. Then follow the
+screen literally:
+
+1. Immediately unplug the keyboard and mouse. The script waits ten seconds and
+   stops normal `sys-usb`.
+2. Only after the screen says `NORMAL USB BACKEND STOPPED`, connect the webcam.
+3. The script starts fresh webcam/scanner disposables, requires exactly one USB
+   device in the webcam backend, scans one QR code, limits `key.asc` to 16 KiB,
+   and copies it to `A-qr-staging`.
+4. When told, physically unplug the webcam. Do not reconnect input yet.
+5. The computer powers off even if scan, attachment, or copy failed.
+6. After power is completely off, leave the webcam unplugged and reconnect the
+   keyboard/mouse. For the strongest practical reset, remove AC/standby power
+   before booting again.
+7. Boot normally with the webcam absent and the normal USB backend restored (a
+   named disposable normal backend is preferable, though the normal backend
+   was never exposed to the camera in this ceremony). Confirm the incoming
+   file exists in `A-qr-staging`; absence means the ceremony failed and must be
+   repeated from the beginning.
+8. Copy only that `key.asc` to the trusted target key qube, then perform the
+   paper-recorded ciphertext-hash check before invoking GPG.
+
+Do not use the ordinary manual camera instructions in the next section for
+sequential mode; the dom0 script replaces the entire target scanning phase.
+
+### Sequential-path limitations
+
+This fallback prevents the camera-exposed disposable backend from later seeing
+keyboard entry in the same boot, but it does not provide permanent hardware
+separation. It remains vulnerable to:
+
+- malicious state persisting in USB-controller firmware or powered hardware;
+- an incomplete reset or hardware that remains powered after shutdown;
+- a webcam exploit escaping through Xen, IOMMU, PCI, or qrexec vulnerabilities;
+- compromise of the dom0 orchestration or its restrictive policy;
+- a webcam mistakenly left connected at the next boot; and
+- independently malicious keyboard/controller firmware.
+
+Strict PCI reset, working IOMMU isolation, physical webcam removal, cold power
+off, a fresh normal USB backend after boot, and hash verification before GPG
+are all mandatory. If strict attachment fails, do not enable
+`no-strict-reset`; sequential mode is unavailable on that controller. The
+dedicated-controller path avoids reusing camera-exposed hardware for trusted
+input and is therefore more resilient.
 
 ## Transfer ceremony
 
@@ -246,7 +382,7 @@ qrencode -l M -t ansiutf8 < key.asc
 If it does not fit in one QR code, stop; this setup does not implement a
 multi-frame protocol. Shut down the disposable after scanning.
 
-### Target machine: scan
+### Target machine: scan (dedicated-controller mode only)
 
 Put the paper away first. Start `sys-usb-webcam`, then a fresh scanner:
 
