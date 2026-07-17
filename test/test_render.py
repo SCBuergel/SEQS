@@ -98,6 +98,10 @@ def test_dom0_happy_path():
     # keepass air-gap state
     check("seqs-offline-keepass" in parsed, "keepass should get an offline state")
     check("seqs-offline-brave" not in parsed, "brave must NOT be air-gapped")
+    camera_state = parsed["seqs-app-qr-camera"]["qvm.vm"]
+    camera_prefs = next(x["prefs"] for x in camera_state if "prefs" in x)
+    check(any(p.get("template_for_dispvms") is True for p in camera_prefs),
+          "qr-camera app must be configured as a DisposableVM template")
 
 
 def test_dom0_idempotent_rerun():

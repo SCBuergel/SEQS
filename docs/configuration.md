@@ -41,6 +41,10 @@ flags:
   Use for wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
   at the qube's xdg config and via a dom0 qrexec deny rule.
+- `'dispvm_template': True` — makes the app qube a DisposableVM template. The
+  shipped offline `qr-display` and `qr-camera` entries use this flag; see
+  [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
+  must also set `offline: True` (enforced by pre-flight validation).
 
 Duplicate names abort the pre-flight.
 

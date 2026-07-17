@@ -30,6 +30,7 @@ are prefixed `A-[AppName]`, to keep the Qubes menu tidy.
 | Components, flags, air gaps, adding your own | [docs/configuration.md](docs/configuration.md) |
 | Verify before you trust the qubes        | [VERIFY-HUMAN.md](VERIFY-HUMAN.md), [VERIFY-LLM.md](VERIFY-LLM.md) |
 | Extra recipes (VPN tray, firewall, ADB…) | [docs/recipes.md](docs/recipes.md) |
+| Secure air-gapped QR transfer + webcam USB isolation | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |
 | Testing changes offline                   | [test/README.md](test/README.md) |
 
 ---

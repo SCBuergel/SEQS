@@ -21,11 +21,28 @@
 {% set qmap = seqs.get('qubes', {}) %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
+{% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
+{% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
+{% set webcam_usb_qube = seqs.get('webcam_usb_qube', 'sys-usb-webcam') %}
+{% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', '') %}
 
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
 {% set labels = ['red', 'orange', 'yellow', 'green', 'gray', 'blue', 'purple', 'black'] %}
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
+
+{% if webcam_controller and webcam_controller | regex_match('^[0-9A-Fa-f]{2}_[0-9A-Fa-f]{2}\.[0-7]$') is none %}
+{%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a qvm-pci BDF such as 03_00.0)") %}
+{% endif %}
+{% if webcam_usb_qube | regex_match(name_re) is none %}
+{%   do errors.append("webcam_usb_qube '" ~ webcam_usb_qube ~ "' has an unsafe name") %}
+{% endif %}
+{% if webcam_controller and (not webcam_scanner_dvm or webcam_scanner_dvm | regex_match(name_re) is none) %}
+{%   do errors.append("webcam_scanner_dvm is missing or unsafe") %}
+{% endif %}
+{% if webcam_controller and 'qr-camera' not in qmap %}
+{%   do errors.append("webcam_usb_controller is configured but the required qr-camera qube is absent") %}
+{% endif %}
 
 {# ── Errors detected while the pillar itself was compiled (duplicate qube
      names etc. -- see qube_list handling in pillar config.sls). ────────── #}
@@ -96,6 +113,9 @@
 {#     Optional outbound allowlist ('firewall' key): validate before any
        entry is interpolated into a qvm-firewall command below. #}
 {%     set fw = q.get('firewall') %}
+{%     if q.get('dispvm_template') and not q.get('offline') %}
+{%       do errors.append("qube '" ~ name ~ "' is a DisposableVM template for sensitive data but is not offline") %}
+{%     endif %}
 {%     if fw is not none %}
 {%       if fw is string or fw is not sequence %}
 {%         do errors.append("qube '" ~ name ~ "': 'firewall' must be a list of allowlist entries") %}
@@ -292,6 +312,9 @@ seqs-app-{{ name }}:
 {%   endif %}
     - prefs:
       - label: {{ q.get('label') }}
+{%   if q.get('dispvm_template') %}
+      - template_for_dispvms: True
+{%   endif %}
 {%   if (not app_tagged) or (not tpl_exists) %}
     - require:
 {%     if not app_tagged %}
@@ -374,6 +397,36 @@ seqs-tag-app-{{ name }}:
       - file: seqs-intent-app-{{ name }}
 {%   endif %}
 {% endfor %}
+
+{% if webcam_controller %}
+# A named disposable USB backend is created only after the operator explicitly
+# configures a dedicated controller BDF. The command deliberately detaches that
+# controller from any current backend before the persistent assignment; the
+# documentation requires proving first that it does not carry input/boot devices.
+seqs-webcam-usb-backend:
+  cmd.run:
+    - name: |
+        set -e
+        if ! qvm-check -q -- {{ webcam_usb_qube }}; then
+          qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_usb_qube }}
+        fi
+        qvm-prefs -- {{ webcam_usb_qube }} virt_mode hvm
+        qvm-prefs -- {{ webcam_usb_qube }} maxmem 0
+        qvm-prefs -- {{ webcam_usb_qube }} netvm none
+        qvm-prefs -- {{ webcam_usb_qube }} autostart false
+        qvm-features -- {{ webcam_usb_qube }} appmenus-dispvm ''
+        qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
+        current="$(qvm-pci 2>/dev/null | awk '$1 ~ /:{{ webcam_controller | replace('.', '\\.') }}$/ {sub(/:.*/, "", $1); print $1; exit}')"
+        if [ -n "$current" ] && [ "$current" != "{{ webcam_usb_qube }}" ]; then
+          qvm-shutdown --wait "$current" || true
+          qvm-pci detach "$current" dom0:{{ webcam_controller }}
+        fi
+        qvm-shutdown --wait {{ webcam_usb_qube }} || true
+        qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
+    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-pci 2>/dev/null | grep -q '^{{ webcam_usb_qube }}:{{ webcam_controller }}[[:space:]]'
+    - require:
+      - qvm: seqs-app-qr-camera
+{% endif %}
 
 # ── Target list for the runner ─────────────────────────────────────────────
 # setup-qubes.sh reads this to know which qubes to provision (templates
