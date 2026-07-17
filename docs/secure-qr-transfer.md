@@ -12,15 +12,167 @@ assigns its controller only when `webcam_usb_controller` is configured in
 software can safely infer which physical ports share a controller with a
 keyboard, boot disk, or other critical device.
 
+## Adding this to an existing SEQS installation
+
+The installer is convergent: after updating the repository, rerun it to create
+the missing QR qubes while preserving existing qubes marked `seqs-managed`.
+Configure and verify the controller as described in the next section **before**
+applying the update. Leaving `webcam_usb_controller` empty still installs the
+two QR DisposableVM templates, but deliberately does not create or attach the
+webcam USB backend.
+
+If the updated repository is in an existing trusted repo qube, rerun the normal
+README installation command. If it is downloaded into a temporary networked
+DisposableVM, keep that disposable running during the fetch and note its name
+(for example `disp1234`). In dom0, copy the updated runner while suppressing
+untrusted stderr:
+
+```bash
+DOWNLOAD_QUBE=disp1234
+qvm-run -p "$DOWNLOAD_QUBE" \
+  'cat /home/user/SEQS/setup-qubes.sh' \
+  2>/dev/null > ~/seqs-update.sh
+chmod 700 ~/seqs-update.sh
+```
+
+Fetch and install the new Salt tree without applying it yet:
+
+```bash
+SEQS_REPO_VM="$DOWNLOAD_QUBE" \
+SEQS_REPO_PATH=/home/user/SEQS \
+~/seqs-update.sh --fetch-only
+```
+
+Review the displayed diff and the resulting `/srv/salt/seqs` and
+`/srv/pillar/seqs` trees. The download qube is a source of dom0 configuration
+and therefore part of the build's trust path; verify the repository revision
+independently before accepting it. After the fetch completes, the disposable
+may be shut down. Apply only the reviewed local tree:
+
+```bash
+~/seqs-update.sh --skip-fetch
+```
+
+The expected new persistent objects are `Z-qr-display`, `A-qr-display`,
+`Z-qr-camera`, and `A-qr-camera`; the two `A-*` qubes are templates from which
+fresh transfer disposables are launched. `sys-usb-webcam` is additionally
+created only when a verified controller BDF is configured.
+
 ## One-time hardware identification
 
-In dom0, list controllers with `qvm-pci`. Map physical ports by plugging a
-harmless test device into each port and observing `qvm-usb`. Choose a controller
-used only for the webcam. Never choose one serving the keyboard, mouse, Qubes
-boot disk, AEM/boot device, or another device needed to operate the machine.
-If the webcam and USB keyboard share a controller, use an add-in USB controller,
-a different computer, or an internal non-USB keyboard; software cannot provide
-the required isolation.
+Do not put a value in `webcam_usb_controller` until completing this section.
+There are three different identifiers involved, and they are easy to confuse:
+
+| Example | Meaning | Where it appears |
+|---|---|---|
+| `dom0:00_14.0` | Physical PCI USB-controller BDF; this is the value SEQS ultimately needs, without the `dom0:` prefix | `qvm-pci` in dom0 |
+| `sys-usb:4-3` | USB backend (`sys-usb`) plus USB device path (`4-3`); the leading `4` is the root USB bus | `qvm-usb` in dom0 |
+| `0000:00:09.0` | Virtual PCI address assigned to the passed-through controller inside `sys-usb` | `readlink`/`lspci` inside `sys-usb` |
+
+These numbering systems do **not** have to match. In particular, a virtual
+`00:09.0` inside `sys-usb` will normally not appear in dom0's `qvm-pci` list and
+must not be entered as `webcam_usb_controller`.
+
+### 1. List physical controllers and current USB devices
+
+In dom0:
+
+```bash
+qvm-pci
+qvm-usb
+```
+
+`qvm-pci` lists controllers but does not say which socket feeds which
+controller. `qvm-usb` lists devices but normally does not print their physical
+PCI BDF. The two commands answer different questions.
+
+Example `qvm-usb` output:
+
+```text
+sys-usb:4-1.1  Mouse
+sys-usb:4-1.4  Keyboard
+sys-usb:4-3    Camera
+```
+
+All three paths start with root bus `4-`. Therefore they share one USB
+controller, even though the suffixes differ. A path such as `4-1.4` means the
+device is behind a hub; it is still on root bus 4. Seeing the same backend name
+(`sys-usb`) alone is not proof of sharing because one USB qube may own several
+controllers—the shared root-bus number is the useful observation here.
+
+### 2. Test every physical camera port
+
+Leave the keyboard and mouse connected. Move only a harmless test device (the
+webcam is suitable) to each physical socket and run `qvm-usb` after every move.
+Record its complete device path.
+
+- `4-3`, then `4-2`, then `4-7`: all sockets tested still lead to root bus 4
+  and the same controller.
+- `4-3`, then `2-1`: the second socket reaches a different root bus and may be
+  a candidate for isolation.
+
+Test every socket intended for camera use. Never choose a controller serving
+the keyboard, mouse, Qubes boot disk, AEM/boot device, or another device needed
+to operate the machine.
+
+### 3. Resolve a candidate bus to its controller
+
+For a camera shown as `sys-usb:2-1`, inspect it inside its backend:
+
+```bash
+qvm-run -p sys-usb 'readlink -f /sys/bus/usb/devices/2-1'
+```
+
+An output path may include something like:
+
+```text
+/sys/devices/pci0000:00/0000:00:09.0/usb2/2-1
+```
+
+Here `00:09.0` is the controller's **virtual** address inside `sys-usb`, not
+the physical dom0 BDF. Obtain its device identity inside `sys-usb`:
+
+```bash
+qvm-run -p sys-usb 'lspci -nn -s 00:09.0'
+```
+
+Compare the controller description and `[vendor:device]` ID with candidate
+physical USB controllers in dom0, for example:
+
+```bash
+lspci -nn -s 00:14.0
+```
+
+Use the matching physical address in Qubes underscore notation: physical
+`00:14.0` becomes `00_14.0`. If multiple physical controllers have identical
+IDs and cannot be distinguished confidently, do not guess—test by assigning
+hardware only with a recovery plan, or use a different/add-in controller.
+
+### 4. Decide whether this machine qualifies
+
+The preferred arrangement qualifies only when the webcam port reaches a
+physical controller that does not carry any keyboard, mouse, boot/AEM device,
+or other required device.
+
+If every available port leaves the camera on the same root bus as a USB
+keyboard, the existing hardware does not provide the preferred isolation.
+Stop and leave `webcam_usb_controller` empty. This is a normal and important
+result of the test, not a software problem.
+
+A plain USB hub, USB extension cable, USB-to-PS/2 adapter, or Bluetooth dongle
+does not add a controller; it remains downstream of the existing one. On a
+desktop, the usual solution is a separately assignable PCIe USB controller
+card dedicated to the webcam. On suitable hardware a Thunderbolt dock may
+expose a distinct controller, but this must be confirmed in `qvm-pci` and with
+the bus test above. Otherwise use a different machine.
+
+The procedure also permits an internal, genuinely non-USB keyboard: disconnect
+all external USB input devices, confirm the internal keyboard still works with
+`sys-usb` shut down, and shut down/destroy the webcam-exposed USB backend before
+typing any paper value. This fallback does not help a desktop whose only input
+devices use the shared USB controller.
+
+### 5. Configure only a verified controller
 
 Set the identified BDF (using Qubes' underscore notation) and rerun setup:
 
@@ -43,6 +195,10 @@ another backend. Check the air gap with:
 ```bash
 qvm-prefs sys-usb-webcam netvm
 ```
+
+Also run `qvm-usb`: the webcam must be under `sys-usb-webcam`, while every USB
+keyboard and mouse must remain under another backend. If an input device moved
+with the camera controller, stop—the selected controller was not dedicated.
 
 ## Transfer ceremony
 
@@ -169,4 +325,3 @@ For Qubes background and warnings, see the official documentation for
 [USB devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-usb-devices.html),
 [PCI devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-pci-devices.html),
 and [disposable customization](https://doc.qubes-os.org/en/development/user/advanced-topics/disposable-customization.html).
-

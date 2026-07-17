@@ -25,6 +25,8 @@ Each qube in `qube_list` is built from a list of components:
 | `node`         | Node.js via nvm |
 | `openoffice`   | Apache OpenOffice tarball (GPG-verified) |
 | `python`       | pyenv + Python |
+| `qr-camera`    | `zbarcam` QR scanner + Qubes USB proxy for the offline camera DisposableVM template |
+| `qr-display`   | `qrencode` for the offline QR-display DisposableVM template |
 | `signal`       | Signal Desktop (apt repo, embedded verified key) |
 | `telegram`     | Telegram via snap (`telegram-desktop`) |
 | `trezor`       | Trezor udev rules |

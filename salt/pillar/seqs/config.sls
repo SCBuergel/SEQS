@@ -74,6 +74,9 @@ validateAllQubes.
     controller BDF identified in dom0 (qvm-pci), e.g. '03_00.0', to have SEQS
     create sys-usb-webcam and move that controller to it. Empty is deliberately
     safe-by-default: software cannot determine which ports/controllers are safe.
+    Do not confuse this physical dom0 BDF with a qvm-usb device path (e.g.
+    sys-usb:4-3) or the virtual PCI address visible inside sys-usb. Follow the
+    identification and stop-condition guide in docs/secure-qr-transfer.md.
     no_strict_reset weakens reset isolation and must only be enabled if the
     controller cannot otherwise be attached. #}
 {%- set webcam_usb_controller = '' %}
