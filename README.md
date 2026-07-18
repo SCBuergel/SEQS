@@ -14,12 +14,14 @@ are prefixed `A-[AppName]`, to keep the Qubes menu tidy.
 > trust it.** Start with [VERIFY-HUMAN.md](VERIFY-HUMAN.md) and
 > [TRUST.md](TRUST.md).
 
-## Install in three steps
+## First installation: the complete path
 
-1. **[Install Qubes OS](docs/install-qubes.md)** — download, *verify*, and flash
-   the ISO (essentials in §1).
-2. **Configure** what gets built — two edits (§2).
-3. **Run the installer** from dom0 (§3).
+1. **[Install and verify Qubes OS](docs/install-qubes.md).**
+2. **Download SEQS into a temporary networked DisposableVM** (§2).
+3. **Review the exact revision and code that will become trusted** (§3).
+4. **Configure what gets built inside that disposable** (§4).
+5. **Copy only the runner into dom0 and fetch without applying** (§5).
+6. **Review dom0's installed `/srv` tree, then apply it locally** (§6).
 
 Already installed SEQS and want to add a newly introduced qube or setting?
 Do not reinstall Qubes; follow [Upgrading an existing SEQS installation](docs/upgrading.md).
@@ -29,7 +31,7 @@ Do not reinstall Qubes; follow [Upgrading an existing SEQS installation](docs/up
 | Topic | Where |
 |---|---|
 | Full Qubes OS install + ISO verification | [docs/install-qubes.md](docs/install-qubes.md) |
-| How the runner works, trust story        | [docs/architecture.md](docs/architecture.md), [TRUST.md](TRUST.md) |
+| What to review before running anything   | [VERIFY-HUMAN.md](VERIFY-HUMAN.md), [TRUST.md](TRUST.md), [docs/architecture.md](docs/architecture.md) |
 | Upgrade an existing SEQS installation or add new qubes | [docs/upgrading.md](docs/upgrading.md) |
 | Components, flags, air gaps, adding your own | [docs/configuration.md](docs/configuration.md) |
 | Verify before you trust the qubes        | [VERIFY-HUMAN.md](VERIFY-HUMAN.md), [VERIFY-LLM.md](VERIFY-LLM.md) |
@@ -52,27 +54,85 @@ Essentials:
    sources, then `gpg --verify` ([how](docs/install-qubes.md#2-verify-the-iso-before-flashing-it)).
 3. Install, then run all system updates and reboot.
 
-## 2. Configure what gets built
+## 2. Download SEQS in a temporary DisposableVM
 
-Two edits before your first run.
+Do not use your daily `personal` qube as the bootstrap source. Start a fresh,
+networked Debian DisposableVM from the Qubes application menu and open a
+terminal in it. The disposable limits persistence and avoids mixing the
+download with personal files; it does **not** authenticate what GitHub served.
 
-### 2.1 Point the runner at your repo qube — `setup-qubes.sh`
-
-At the top of `setup-qubes.sh` (or via env vars):
+Inside that disposable:
 
 ```bash
-REPO_VM="${SEQS_REPO_VM:-personal}"             # qube dom0 fetches the repo from
-REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"  # where the repo lives in it
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
+cd /home/user/SEQS
+git status --short
+git rev-parse HEAD
+hostname
 ```
 
-`REPO_VM` is the **root of trust for the whole build** — dom0 runs whatever it
-serves. On an **absolutely fresh** Qubes install the stock `personal` qube is a
-fine default. But if your `personal` qube is **actually in use** (browses the
-web, opens documents, holds files), host the repo in a **dedicated, minimal,
-network-light qube** instead and set `REPO_VM` to it. Change `REPO_PATH` if you
-cloned the repo somewhere other than `/home/user/SEQS`.
+Record the complete commit ID and the disposable's name printed by `hostname`
+(normally something like `disp1234`). Keep this disposable running until the
+dom0 `--fetch-only` step completes. If it shuts down earlier, its checkout is
+destroyed, which is expected DisposableVM behavior.
 
-### 2.2 Choose your qubes (`salt/pillar/seqs/config.sls`)
+For ongoing maintenance after installation, prefer a dedicated minimal repo
+qube or repeat this fresh-disposable workflow; see
+[docs/upgrading.md](docs/upgrading.md). The runner still has a legacy
+`personal` fallback for compatibility, but this guide deliberately supplies an
+explicit disposable name instead.
+
+## 3. Establish what you are about to trust
+
+Anything this checkout supplies can ultimately influence dom0 and every qube
+SEQS creates. HTTPS and a Git commit ID provide transport and version identity;
+they do not by themselves prove that the code is safe or that the intended
+author approved it.
+
+Before copying anything into dom0:
+
+1. Follow [VERIFY-HUMAN.md](VERIFY-HUMAN.md), especially “Read what you'll
+   run.” It gives the review order for the runner, pillar, Salt states, shared
+   verification libraries, and every selected component installer.
+2. Read [TRUST.md](TRUST.md) for what each component verifies and its residual
+   risks. Items marked ⚠️ or ❌ require an explicit trust decision.
+3. Read [docs/architecture.md](docs/architecture.md) for the VM→dom0 data flow,
+   archive validation, review gate, and bootstrap-window defense.
+4. Compare the full commit ID through an independent trusted channel or against
+   a separately obtained known-good checkout. If the chosen revision has a
+   verifiable signature, verify it; do not assume every commit is signed.
+5. Inspect local changes and run the offline tests when dependencies are
+   available:
+
+   ```bash
+   cd /home/user/SEQS
+   git status
+   git diff --check
+   ./test/run-tests.sh
+   ```
+
+The test suite detects many accidental or structural failures, but passing
+tests are not a security audit. Do not continue if the revision, diff, or code
+does not match what you intended to trust.
+
+## 4. Configure what gets built
+
+Edit the repository while it is still in the DisposableVM.
+
+For example, with the terminal editor supplied by the template:
+
+```bash
+cd /home/user/SEQS
+nano salt/pillar/seqs/config.sls
+```
+
+In `nano`, save with `Ctrl+O`, press Enter, and exit with `Ctrl+X`. If `nano`
+is not installed, use the template's available editor; do not move the
+configuration step into dom0.
+
+### 4.1 Choose your qubes (`salt/pillar/seqs/config.sls`)
 
 **All software configuration lives in one file:** `salt/pillar/seqs/config.sls`.
 Each qube is one entry in `qube_list`, built from a list of **components**:
@@ -90,31 +150,76 @@ Add an entry to spin up a new qube; edit an entry to add/remove components. The
 extensions, and how to add your own component are in
 [docs/configuration.md](docs/configuration.md).
 
-## 3. Run the installer
+For security-sensitive features such as offline QR transfer, complete their
+hardware qualification before selecting a mode; see
+[docs/secure-qr-transfer.md](docs/secure-qr-transfer.md).
 
-1. Copy this repo into the home directory of your repo qube (default
-   `/home/user/SEQS` in `personal` — match `REPO_VM` / `REPO_PATH`).
-2. Open a **dom0** terminal and run the one-liner (a [standard way to copy a file
-   from an app VM into dom0](https://www.qubes-os.org/doc/how-to-copy-from-dom0/#copying-to-dom0)):
-   ```
-   qvm-run -p personal 'cat /home/user/SEQS/setup-qubes.sh' 2>/dev/null > s.sh && chmod +x s.sh && ./s.sh
-   ```
-   If you changed `REPO_VM` / `REPO_PATH`, update `personal` and
-   `/home/user/SEQS` here too. The `2>/dev/null` is deliberate — it closes a
-   terminal-injection window before the runner's own sanitizer exists
-   ([why](docs/architecture.md#bootstrap-window)).
-3. Review the fetched tree when prompted and type `CONTINUE`. Some software
-   packages need a one-time reboot of their app VM to work.
+Review the final configuration and diff again:
 
-**Re-runs and flags** — re-running `./setup-qubes.sh` converges (edit
-`config.sls` and re-run to change what's built):
-
-```
-./setup-qubes.sh --fetch-only    # fetch + install to /srv, then stop for review
-./setup-qubes.sh --skip-fetch    # apply from /srv without contacting REPO_VM
-./setup-qubes.sh --verbose       # show full per-state qubesctl output (debug)
+```bash
+sed -n '1,230p' salt/pillar/seqs/config.sls
+git diff --check
+git diff
 ```
 
-See [docs/upgrading.md](docs/upgrading.md) before changing an existing
-installation, and [docs/architecture.md](docs/architecture.md) for exactly what
-each phase does.
+## 5. Copy the runner into dom0 and fetch only
+
+Assume the disposable reported `disp1234`; replace that example with its exact
+name. In a dom0 terminal:
+
+```bash
+REPO_VM=disp1234
+REPO_PATH=/home/user/SEQS
+
+qvm-run -p "$REPO_VM" \
+  "cat $REPO_PATH/setup-qubes.sh" \
+  2>/dev/null > ~/seqs-setup.sh
+chmod 700 ~/seqs-setup.sh
+less ~/seqs-setup.sh
+```
+
+The `2>/dev/null` is deliberate: it prevents source-qube terminal-control bytes
+from reaching dom0 before the runner's sanitizer exists. Read the full rationale
+in [the bootstrap-window section](docs/architecture.md#bootstrap-window).
+
+Review the copied runner in dom0 with `less`; quit with `q`. Then fetch and
+install the Salt tree without applying any state:
+
+```bash
+SEQS_REPO_VM="$REPO_VM" \
+SEQS_REPO_PATH="$REPO_PATH" \
+~/seqs-setup.sh --fetch-only
+```
+
+The runner validates the archive and displays its transfer hash. On the first
+installation there is no prior `/srv` tree to compare, so the review obligation
+is especially important. Type `CONTINUE` only for the revision and content you
+already reviewed. After `--fetch-only` completes, shut down the download
+DisposableVM; dom0 no longer needs it.
+
+## 6. Review `/srv`, then apply locally
+
+The exact root-owned tree that will run is now installed in dom0. Review at
+least:
+
+```bash
+sudo less /srv/pillar/seqs/config.sls
+sudo less /srv/salt/seqs/dom0.sls
+sudo less /srv/salt/seqs/qube.sls
+```
+
+Follow the fuller file order in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). When the
+installed bytes match the revision and configuration you approved, apply
+without contacting any repo/download qube:
+
+```bash
+~/seqs-setup.sh --skip-fetch
+```
+
+Watch for policy-takeover prompts, air-gap verification, failed Salt states,
+and component signature checks as described in VERIFY-HUMAN. After completion,
+perform its post-install spot checks before putting secrets in the new qubes.
+
+For later changes, follow [docs/upgrading.md](docs/upgrading.md). Re-runs
+converge, but removal and changed component installers have deliberately
+non-destructive semantics explained there.

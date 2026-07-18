@@ -8,7 +8,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 
 - **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
-- **`REPO_VM`** (default: `personal`). This qube serves the salt tree (states + install scripts) into dom0, where it runs as root; a compromise here is a compromise of everything unless you review at the fetch gate. Use a freshly-created, lightly-used qube (not your daily-driver). Clone the SEQS repo into it from a known-good upstream URL on the day of install.
+- **`REPO_VM`.** This qube serves the salt tree (states + install scripts) into dom0, where it runs as root; a compromise here is a compromise of everything unless your independent review catches it. For first installation, use a fresh networked DisposableVM as described in the README, keep it alive only through `--fetch-only`, then destroy it. Do not use your daily `personal` qube. A disposable provides containment and a clean starting state, not authenticity: independently verify the revision and review the exact installed `/srv` bytes before applying them.
 
 ## 2. Read what you'll run
 
@@ -16,7 +16,7 @@ Read top-to-bottom, in this order:
 
 1. **`setup-qubes.sh`** — the thin dom0 runner: `REPO_VM`/`REPO_PATH` at the top, `sanitize()` (the dom0 terminal filter — three stages: C0 via `tr`, raw C1 via `iconv`, UTF-8-encoded C1 via `sed`), `runQubesctl` (exit code + failure-marker scan), `fetchSaltTree` (tar entry validation + the diff-and-`CONTINUE` review gate), `confirmPolicyTakeover` (the `OVERWRITE` prompt guarding non-SEQS qrexec policy files), and `verifyAirgap`.
 2. **`salt/pillar/seqs/config.sls`** — ALL configuration: prefixes, base template, `browser_vm`, `qube_list` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and the per-minion slicing at the bottom (each qube receives only its own slice — verify the dom0/VM split).
-3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), the three qrexec policy states, the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
+3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), all generated qrexec policy states (including QR containment when enabled), the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.
 5. **`install-scripts/lib/brave.sh`** — Brave install + keyring verification logic + `ensure_brave`. Also adds the apt-`preferences.d` pin that locks the Brave repo to brave-browser packages only.
 6. **`install-scripts/lib/verify-gpg.sh`** — shared `verify_detached_sig` helper used by keepass / bitbox / openoffice. Requires both `GOODSIG` and `VALIDSIG <pinned_fpr>` and explicitly rejects `BADSIG / ERRSIG / EXP*SIG / REV*SIG / KEYEXPIRED / KEYREVOKED / NO_PUBKEY`. If this helper is wrong, all three signed installers are wrong.
@@ -53,7 +53,7 @@ When you run `setup-qubes.sh`:
 
 2. **The pre-flight validation** runs inside `qubesctl state.apply seqs.dom0` and checks everything before anything is changed: base template exists, `browser_vm` resolves, every component directory exists, extension IDs are well-formed, no duplicate qube names, cleanup paths are in-bounds, prefixes match the `.top` globs, and no same-named qube exists that SEQS didn't create. A failure shows as `seqs-validation-failed` with the reasons in its comment — *no* qubes are built before this passes.
 
-3. **Policy-takeover prompt.** If a qrexec policy file (`28-browser-suppress` / `29-browser` / `30-user-input` under `/etc/qubes/policy.d/`) exists but was NOT written by SEQS (no `Managed by SEQS` header — e.g. hand-edited or from another tool), the runner prints its full contents and **blocks** on:
+3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file (the QR containment policies when configured, `28-browser-suppress`, `29-browser`, or `30-user-input` under `/etc/qubes/policy.d/`) exists but was NOT written by SEQS (no `Managed by SEQS` header — e.g. hand-edited or from another tool), the runner prints its full contents and **blocks** on:
 
    `Overwrite the file(s) above? type OVERWRITE to confirm (anything else aborts):`
 

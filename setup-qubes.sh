@@ -17,7 +17,9 @@ set -uo pipefail
 
 # ---- Config -- usually set once when first installing SEQS. -----------------
 # REPO_VM/REPO_PATH: where this repo lives; only contacted during the fetch
-# step. Do NOT use an in-use daily-driver qube -- see README §2.1.
+# step. The legacy fallback is personal, but the README's first-install path
+# explicitly overrides it with a fresh DisposableVM. Never use an in-use
+# daily-driver qube; see README §2.
 REPO_VM="${SEQS_REPO_VM:-personal}"
 REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 

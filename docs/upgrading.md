@@ -58,11 +58,12 @@ not authentication; verify the revision by a trusted independent method.
 
 ## 2. Copy the current runner into dom0
 
-The following example assumes `REPO_VM=personal` and
-`REPO_PATH=/home/user/SEQS`. In dom0:
+The following example assumes a dedicated repo qube named `seqs-repo` and
+`REPO_PATH=/home/user/SEQS`. A fresh temporary DisposableVM is also suitable;
+use its exact `dispNNNN` name and keep it alive through `--fetch-only`. In dom0:
 
 ```bash
-REPO_VM=personal
+REPO_VM=seqs-repo
 REPO_PATH=/home/user/SEQS
 
 qvm-run -p "$REPO_VM" \
