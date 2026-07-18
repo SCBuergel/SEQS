@@ -8,8 +8,9 @@ TemplateVM and `A-*` AppVM for each selected workload, keeping unrelated tools
 and data out of the same qube while making the resulting layout reproducible
 from one reviewed configuration.
 
-> **Warning:** SEQS installs Salt code that runs as root in dom0. A malicious
-> checkout can compromise the whole machine. Before proceeding, use
+> **Warning:** SEQS installs [Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html)
+> code that runs as root in dom0. A malicious checkout can compromise the
+> whole machine. Before proceeding, use
 > [VERIFY-HUMAN.md](VERIFY-HUMAN.md) to review what will run and
 > [TRUST.md](TRUST.md) to understand what remains trusted. Those repository
 > documents are guidance, not independent proof.
@@ -17,7 +18,10 @@ from one reviewed configuration.
 ## Minimal first install
 
 For explanations and verification details, follow
-[docs/first-install.md](docs/first-install.md). The minimum command path is:
+[docs/first-install.md](docs/first-install.md). SEQS first **fetches** and
+validates the repository into a review-only area in dom0, then **stages** the
+reviewed Salt files where Qubes can use them, and finally **builds** the
+configured TemplateVMs and AppVMs. The minimum command path is:
 
 1. [Install and verify Qubes OS](docs/install-qubes.md), update it, and reboot.
 
@@ -26,14 +30,13 @@ For explanations and verification details, follow
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
    cd /home/user/SEQS
-   printf 'Use as REPO_VM in dom0: '; hostname
    vim salt/pillar/seqs/config.sls
    ```
 
-   In `config.sls`, normally you only need to set `base_template` and edit
-   `qube_list`: add or remove qubes, choose each `label`, and select its
-   `components`. Keep `offline: True` for qubes that must have no network and
-   leave `webcam_usb_mode` disabled unless you follow the
+   In `config.sls`, normally you only need to edit `qube_list`: add or remove
+   qubes, choose each `label`, and select its `components`. Keep `offline: True`
+   for qubes that must have no network and leave `webcam_usb_mode` disabled
+   unless you follow the
    [secure QR guide](docs/secure-qr-transfer.md). See the
    [configuration guide](docs/configuration.md) for all fields and components.
 
@@ -42,7 +45,7 @@ For explanations and verification details, follow
    checks. If `vim` is unfamiliar, use its built-in `vimtutor` or the
    [Vim user manual](https://vimhelp.org/usr_01.txt.html#tutor).
 
-3. In dom0, replace `disp1234` with the disposable name printed above:
+3. In dom0, replace both `disp1234` occurrences with the disposable's name:
 
    ```bash
    qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
