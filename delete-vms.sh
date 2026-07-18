@@ -3,16 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Deletes qubes matching the SEQS prefix convention used by setup-qubes.sh:
-# for each <name>, removes any qube called A-<name> (app qube) or Z-<name>
-# (template qube). Names are matched as literal strings, not regex.
-#
-# Usage:
-#   ./delete-vms.sh [--dry-run] <name> [<name> ...]
-#
-# Options:
-#   --dry-run     print what would be killed/removed and exit 0
-#   -h, --help    show this message
+# Removes matching A-/Z- qubes; run with --help and use --dry-run first.
 
 # Prefixes to check for each <name>. Keep in sync with PREFIX_APP_VM /
 # PREFIX_TEMPLATE_VM in setup-qubes.sh.

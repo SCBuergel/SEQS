@@ -1,17 +1,4 @@
-# SEQS dom0 state -- validation, qrexec policies, qube creation.
-#
-# Applied in dom0 via `sudo qubesctl state.apply seqs.dom0` (setup-qubes.sh
-# does this for you). This state only touches dom0-side objects: it validates
-# the pillar config, installs the qrexec policy files, clones templates,
-# creates app qubes, and writes /var/lib/seqs/targets for the runner.
-# Software installation INSIDE the qubes is done by seqs.qube, applied to
-# each Z-*/A-* target through the Qubes salt management stack (disposable
-# management VM) -- dom0 never executes or parses anything a qube produces.
-#
-# Everything interpolated into a shell command or file path below is
-# regex-validated first, even though pillar is dom0-authored -- same
-# defense-in-depth stance the old imperative script took toward REPO_VM
-# directory listings.
+# SEQS dom0 state: validation, policies, and qube creation; see docs/architecture.md.
 
 {% set seqs = salt['pillar.get']('seqs', {}) %}
 {% set ptpl = seqs.get('prefix_template', '') %}

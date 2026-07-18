@@ -1,27 +1,4 @@
-# SEQS per-qube state -- applied INSIDE each Z-*/A-* qube via
-#   sudo qubesctl --skip-dom0 --targets=<qube,...> state.apply seqs.qube
-# (setup-qubes.sh does this, templates first, then app qubes).
-#
-# The qube's role and component list come from its pillar slice (see
-# salt/pillar/seqs/config.sls). Provisioning runs through the Qubes salt
-# management stack (salt-ssh over qrexec via the disposable management VM):
-# dom0 pushes files and states DOWN; nothing the qube prints is ever piped
-# through a dom0 shell or terminal. This removes the entire fetchFromVm /
-# vmRun-sanitizer machinery of the old imperative installer.
-#
-# Component contract (unchanged): install-scripts/components/<name>/ may ship
-#   template-vm.sh -- system-wide install, run in the template (optional)
-#   app-vm.sh      -- per-app-qube setup, run in the app qube (optional)
-#   menu.desktop   -- launcher installed as /usr/share/applications/<name>.desktop
-#   any other file -- asset available next to the script at run time
-# Scripts run as user 'user' (they sudo internally, as before) with the
-# shared libs from install-scripts/lib/ staged NEXT TO them, so the existing
-# `. "$(dirname "$0")/brave.sh"` pattern keeps working verbatim.
-#
-# Staging lives on /run (tmpfs): installer payloads evaporate at shutdown,
-# replacing the old "rm -rf QubesIncoming" cleanup. Completion markers live
-# on /rw/config/seqs (private volume) so re-applies converge instead of
-# re-running finished installers; delete a marker to force a re-install.
+# SEQS per-qube provisioning state; see docs/architecture.md and docs/configuration.md.
 
 {% set seqs = salt['pillar.get']('seqs', {}) %}
 {% set role = seqs.get('role', '') %}

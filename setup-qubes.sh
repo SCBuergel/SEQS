@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 
-# SEQS -- Qubes Salt based setup (dom0 entry point).
-#
-# Fetches salt/ + install-scripts/ from REPO_VM once (single validated tar),
-# installs them under /srv, then drives qubesctl to create every qube and
-# provision its software. All software config lives in salt/pillar/seqs/config.sls.
-# How each phase works and why the trust story holds: docs/architecture.md.
+# SEQS dom0 runner; see docs/architecture.md and docs/configuration.md.
 #
 # Usage:
 #   ./setup-qubes.sh                fetch + install + apply everything

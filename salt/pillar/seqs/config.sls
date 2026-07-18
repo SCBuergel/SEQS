@@ -1,88 +1,19 @@
 {#-
-SEQS master configuration (Qubes Salt pillar).
-
-This file replaces the config arrays that used to sit at the top of the old
-imperative setup-qubes.sh (SINGLE_QUBES / DEV_QUBES / WALLET_QUBES /
-BRAVE_EXTENSIONS / CLEANUP_DIRS / OS_TEMPLATE_VM / PREFIX_* / BROWSER_VM).
-Edit the jinja sets below, then re-run setup-qubes.sh in dom0 (or
-`sudo qubesctl state.apply seqs.dom0` followed by per-qube applies).
-
-Pillar is compiled in dom0 and is per-minion: each qube only ever receives
-its OWN slice (role, its component list, the extension IDs it references,
-and the shared browser/cleanup knobs). dom0 receives the full map. This is
-deliberate -- a compromised app qube must not learn the full qube topology
-or the wallet-extension inventory from its pillar.
-
-COLOR / label semantics (unchanged from the old script):
-  red    -- arbitrary network input from strangers (brave, element, telegram)
-  orange -- heavy tooling / agent code execution (dev qubes)
-  yellow -- local docs with import risk (openoffice, xournalpp)
-  green  -- clean utility, known-only input (signal)
-  gray   -- exposed AND holds value (wallets)
-  black  -- offline vault, no network at all (keepass)
-  blue/purple -- reserved for user-added qubes.
-
-Per-qube flags:
-  offline: True    -- app qube gets its netvm cleared (air-gapped). Implies
-                      no_handoff. setup-qubes.sh re-verifies the air gap
-                      after the dom0 apply before provisioning anything.
-  no_handoff: True -- no xdg link-handoff to the browser qube, AND a dom0
-                      qrexec deny rule blocks qubes.OpenURL from this qube
-                      (see seqs/dom0.sls, 28-browser-suppress.policy).
-  firewall: [...]  -- optional outbound allowlist for the app qube. When the
-                      key is PRESENT the qube gets default-deny egress with
-                      one accept rule per entry (applied via qvm-firewall);
-                      when ABSENT the Qubes default (allow all) is kept, and
-                      a previously applied SEQS allowlist is reverted.
-                      Entries:
-                        'host.example.com'   accept to that host (any port)
-                        '10.137.0.51'        accept to that IPv4
-                        'host:443'           accept tcp to that host:port
-                        'dns'                accept DNS resolution
-                        'icmp'               accept ICMP (ping / path MTU)
-                      'dns' is needed if the qube must resolve hostnames
-                      itself, but DNS is also an exfiltration channel
-                      (tunneling) -- prefer IP entries without 'dns' where
-                      practical. Contradicts 'offline' (validated). Note
-                      qvm-firewall does NOT gate qrexec; the OpenURL
-                      back-channel is closed separately by no_handoff.
-                      Recommended for the wallet qubes once you know your
-                      RPC endpoints, e.g.:
-                        'firewall': ['dns', 'rpc.example.com:443']
-
-Qube specs are a LIST (not a dict) so that a duplicate name cannot silently
-shadow an earlier entry: duplicates are collected into config_errors below
-and abort the seqs.dom0 pre-flight -- same strictness as the old
-validateAllQubes.
+SEQS master configuration. Edit the values below; see docs/configuration.md
+for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 -#}
 
 {%- set prefix_template = 'Z-' %}
 {%- set prefix_app = 'A-' %}
 {#- Base template every new template VM clones from. #}
 {%- set base_template = 'debian-13-xfce' %}
-{#- App qube every non-browser qube opens web links in. Must match a qube
-    that gets built below (prefix_app + name) or an existing one; seqs.dom0
-    validates this. #}
+{#- Browser-link target; see docs/configuration.md. #}
 {%- set browser_vm = prefix_app ~ 'brave' %}
 {%- set browser_desktop = 'open-links-in-browser-qube.desktop' %}
-{#- Per-component install timeout (seconds) inside each qube; replaces the
-    old per-qube BUILD_TIMEOUT_SECONDS watchdog. #}
+{#- Per-component installation timeout in seconds. #}
 {%- set component_timeout = 900 %}
 
-{#- Secure QR transfer. The display and scanner entries below are offline
-    DisposableVM templates. Select a mode only after following the hardware
-    qualification guide in docs/secure-qr-transfer.md:
-      disabled   no webcam PCI assignment (safe default)
-      dedicated  controller is used only by the webcam (resilient path)
-      sequential keyboard and webcam time-share one controller, with a cold
-                 power-off boundary (reduced-assurance fallback)
-    Set webcam_usb_controller to the physical dom0 BDF identified with qvm-pci,
-    e.g. '03_00.0'. Software cannot determine which controller is safe.
-    Do not confuse this physical dom0 BDF with a qvm-usb device path (e.g.
-    sys-usb:4-3) or the virtual PCI address visible inside sys-usb. Follow the
-    identification and stop-condition guide in docs/secure-qr-transfer.md.
-    no_strict_reset weakens reset isolation and must only be enabled if the
-    controller cannot otherwise be attached; sequential mode forbids it. #}
+{#- Keep disabled until completing docs/secure-qr-transfer.md. #}
 {%- set webcam_usb_mode = 'disabled' %}
 {%- set webcam_usb_controller = '' %}
 {%- set webcam_usb_no_strict_reset = False %}
@@ -109,8 +40,7 @@ validateAllQubes.
   {'name': 'wallet-trezor',     'label': 'gray',   'components': ['trezor', 'brave-extension-rabby'], 'no_handoff': True},
 ] %}
 
-{#- Brave wallet extension name -> Chrome Web Store ID. Reference as
-    'brave-extension-<name>' in a qube's component list. #}
+{#- Wallet extension IDs; see docs/configuration.md. #}
 {%- set brave_extensions = {
   'ready':        'dlcobpjiigpikoobohmabehhmhfoodbb',
   'cosmostation': 'fpkhgmpbidmiogeglndfbkegfdlnajnf',
@@ -126,12 +56,7 @@ validateAllQubes.
   'zerion':       'klghhnkeealcohjjanjjdaeeggmfmlpl',
 } %}
 
-{#- Transient-directory cleanup at app-qube boot and shutdown.
-    mode 'folder'   -- delete the directory itself, contents and all
-    mode 'contents' -- empty the directory but keep it
-    Paths must be absolute, strictly under /home/user/, contain no '..' and
-    only [A-Za-z0-9._/-] characters (validated in seqs/dom0.sls and again in
-    seqs/qube.sls -- the generated cleanup script runs rm -rf as root). #}
+{#- App-qube boot/shutdown cleanup; see docs/configuration.md. #}
 {%- set cleanup_dirs = [
   {'mode': 'folder',   'path': '/home/user/QubesIncoming'},
   {'mode': 'contents', 'path': '/home/user/Downloads'},
