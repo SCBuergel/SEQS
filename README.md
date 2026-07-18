@@ -33,24 +33,16 @@ For explanations and verification details, follow
 3. In dom0, replace `disp1234` with the disposable name printed above:
 
    ```bash
-   REPO_VM=disp1234
-   REPO_PATH=/home/user/SEQS
-
-   qvm-run -p "$REPO_VM" \
-     "cat $REPO_PATH/setup-qubes.sh" \
-     2>/dev/null > ~/seqs-setup.sh
-   chmod 700 ~/seqs-setup.sh
-
-   SEQS_REPO_VM="$REPO_VM" \
-   SEQS_REPO_PATH="$REPO_PATH" \
-   ~/seqs-setup.sh --fetch-only
+   qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
+   chmod 700 ~/s.sh
+   ~/s.sh --repo-vm disp1234 --fetch-only
    ```
 
 4. After reviewing the installed `/srv/salt/seqs` and `/srv/pillar/seqs`
    trees, shut down the download disposable and apply locally in dom0:
 
    ```bash
-   ~/seqs-setup.sh --skip-fetch
+   ~/s.sh --skip-fetch
    ```
 
 Do not put secrets into the resulting qubes until completing the post-install

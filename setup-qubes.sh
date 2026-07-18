@@ -11,6 +11,7 @@
 #   ./setup-qubes.sh                fetch + install + apply everything
 #   ./setup-qubes.sh --fetch-only   fetch + install to /srv, then stop for review
 #   ./setup-qubes.sh --skip-fetch   apply from /srv (never contacts REPO_VM)
+#   ./setup-qubes.sh --repo-vm VM   fetch from VM instead of the legacy default
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
@@ -326,14 +327,21 @@ fi
 SKIP_FETCH=0
 FETCH_ONLY=0
 VERBOSE="${SEQS_VERBOSE:-0}"
-for arg in "$@"; do
-	case "${arg}" in
+while [ "$#" -gt 0 ]; do
+	case "$1" in
 		--skip-fetch) SKIP_FETCH=1 ;;
 		--fetch-only) FETCH_ONLY=1 ;;
 		--verbose) VERBOSE=1 ;;
-		*) die "unknown argument '${arg}' (supported: --skip-fetch, --fetch-only, --verbose)" ;;
+		--repo-vm)
+			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
+			REPO_VM="$2"
+			shift
+			;;
+		*) die "unknown argument '$1' (supported: --skip-fetch, --fetch-only, --repo-vm VM, --verbose)" ;;
 	esac
+	shift
 done
+[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe repo qube name: '${REPO_VM}'"
 
 # By default qubesctl prints only its per-VM summary, keeping the run readable;
 # --verbose (or SEQS_VERBOSE=1) restores the full per-state Salt output for

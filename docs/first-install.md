@@ -123,14 +123,9 @@ Assume the disposable reported `disp1234`; replace it with the exact hostname.
 In dom0:
 
 ```bash
-REPO_VM=disp1234
-REPO_PATH=/home/user/SEQS
-
-qvm-run -p "$REPO_VM" \
-  "cat $REPO_PATH/setup-qubes.sh" \
-  2>/dev/null > ~/seqs-setup.sh
-chmod 700 ~/seqs-setup.sh
-less ~/seqs-setup.sh
+qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
+chmod 700 ~/s.sh
+less ~/s.sh
 ```
 
 The stderr redirection is deliberate: it prevents source-qube terminal-control
@@ -144,9 +139,7 @@ Review the complete copied runner in `less`; quit with `q`.
 Still in dom0, while the disposable remains running:
 
 ```bash
-SEQS_REPO_VM="$REPO_VM" \
-SEQS_REPO_PATH="$REPO_PATH" \
-~/seqs-setup.sh --fetch-only
+~/s.sh --repo-vm disp1234 --fetch-only
 ```
 
 The runner validates every archive entry, displays the transfer hash, and
@@ -177,7 +170,7 @@ installed bytes match the revision and machine configuration you approved.
 Apply without contacting any repo/download qube:
 
 ```bash
-~/seqs-setup.sh --skip-fetch
+~/s.sh --skip-fetch
 ```
 
 Watch for:
@@ -199,4 +192,3 @@ secrets in the new qubes before those checks pass.
 
 For future repository or configuration changes, use
 [upgrading.md](upgrading.md), not this first-install workflow.
-

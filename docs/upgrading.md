@@ -14,7 +14,7 @@ An installed system normally has three relevant copies:
 
 1. The repository checkout in `REPO_VM`, such as
    `personal:/home/user/SEQS`. This should be the long-term source of truth.
-2. A small runner copied into dom0, such as `s.sh` or `seqs-update.sh`.
+2. A small runner copied into dom0 as `s.sh`.
 3. The root-owned tree currently installed in dom0 under `/srv/salt/seqs` and
    `/srv/pillar/seqs`.
 
@@ -58,18 +58,14 @@ not authentication; verify the revision by a trusted independent method.
 
 ## 2. Copy the current runner into dom0
 
-The following example assumes a dedicated repo qube named `seqs-repo` and
-`REPO_PATH=/home/user/SEQS`. A fresh temporary DisposableVM is also suitable;
-use its exact `dispNNNN` name and keep it alive through `--fetch-only`. In dom0:
+The following example assumes a dedicated repo qube named `seqs-repo` and the
+standard path `/home/user/SEQS`. Replace `seqs-repo` with the exact source-qube
+name. A fresh temporary DisposableVM is also suitable; keep it alive through
+`--fetch-only`. In dom0:
 
 ```bash
-REPO_VM=seqs-repo
-REPO_PATH=/home/user/SEQS
-
-qvm-run -p "$REPO_VM" \
-  "cat $REPO_PATH/setup-qubes.sh" \
-  2>/dev/null > ~/seqs-update.sh
-chmod 700 ~/seqs-update.sh
+qvm-run -p seqs-repo "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
+chmod 700 ~/s.sh
 ```
 
 The `2>/dev/null` is a security boundary: untrusted source-qube stderr must not
@@ -77,18 +73,16 @@ reach the dom0 terminal during the bootstrap window. Before execution, review
 the copied runner and, preferably, compare it with the same verified revision
 on an independent machine.
 
-If the repository is in a temporary DisposableVM, keep that disposable running
-until the fetch in the next step finishes and substitute its name for
-`REPO_VM`. Once the fetch completes, it is no longer needed.
+If the repository is in a temporary DisposableVM, replace `seqs-repo` in both
+commands with its exact `dispNNNN` name and keep it running until the fetch in
+the next step finishes. Once the fetch completes, it is no longer needed.
 
 ## 3. Fetch and review without applying
 
 In dom0:
 
 ```bash
-SEQS_REPO_VM="$REPO_VM" \
-SEQS_REPO_PATH="$REPO_PATH" \
-~/seqs-update.sh --fetch-only
+~/s.sh --repo-vm seqs-repo --fetch-only
 ```
 
 The runner validates every archive entry, displays the transfer hash, and shows
@@ -112,7 +106,7 @@ not prove that a compromised source is honest.
 The repo qube can be shut down after `--fetch-only`. In dom0:
 
 ```bash
-~/seqs-update.sh --skip-fetch
+~/s.sh --skip-fetch
 ```
 
 This applies `/srv` without contacting `REPO_VM`. The runner:
@@ -164,10 +158,9 @@ changed installer, remove only the marker for that component and role, then
 rerun `--skip-fetch`. For example, to rerun the `qr-camera` template installer:
 
 ```bash
-qvm-run -u root Z-qr-camera \
-  'rm -f /rw/config/seqs/qr-camera.template.done'
+qvm-run -u root Z-qr-camera 'rm -f /rw/config/seqs/qr-camera.template.done'
 qvm-shutdown --wait Z-qr-camera
-~/seqs-update.sh --skip-fetch
+~/s.sh --skip-fetch
 ```
 
 An app-qube marker uses `.app.done` instead of `.template.done`. Do not delete
@@ -181,9 +174,7 @@ intend to destroy its qubes, copy the reviewed helper into dom0 and inspect
 with a dry run:
 
 ```bash
-qvm-run -p "$REPO_VM" \
-  "cat $REPO_PATH/delete-vms.sh" \
-  2>/dev/null > ~/seqs-delete-vms.sh
+qvm-run -p seqs-repo "cat /home/user/SEQS/delete-vms.sh" 2>/dev/null > ~/seqs-delete-vms.sh
 chmod 700 ~/seqs-delete-vms.sh
 ~/seqs-delete-vms.sh --dry-run <base-name>
 ```
