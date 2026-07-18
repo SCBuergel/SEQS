@@ -6,8 +6,8 @@ re-run the fetch and stage steps, or edit the staged copy in dom0 and rerun with
 `--build-only`.
 
 For an already installed machine, follow [the upgrade procedure](upgrading.md).
-In particular, repository changes must be fetched into `/srv` before
-`--stage-only` can place them under `/srv` before `--build-only` applies them.
+In particular, repository changes must be fetched into
+`/var/lib/seqs/fetched`, staged under `/srv`, and then built.
 
 The first-install guide covers the common case—
 [editing `qube_list`](first-install.md#41-choose-your-qubes-saltpillarseqsconfigsls).

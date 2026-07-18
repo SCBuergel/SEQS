@@ -88,11 +88,11 @@ In dom0:
 The runner validates every archive entry, displays the transfer hash, and saves
 the fetched data under `/var/lib/seqs/fetched` without building qubes.
 
-Inspect the installed result at leisure:
+Inspect the fetched result as the normal dom0 user:
 
 ```bash
-sudo less /var/lib/seqs/fetched/pillar/config.sls
-sudo less /var/lib/seqs/fetched/salt/dom0.sls
+less /var/lib/seqs/fetched/pillar/config.sls
+less /var/lib/seqs/fetched/salt/dom0.sls
 ```
 
 The transfer hash detects accidental differences and supports comparison with

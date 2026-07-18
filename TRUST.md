@@ -62,7 +62,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ### `REPO_VM` — the qube hosting the repo
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
 - **Established by:** 📝 Your choice of qube; it is contacted exactly once by the fetch stage. Stage-only and build-only runs never contact it.
-- **Residual risk:** The fetched tree becomes root-executed Salt code in dom0, so a compromised `REPO_VM` = compromised dom0 **unless the operator's independent review catches the malicious bytes** (diff + `CONTINUE` prompt, or `--fetch-only` audit). A disposable limits persistence and cross-contamination but does not authenticate the download or make its contents trustworthy.
+- **Residual risk:** The fetched tree eventually becomes root-executed Salt code in dom0, so a compromised `REPO_VM` compromises dom0 unless review catches the malicious bytes. A disposable limits persistence and cross-contamination but does not authenticate the download.
 - **Guidance for the operator:** The README's first-install path uses a fresh networked DisposableVM, passes its name with `--repo-vm`, keeps it alive only through `--fetch-only`, and then destroys it. Do **not** use a daily `personal` qube. For ongoing maintenance, either repeat the disposable workflow or use a dedicated, minimal, network-light repo qube.
 
 ### The dom0 "cat hack" bootstrap copy
@@ -70,7 +70,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** ❌ Nothing — a raw byte copy with no integrity check, used **only** to bootstrap `setup-qubes.sh` itself. This is the documented Qubes way to move a file into dom0, and is exactly why review must happen *before* running anything.
 - **Residual risk:** No tamper detection between `REPO_VM` and dom0 for this one file; mitigated only by manual review and by `REPO_VM` being trusted. The documented bootstrap command appends `2>/dev/null` to `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
 
-### The salt-tree fetch (single validated tar transfer + review gate)
+### Fetch, review, and staging
 - **Trust assumption:** The tree staged under `/srv` is the fetched tree you reviewed.
 - **Established by:** 📝 Fetch validates one tar stream and saves it under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the `/srv` diff, and copies it root-owned. Build requires the stage completion markers.
 - **Residual risk:** These boundaries help only if the operator reviews the fetched data before staging and building it.
@@ -265,7 +265,7 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
 1. **USB-keyboard policy override** (§4) — weakens the Qubes 4.3 default `deny` on `qubes.InputKeyboard sys-usb → dom0` to `ask default_target=@adminvm`. A BadUSB-class device that enumerates as a HID keyboard yields keystroke injection into dom0 = total compromise if the operator reflexively accepts the attach prompt. Accepted in exchange for external USB keyboards working without per-boot `qvm-input-keyboard` ceremony.
 2. **Ledger Live** (§3) — Ledger publishes no verifiable artifact for the Linux AppImage and the URL is unversioned, so it can be neither signature-verified nor version-pinned at install time. The post-install replaceability hole is now closed (root-owned `/usr/bin/LedgerLive.AppImage`), but the one-shot install-time trust remains the residual.
 3. **curl-pipe-bash installers** (§3) — the `python` (pyenv), `node` (nvm) and `claude-code` components execute unreviewed remote code on install. For pyenv and nvm this is a deliberate tradeoff for dev-version flexibility; see their entries.
-4. **`REPO_VM` + the fetch** (§2) — the repo and its host qube are dom0-equivalent in effect because the fetched tree becomes root-executed Salt code. The transfer is validated and protected by a diff-and-`CONTINUE` review gate, but that gate only helps if the operator reads what it shows.
+4. **`REPO_VM` + the fetch** (§2) — the repo and its host qube are dom0-equivalent in effect because fetched data can become root-executed Salt code. Validation and separate fetch/stage/build boundaries help only if the operator reviews the fetched tree.
 
 Brave, KeePassXC, Signal, Docker, VS Code, BitBoxApp, Apache OpenOffice and Element (§3) verify their signing keys/signatures against pinned, cross-checked fingerprints, and the keyrings are then `chattr +i`'d so a maintainer-script rewrite of the trust anchor inside an allowlisted package would fail loudly instead of silently rotating; only Ledger Live remains unverifiable.
 

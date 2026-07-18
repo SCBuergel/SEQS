@@ -23,7 +23,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 
 Read top-to-bottom, in this order:
 
-1. **`setup-qubes.sh`** — the thin dom0 runner: `REPO_VM`/`REPO_PATH` at the top, `sanitize()` (the dom0 terminal filter — three stages: C0 via `tr`, raw C1 via `iconv`, UTF-8-encoded C1 via `sed`), `runQubesctl` (exit code + failure-marker scan), `fetchSaltTree` (tar entry validation + the diff-and-`CONTINUE` review gate), `confirmPolicyTakeover` (the `OVERWRITE` prompt guarding non-SEQS qrexec policy files), and `verifyAirgap`.
+1. **`setup-qubes.sh`** — the thin dom0 runner: source selection, terminal sanitization, validated fetch, staging and completion markers, Salt failure detection, policy takeover, and air-gap verification.
 2. **`salt/pillar/seqs/config.sls`** — ALL configuration: prefixes, base template, `browser_vm`, `qube_list` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and the per-minion slicing at the bottom (each qube receives only its own slice — verify the dom0/VM split).
 3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), all generated qrexec policy states (including QR containment when enabled), the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.

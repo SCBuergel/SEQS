@@ -170,7 +170,8 @@ fetchSaltTree() {
 	sudo cp -r "${newpillar}/." "${FETCH_PILLAR_TREE}/" || die "could not save fetched pillar tree"
 	sudo touch "${FETCH_ROOT}/.seqs-complete" || die "could not mark fetch complete"
 	sudo chown -R root:root "${FETCH_ROOT}"
-	sudo chmod -R go-w "${FETCH_ROOT}"
+	sudo chmod a+rx "$(dirname "${FETCH_ROOT}")" "${FETCH_ROOT}"
+	sudo chmod -R a+rX,go-w "${FETCH_ROOT}"
 
 	rm -rf "${tarball}" "${stage}"
 	echo "    Fetch complete. Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
@@ -210,7 +211,8 @@ stageSaltTree() {
 	sudo cp -r "${FETCH_PILLAR_TREE}/." "${PILLAR_TREE}/" || die "staging ${PILLAR_TREE} failed"
 	sudo touch "${SALT_TREE}/.seqs-complete" "${PILLAR_TREE}/.seqs-complete" || die "could not mark staging complete"
 	sudo chown -R root:root "${SALT_TREE}" "${PILLAR_TREE}"
-	sudo chmod -R go-w "${SALT_TREE}" "${PILLAR_TREE}"
+	sudo chmod a+rx "$(dirname "${SALT_TREE}")" "$(dirname "${PILLAR_TREE}")"
+	sudo chmod -R a+rX,go-w "${SALT_TREE}" "${PILLAR_TREE}"
 	echo "    Staging complete."
 }
 

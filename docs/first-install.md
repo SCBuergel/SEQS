@@ -151,13 +151,13 @@ longer needs it.
 
 ## 7. Review and stage the fetched tree
 
-The validated, root-owned fetched data is under `/var/lib/seqs/fetched`. At
-minimum inspect:
+The validated fetched data is root-owned but readable by the normal dom0 user
+under `/var/lib/seqs/fetched`. At minimum inspect:
 
 ```bash
-sudo less /var/lib/seqs/fetched/pillar/config.sls
-sudo less /var/lib/seqs/fetched/salt/dom0.sls
-sudo less /var/lib/seqs/fetched/salt/qube.sls
+less /var/lib/seqs/fetched/pillar/config.sls
+less /var/lib/seqs/fetched/salt/dom0.sls
+less /var/lib/seqs/fetched/salt/qube.sls
 ```
 
 Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md). Confirm the
@@ -168,7 +168,10 @@ place the reviewed tree under `/srv`:
 ~/s.sh --stage-only
 ```
 
-## 8. Apply locally
+The staged `/srv/salt/seqs` and `/srv/pillar/seqs` trees are also readable
+without `sudo`; root ownership prevents the dom0 user from changing them.
+
+## 8. Build the qubes
 
 Build without contacting any repo/download qube:
 
