@@ -1,7 +1,8 @@
 # Installing Qubes OS
 
 The detailed, one-time host install that precedes SEQS. The short version lives
-in the [README](../README.md#1-install-qubes-os); this is the full walkthrough.
+in the [first-install guide](first-install.md#1-install-and-verify-qubes-os);
+this is the full walkthrough.
 
 ## 1. Prepare the installer USB
 

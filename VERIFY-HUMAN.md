@@ -17,7 +17,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 
 - **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
-- **`REPO_VM`.** This qube serves the salt tree (states + install scripts) into dom0, where it runs as root; a compromise here is a compromise of everything unless your independent review catches it. For first installation, use a fresh networked DisposableVM as described in the README, keep it alive only through `--fetch-only`, then destroy it. Do not use your daily `personal` qube. A disposable provides containment and a clean starting state, not authenticity: independently verify the revision and review the exact installed `/srv` bytes before applying them.
+- **`REPO_VM`.** This qube serves the salt tree (states + install scripts) into dom0, where it runs as root; a compromise here is a compromise of everything unless your independent review catches it. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Do not use your daily `personal` qube. A disposable provides containment and a clean starting state, not authenticity: independently verify the revision and review the exact installed `/srv` bytes before applying them.
 
 ## 2. Read what you'll run
 
@@ -31,11 +31,12 @@ Read top-to-bottom, in this order:
 6. **`install-scripts/lib/verify-gpg.sh`** — shared `verify_detached_sig` helper used by keepass / bitbox / openoffice. Requires both `GOODSIG` and `VALIDSIG <pinned_fpr>` and explicitly rejects `BADSIG / ERRSIG / EXP*SIG / REV*SIG / KEYEXPIRED / KEYREVOKED / NO_PUBKEY`. If this helper is wrong, all three signed installers are wrong.
 7. **`install-scripts/components/*/template-vm.sh`** and `*/app-vm.sh` — every component you'll actually use. For Brave / Docker / VS Code / Signal / Element specifically, verify the script also installs an `/etc/apt/preferences.d/<repo>.pref` default-denying the origin and re-allowing only the named package set — without this, a compromise of the upstream signing key could ship higher-version `bash` / `libc6` / `systemd` etc. via that repo.
 8. **`TRUST.md`** — the trust model you are signing up for. Note especially §3 "Brave wallet extensions ⚠️", §4 "Wallet qube egress is unrestricted ⚠️", §4 "USB-keyboard policy override" and the Trezor-specific note under §4 "Hardware-wallet udev rules ⚠️" — these are deferred-acceptance items, not closed gaps.
-9. **`README.md`** — sanity-check it matches the code.
+9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
+   command path matches the code.
 
 For a first install, the most controlled path is `./setup-qubes.sh --fetch-only`, then read the installed trees at `/srv/salt/seqs` and `/srv/pillar/seqs` directly (that is byte-for-byte what will run), then `./setup-qubes.sh --skip-fetch`.
 
-The README's WARNING section is in earnest: you are running these scripts in dom0.
+The README warning is in earnest: you are running these scripts in dom0.
 
 ## 3. Cross-check the verified components' keys
 

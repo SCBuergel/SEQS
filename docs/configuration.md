@@ -9,7 +9,8 @@ For an already installed machine, follow [the upgrade procedure](upgrading.md).
 In particular, repository changes must be fetched into `/srv` before
 `--skip-fetch` can apply them.
 
-The README covers the common case — [editing `qube_list`](../README.md#22-choose-your-qubes-saltpillarseqsconfigsls).
+The first-install guide covers the common case—
+[editing `qube_list`](first-install.md#41-choose-your-qubes-saltpillarseqsconfigsls).
 This document covers the component catalogue and everything else.
 
 ## Components

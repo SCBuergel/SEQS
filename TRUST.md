@@ -68,7 +68,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 ### The dom0 "cat hack" bootstrap copy
 - **Trust assumption:** `qvm-run -p REPO_VM cat setup-qubes.sh` returns the genuine runner.
 - **Established by:** ❌ Nothing — a raw byte copy with no integrity check, used **only** to bootstrap `setup-qubes.sh` itself. This is the documented Qubes way to move a file into dom0, and is exactly why review must happen *before* running anything.
-- **Residual risk:** No tamper detection between `REPO_VM` and dom0 for this one file; mitigated only by manual review and by `REPO_VM` being trusted. The README one-liner appends `2>/dev/null` to the bootstrap `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
+- **Residual risk:** No tamper detection between `REPO_VM` and dom0 for this one file; mitigated only by manual review and by `REPO_VM` being trusted. The documented bootstrap command appends `2>/dev/null` to `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
 
 ### The salt-tree fetch (single validated tar transfer + review gate)
 - **Trust assumption:** The `salt/` + `install-scripts/` tree installed into `/srv/salt/seqs` and `/srv/pillar/seqs` is the one you reviewed.
