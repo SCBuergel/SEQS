@@ -2,13 +2,32 @@
 
 This process aims to move a secret file between two offline Qubes machines
 without connecting them by a network or removable drive: the source encrypts
-the file, shows the encrypted data as a QR code, and the target scans it before
-checking and decrypting it. In the preferred dedicated-controller path, the
-webcam always uses its own USB controller and isolated disposable qubes; in the
-reduced-assurance sequential path, the webcam and keyboard share a controller,
-so an automated ceremony uses them at different times, copies only the scanned
-ciphertext into offline staging, and powers the machine off before keyboard use
-resumes.
+the file with a one-time paper-recorded passphrase, shows only the ciphertext
+as a QR code, and the target scans and authenticates that ciphertext before the
+passphrase is entered to decrypt it. Under this document's trust assumptions
+(in particular, trusted source and target key qubes and dom0 installations,
+working isolation, and correct execution of the ceremony), this gives a
+conditional **2-of-2 confidentiality property**: compromise of the webcam/QR
+channel alone reveals only ciphertext, while compromise of the keyboard/input
+channel alone reveals only the passphrase; recovering the plaintext from those
+two channels requires both. This is a protocol-level property under the stated
+assumptions, not a cryptographic threshold scheme: an escape that compromises
+dom0 or a key qube defeats it.
+
+The preferred **dedicated-controller path** permanently assigns the webcam to
+its own USB controller and isolated disposable qubes, so camera-exposed
+hardware is never reused for trusted keyboard input. The reduced-assurance
+**sequential path** is for machines where the webcam and keyboard must share a
+controller: an automated ceremony uses them at different times, copies only
+scanned ciphertext into offline staging, physically removes the webcam, and
+completely powers the machine off before keyboard use resumes. Assuming the
+operator follows that ceremony and dom0 and the isolation mechanisms work as
+expected, its additional trust assumption relative to the dedicated path is
+that the complete cold-power boundary clears all camera-influenced transient
+state in the reused controller and other still-powered hardware, including
+controller RAM and device state. An ordinary restart is not that boundary, and
+state that persists across complete power removal (for example compromised
+firmware) remains outside this guarantee.
 
 SEQS provisions two offline DisposableVM templates for one-way QR transfers:
 
