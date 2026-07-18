@@ -75,20 +75,20 @@ Runs the **real** `setup-qubes.sh` end to end against a sandbox dom0: mock
 `qvm-*` / `qubesctl` / `sudo` on `PATH` (`test/integration/mocks/bin`) and
 scratch `/srv` + `/var/lib` paths via the `SEQS_*` overrides. A small pty driver
 (`test/lib/pty_run.py`) answers the `confirm()` prompts that read from
-`/dev/tty`. Scenarios: fresh full install, `--skip-fetch` guard, a hostile
+`/dev/tty`. Scenarios: full workflow, stage/build prerequisite guards, a hostile
 archive rejected at the tar gate, air-gap-fails-closed, an identical re-fetch
 skipping the review prompt, and `delete-vms.sh` removing exactly the named
 `A-`/`Z-` qubes (dry-run inert, unrelated qubes untouched, unsafe names
 refused — the destructive script gets its own guard-rail scenario against a
 stateful mock inventory). This is the only layer that exercises the runner's
-fetch → validate → gate → install → apply → verify control flow as one piece.
+fetch → validate → stage → build → verify control flow as one piece.
 
 ### Layer 5 — real Qubes (manual, hardware-bound)
 Nothing above proves that software actually installs *inside* a qube — that
 needs a real Salt run. Two options, in ascending fidelity:
 
 1. **Render/compile on a Qubes dom0 without provisioning.** Fetch the tree
-   (`./setup-qubes.sh --fetch-only`) then dry-run the states:
+   (`./setup-qubes.sh --fetch-only`, then `--stage-only`) and dry-run the states:
    ```
    sudo qubesctl --skip-dom0 --targets=Z-brave state.show seqs.qube   # render only
    sudo qubesctl state.apply seqs.dom0 test=True                      # no changes

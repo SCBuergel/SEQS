@@ -64,7 +64,8 @@ hardware separation.
 
 Follow the general [upgrade procedure](upgrading.md): update and configure the
 repository source of truth, copy the current runner into dom0, fetch with
-`--fetch-only`, review the installed `/srv` diff, and apply with `--skip-fetch`.
+`--fetch-only`, review the fetched tree, stage with `--stage-only`, and build
+with `--build-only`.
 Configure and verify the controller described above **before** applying.
 Leaving the mode disabled and controller empty still installs the QR qubes but
 deliberately does not create or attach the webcam USB backend.

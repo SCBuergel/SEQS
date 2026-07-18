@@ -3,9 +3,10 @@
 # SEQS dom0 runner; see docs/architecture.md and docs/configuration.md.
 #
 # Usage:
-#   ./setup-qubes.sh                fetch + install + apply everything
-#   ./setup-qubes.sh --fetch-only   fetch + install to /srv, then stop for review
-#   ./setup-qubes.sh --skip-fetch   apply from /srv (never contacts REPO_VM)
+#   ./setup-qubes.sh                fetch, stage, and build (confirm each stage)
+#   ./setup-qubes.sh --fetch-only   fetch and validate into /var/lib/seqs/fetched
+#   ./setup-qubes.sh --stage-only   copy the fetched tree into /srv
+#   ./setup-qubes.sh --build-only   create and provision the configured qubes
 #   ./setup-qubes.sh --repo-vm VM   fetch from the named repository qube
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
@@ -21,6 +22,9 @@ REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
 PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
 TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"  # written by seqs.dom0
+FETCH_ROOT="${SEQS_FETCH_ROOT:-/var/lib/seqs/fetched}"
+FETCH_SALT_TREE="${FETCH_ROOT}/salt"
+FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
 
 # Policy files owned by seqs.dom0. A file WITHOUT the marker was written by the
 # operator or another tool -- never overwrite without confirmation.
@@ -87,7 +91,7 @@ joinCsv() {
 	echo "$*"
 }
 
-# ---- Phase 1 -- fetch the salt tree from REPO_VM (single verified tar) -------
+# ---- Stage 1 -- fetch and validate -------------------------------------------
 
 fetchSaltTree() {
 	local tarball stage
@@ -150,56 +154,67 @@ fetchSaltTree() {
 		"${newsalt}/files/" || die "staging of component payload failed"
 	touch "${newsalt}/.seqs-managed" "${newpillar}/.seqs-managed"
 
-	# Refuse to wipe /srv trees we did not create (marker file written above
-	# for our own trees).
+	# Refuse to replace a fetched area not owned by SEQS.
 	local d
-	for d in "${SALT_TREE}" "${PILLAR_TREE}"; do
+	for d in "${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}"; do
 		if [ -e "${d}" ] && [ ! -e "${d}/.seqs-managed" ]; then
 			rm -rf "${tarball}" "${stage}"
-			die "${d} exists but was not installed by SEQS -- refusing to replace it. Remove it manually if it is stale."
+			die "${d} exists but is not managed by SEQS -- refusing to replace it"
 		fi
 	done
 
-	# Review gate: the tree runs as root once installed, so require an explicit
-	# go-ahead. A re-fetch shows exactly what changed vs the reviewed tree; an
-	# identical re-fetch skips the prompt (nothing new is being trusted).
-	local diffout
-	if [ -d "${SALT_TREE}" ] || [ -d "${PILLAR_TREE}" ]; then
-		diffout="$( { diff -r "${SALT_TREE}" "${newsalt}" 2>&1; \
-		              diff -r "${PILLAR_TREE}" "${newpillar}" 2>&1; } || true )"
-		if [ -z "${diffout}" ]; then
-			echo "Fetched tree is identical to the tree already installed in /srv."
-		else
-			echo "Changes vs the tree currently installed in /srv ($(printf '%s\n' "${diffout}" | wc -l) diff lines):"
-			echo "--------------------------------------------------------------------------------"
-			printf '%s\n' "${diffout}" | sanitize | head -n 200
-			[ "$(printf '%s\n' "${diffout}" | wc -l)" -gt 200 ] && echo "[... truncated -- re-run with --fetch-only to review the full tree ...]"
-			echo "--------------------------------------------------------------------------------"
-			confirm "Install this tree into /srv? type CONTINUE to confirm (anything else aborts): " "CONTINUE"
-		fi
-	else
-		echo "First install -- no tree in /srv to diff against. To audit everything"
-		echo "before any state is applied, abort now and re-run with --fetch-only."
-		confirm "Install the fetched tree into /srv? type CONTINUE to confirm (anything else aborts): " "CONTINUE"
-	fi
-
-	echo "==> Installing salt tree into ${SALT_TREE} and ${PILLAR_TREE}"
-	sudo rm -rf "${SALT_TREE}" "${PILLAR_TREE}" || die "could not clear old trees"
-	# Marker first: .seqs-managed means "SEQS owns this path", not "tree is
-	# complete" -- an interrupted copy must be wiped and reinstalled next run,
-	# not refused.
-	sudo mkdir -p "${SALT_TREE}" "${PILLAR_TREE}" || die "mkdir failed"
-	sudo touch "${SALT_TREE}/.seqs-managed" "${PILLAR_TREE}/.seqs-managed" || die "marker write failed"
-	sudo cp -r "${newsalt}/." "${SALT_TREE}/" || die "install of ${SALT_TREE} failed"
-	sudo cp -r "${newpillar}/." "${PILLAR_TREE}/" || die "install of ${PILLAR_TREE} failed"
-	sudo chown -R root:root "${SALT_TREE}" "${PILLAR_TREE}"
-	sudo chmod -R go-w "${SALT_TREE}" "${PILLAR_TREE}"
+	echo "==> Saving validated fetch under ${FETCH_ROOT}"
+	sudo rm -rf "${FETCH_ROOT}" || die "could not clear fetched tree"
+	sudo mkdir -p "${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}" || die "mkdir failed"
+	sudo cp -r "${newsalt}/." "${FETCH_SALT_TREE}/" || die "could not save fetched salt tree"
+	sudo cp -r "${newpillar}/." "${FETCH_PILLAR_TREE}/" || die "could not save fetched pillar tree"
+	sudo touch "${FETCH_ROOT}/.seqs-complete" || die "could not mark fetch complete"
+	sudo chown -R root:root "${FETCH_ROOT}"
+	sudo chmod -R go-w "${FETCH_ROOT}"
 
 	rm -rf "${tarball}" "${stage}"
-	echo "    Salt tree installed."
+	echo "    Fetch complete. Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
 }
 
-# ---- Phase 2 -- policy takeover confirmation --------------------------------
+# ---- Stage 2 -- stage the reviewed tree in /srv ------------------------------
+
+stageSaltTree() {
+	[ -f "${FETCH_ROOT}/.seqs-complete" ] \
+		&& [ -f "${FETCH_SALT_TREE}/.seqs-managed" ] \
+		&& [ -f "${FETCH_PILLAR_TREE}/.seqs-managed" ] \
+		|| die "fetch stage is incomplete -- run --fetch-only first"
+
+	local d diffout
+	for d in "${SALT_TREE}" "${PILLAR_TREE}"; do
+		if [ -e "${d}" ] && [ ! -e "${d}/.seqs-managed" ]; then
+			die "${d} exists but is not managed by SEQS -- refusing to replace it"
+		fi
+	done
+
+	diffout="$( { diff -r --exclude=.seqs-complete "${SALT_TREE}" "${FETCH_SALT_TREE}" 2>&1; \
+	              diff -r --exclude=.seqs-complete "${PILLAR_TREE}" "${FETCH_PILLAR_TREE}" 2>&1; } || true )"
+	if [ -z "${diffout}" ]; then
+		echo "Fetched tree is identical to the tree already staged in /srv."
+	else
+		echo "Changes to stage in /srv ($(printf '%s\n' "${diffout}" | wc -l) diff lines):"
+		echo "--------------------------------------------------------------------------------"
+		printf '%s\n' "${diffout}" | sanitize | head -n 200
+		[ "$(printf '%s\n' "${diffout}" | wc -l)" -gt 200 ] && echo "[... truncated ...]"
+		echo "--------------------------------------------------------------------------------"
+	fi
+
+	echo "==> Staging Salt tree in ${SALT_TREE} and ${PILLAR_TREE}"
+	sudo rm -rf "${SALT_TREE}" "${PILLAR_TREE}" || die "could not clear staged trees"
+	sudo mkdir -p "${SALT_TREE}" "${PILLAR_TREE}" || die "mkdir failed"
+	sudo cp -r "${FETCH_SALT_TREE}/." "${SALT_TREE}/" || die "staging ${SALT_TREE} failed"
+	sudo cp -r "${FETCH_PILLAR_TREE}/." "${PILLAR_TREE}/" || die "staging ${PILLAR_TREE} failed"
+	sudo touch "${SALT_TREE}/.seqs-complete" "${PILLAR_TREE}/.seqs-complete" || die "could not mark staging complete"
+	sudo chown -R root:root "${SALT_TREE}" "${PILLAR_TREE}"
+	sudo chmod -R go-w "${SALT_TREE}" "${PILLAR_TREE}"
+	echo "    Staging complete."
+}
+
+# ---- Build helpers -----------------------------------------------------------
 
 # seqs.dom0 owns the qrexec policy files in POLICY_FILES and converges them on
 # every apply. Files it wrote carry MANAGED_MARKER; a file WITHOUT the marker
@@ -308,58 +323,11 @@ shutdownAll() {
 	done
 }
 
-# ---- Main -------------------------------------------------------------------
-
-# Test hook: sourced with SEQS_SOURCE_ONLY=1, stop here so the helpers above are
-# available without running the installer (`return` works only when sourced).
-if [ "${SEQS_SOURCE_ONLY:-0}" = "1" ]; then
-	return 0 2>/dev/null || true
-fi
-
-SKIP_FETCH=0
-FETCH_ONLY=0
-VERBOSE="${SEQS_VERBOSE:-0}"
-while [ "$#" -gt 0 ]; do
-	case "$1" in
-		--skip-fetch) SKIP_FETCH=1 ;;
-		--fetch-only) FETCH_ONLY=1 ;;
-		--verbose) VERBOSE=1 ;;
-		--repo-vm)
-			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
-			REPO_VM="$2"
-			shift
-			;;
-		*) die "unknown argument '$1' (supported: --skip-fetch, --fetch-only, --repo-vm VM, --verbose)" ;;
-	esac
-	shift
-done
-[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe repo qube name: '${REPO_VM}'"
-
-# By default qubesctl prints only its per-VM summary, keeping the run readable;
-# --verbose (or SEQS_VERBOSE=1) restores the full per-state Salt output for
-# debugging a failed provision. Failure is still detected either way (the
-# 'Failed: N' summary line the runner greps is always printed).
-QUBE_APPLY_OPTS=()
-[ "${VERBOSE}" -eq 1 ] && QUBE_APPLY_OPTS+=(--show-output)
-[ "${SKIP_FETCH}" -eq 1 ] && [ "${FETCH_ONLY}" -eq 1 ] && die "--skip-fetch and --fetch-only are mutually exclusive"
-
-if [ "${SKIP_FETCH}" -eq 1 ]; then
-	[ -d "${SALT_TREE}" ] && [ -d "${PILLAR_TREE}" ] \
-		|| die "--skip-fetch given but ${SALT_TREE} / ${PILLAR_TREE} not installed yet -- run without flags first"
-	echo "==> Skipping fetch -- applying from the tree already in ${SALT_TREE}"
-else
-	fetchSaltTree
-fi
-
-if [ "${FETCH_ONLY}" -eq 1 ]; then
-	echo ""
-	echo "Fetch-only: salt tree installed but nothing applied. Review"
-	echo "${SALT_TREE} and ${PILLAR_TREE}, then re-run with --skip-fetch."
-	exit 0
-fi
-
+buildQubes() {
+	[ -f "${SALT_TREE}/.seqs-complete" ] && [ -f "${PILLAR_TREE}/.seqs-complete" ] \
+		|| die "stage is incomplete -- run --stage-only first"
 echo ""
-echo "==> [1/3] Applying dom0 state (policies, qube creation)"
+echo "==> Applying dom0 state (policies, qube creation)"
 runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
 confirmPolicyTakeover
 runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
@@ -399,4 +367,53 @@ else
 	echo "==> SEQS setup finished WITH FAILURES -- see warnings above." >&2
 	echo "    Fix and re-run (the flow is convergent; no manual rollback needed)." >&2
 	exit 1
+fi
+}
+
+# ---- Main -------------------------------------------------------------------
+
+# Test hook: source helpers without running the workflow.
+if [ "${SEQS_SOURCE_ONLY:-0}" = "1" ]; then
+	return 0 2>/dev/null || true
+fi
+
+RUN_FETCH=0
+RUN_STAGE=0
+RUN_BUILD=0
+EXPLICIT_STAGE=0
+VERBOSE="${SEQS_VERBOSE:-0}"
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--fetch-only) RUN_FETCH=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
+		--stage-only) RUN_STAGE=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
+		--build-only) RUN_BUILD=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
+		--verbose) VERBOSE=1 ;;
+		--repo-vm)
+			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
+			REPO_VM="$2"
+			shift
+			;;
+		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --repo-vm VM, --verbose)" ;;
+	esac
+	shift
+done
+[ "${EXPLICIT_STAGE}" -le 1 ] || die "choose only one of --fetch-only, --stage-only, or --build-only"
+[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe repo qube name: '${REPO_VM}'"
+
+QUBE_APPLY_OPTS=()
+[ "${VERBOSE}" -eq 1 ] && QUBE_APPLY_OPTS+=(--show-output)
+
+if [ "${EXPLICIT_STAGE}" -eq 0 ]; then
+	confirm "Stage 1/3 FETCH: transfer and validate repository data? type CONTINUE: " "CONTINUE"
+	fetchSaltTree
+	confirm "Stage 2/3 STAGE: copy the fetched tree into /srv? type CONTINUE: " "CONTINUE"
+	stageSaltTree
+	confirm "Stage 3/3 BUILD: create and provision the configured qubes? type CONTINUE: " "CONTINUE"
+	buildQubes
+elif [ "${RUN_FETCH}" -eq 1 ]; then
+	fetchSaltTree
+elif [ "${RUN_STAGE}" -eq 1 ]; then
+	stageSaltTree
+else
+	buildQubes
 fi

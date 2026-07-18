@@ -5,7 +5,7 @@ apply a newer repository revision or change `salt/pillar/seqs/config.sls`—for
 example, to add newly introduced USB/QR qubes.
 
 An upgrade does **not** require reinstalling Qubes OS. The SEQS runner is
-convergent: it installs a newly reviewed Salt tree into dom0, creates missing
+convergent: it stages a newly reviewed Salt tree in dom0, creates missing
 managed qubes, and reapplies supported settings to existing managed qubes.
 
 ## Understand the three copies
@@ -15,13 +15,13 @@ An installed system normally has three relevant copies:
 1. The repository checkout in `REPO_VM`, such as
    `personal:/home/user/SEQS`. This should be the long-term source of truth.
 2. A small runner copied into dom0 as `s.sh`.
-3. The root-owned tree currently installed in dom0 under `/srv/salt/seqs` and
+3. The root-owned tree currently staged in dom0 under `/srv/salt/seqs` and
    `/srv/pillar/seqs`.
 
 Update and configure the repository copy first. Always copy the new
 `setup-qubes.sh` into dom0 as part of an upgrade: an old dom0 runner may not
-understand new state files, validation, or upgrade behavior. A subsequent fetch
-replaces the installed `/srv` tree, so direct edits under `/srv` are temporary
+understand new state files, validation, or upgrade behavior. A subsequent stage
+replaces the `/srv` tree, so direct edits under `/srv` are temporary
 unless also made in the repository source of truth.
 
 ## 1. Update and configure the repository qube
@@ -85,31 +85,30 @@ In dom0:
 ~/s.sh --repo-vm seqs-repo --fetch-only
 ```
 
-The runner validates every archive entry, displays the transfer hash, and shows
-the diff against the currently installed `/srv` tree. Type `CONTINUE` only
-after reviewing the change. `--fetch-only` installs the reviewed tree under
-`/srv` but does not create, start, stop, or provision qubes.
+The runner validates every archive entry, displays the transfer hash, and saves
+the fetched data under `/var/lib/seqs/fetched` without building qubes.
 
 Inspect the installed result at leisure:
 
 ```bash
-sudo less /srv/pillar/seqs/config.sls
-sudo less /srv/salt/seqs/dom0.sls
+sudo less /var/lib/seqs/fetched/pillar/config.sls
+sudo less /var/lib/seqs/fetched/salt/dom0.sls
 ```
 
 The transfer hash detects accidental differences and supports comparison with
 an independent trusted copy. A hash produced only by the source repo qube does
 not prove that a compromised source is honest.
 
-## 4. Apply only the reviewed local tree
+## 4. Stage and build the reviewed local tree
 
 The repo qube can be shut down after `--fetch-only`. In dom0:
 
 ```bash
-~/s.sh --skip-fetch
+~/s.sh --stage-only
+~/s.sh --build-only
 ```
 
-This applies `/srv` without contacting `REPO_VM`. The runner:
+These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
 
 1. validates configuration and applies dom0 policies/preferences;
 2. creates missing templates and app qubes without adopting unrelated
@@ -118,7 +117,7 @@ This applies `/srv` without contacting `REPO_VM`. The runner:
 4. provisions templates and shuts them down to commit their root volumes; and
 5. provisions app qubes and shuts them down.
 
-If a state fails, fix the reported cause and rerun the same `--skip-fetch`
+If a state fails, fix the reported cause and rerun the same `--build-only`
 command. Completed work is normally skipped.
 
 ## 5. Verify the intended change
@@ -155,12 +154,12 @@ These conservative rules avoid silently deleting qubes, software, or data.
 
 Component completion markers live under `/rw/config/seqs/`. After reviewing a
 changed installer, remove only the marker for that component and role, then
-rerun `--skip-fetch`. For example, to rerun the `qr-camera` template installer:
+rerun `--build-only`. For example, to rerun the `qr-camera` template installer:
 
 ```bash
 qvm-run -u root Z-qr-camera 'rm -f /rw/config/seqs/qr-camera.template.done'
 qvm-shutdown --wait Z-qr-camera
-~/s.sh --skip-fetch
+~/s.sh --build-only
 ```
 
 An app-qube marker uses `.app.done` instead of `.template.done`. Do not delete
@@ -207,7 +206,8 @@ power-off-based fallback:
 ```
 
 Then perform the normal upgrade steps above: copy the new runner, fetch with
-`--fetch-only`, review `/srv`, and apply with `--skip-fetch`.
+`--fetch-only`, review the fetched tree, stage with `--stage-only`, and build
+with `--build-only`.
 
 Expected new managed qubes are:
 

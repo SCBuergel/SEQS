@@ -45,13 +45,16 @@ For explanations and verification details, follow
    ~/s.sh --repo-vm disp1234 --fetch-only
    ```
 
-4. Follow the [installed-tree review instructions](docs/first-install.md#7-review-the-installed-tree)
-   for `/srv/salt/seqs` and `/srv/pillar/seqs`. After that review, shut down
-   the download disposable and apply locally in dom0:
+4. Follow the [fetched-tree review instructions](docs/first-install.md#7-review-and-stage-the-fetched-tree),
+   then stage and build it. The disposable can be shut down after fetching:
 
    ```bash
-   ~/s.sh --skip-fetch
+   ~/s.sh --stage-only
+   ~/s.sh --build-only
    ```
+
+Running `~/s.sh --repo-vm disp1234` without a stage flag performs fetch,
+stage, and build in order, requiring `CONTINUE` before each stage.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md).

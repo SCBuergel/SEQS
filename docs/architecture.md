@@ -13,19 +13,13 @@ per-component trust analysis see [TRUST.md](../TRUST.md).
    This is the **only** VM→dom0 data flow in the whole system. The transfer
    SHA256 is printed for out-of-band comparison.
 
-2. **Review gate.** Before the fetched tree becomes root-owned salt code you
-   must type `CONTINUE`. On a re-fetch the incoming tree is diffed against what
-   is already installed in `/srv` so you see exactly what changed; an identical
-   re-fetch skips the prompt. For a full audit, run
-   `./setup-qubes.sh --fetch-only`, read `/srv/salt/seqs` and
-   `/srv/pillar/seqs` at leisure, then apply with `./setup-qubes.sh --skip-fetch`
-   (which never contacts the repo qube).
+2. **Stage.** `--fetch-only` saves validated data under
+   `/var/lib/seqs/fetched` for review. `--stage-only` requires a completed fetch,
+   shows the diff, and copies the reviewed Salt and pillar trees into `/srv`.
 
-3. **Install.** The verified tree is copied to `/srv/salt/seqs` and
-   `/srv/pillar/seqs`. From here on the build has **no** dependency on
-   `REPO_VM`; `--skip-fetch` re-runs never contact it at all.
-
-4. **Apply dom0** (`qubesctl state.apply seqs.dom0`): validates the whole
+3. **Build.** `--build-only` requires a completed stage and has no dependency
+   on `REPO_VM`. It first applies dom0 (`qubesctl state.apply seqs.dom0`), which
+   validates the whole
    configuration up front, installs the qrexec policies, clones templates and
    creates app qubes — declaratively and idempotently. Pre-existing qubes NOT
    created by SEQS are refused via the `seqs-managed` qvm-feature guard (with
@@ -33,7 +27,7 @@ per-component trust analysis see [TRUST.md](../TRUST.md).
    Air-gapped (`offline`) qubes are independently re-verified by the runner
    before anything is provisioned.
 
-5. **Apply qubes** (`qubesctl --skip-dom0 --targets=... state.apply seqs.qube`):
+   It then applies qubes (`qubesctl --skip-dom0 --targets=... state.apply seqs.qube`):
    provisions each template, then each app qube. Qubes Salt runs this through a
    **disposable management VM** over qrexec: dom0 pushes states and files down;
    dom0 never executes, parses, or interpolates anything a target qube produces.

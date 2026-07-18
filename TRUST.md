@@ -61,7 +61,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### `REPO_VM` — the qube hosting the repo
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
-- **Established by:** 📝 Your choice of qube; configurable at the top of `setup-qubes.sh`. It is contacted **exactly once per fetch** (one tar transfer — see below); `--skip-fetch` runs never contact it at all.
+- **Established by:** 📝 Your choice of qube; it is contacted exactly once by the fetch stage. Stage-only and build-only runs never contact it.
 - **Residual risk:** The fetched tree becomes root-executed Salt code in dom0, so a compromised `REPO_VM` = compromised dom0 **unless the operator's independent review catches the malicious bytes** (diff + `CONTINUE` prompt, or `--fetch-only` audit). A disposable limits persistence and cross-contamination but does not authenticate the download or make its contents trustworthy.
 - **Guidance for the operator:** The README's first-install path uses a fresh networked DisposableVM, passes its name with `--repo-vm`, keeps it alive only through `--fetch-only`, and then destroys it. Do **not** use a daily `personal` qube. For ongoing maintenance, either repeat the disposable workflow or use a dedicated, minimal, network-light repo qube.
 
@@ -71,12 +71,12 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Residual risk:** No tamper detection between `REPO_VM` and dom0 for this one file; mitigated only by manual review and by `REPO_VM` being trusted. The documented bootstrap command appends `2>/dev/null` to `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
 
 ### The salt-tree fetch (single validated tar transfer + review gate)
-- **Trust assumption:** The `salt/` + `install-scripts/` tree installed into `/srv/salt/seqs` and `/srv/pillar/seqs` is the one you reviewed.
-- **Established by:** 📝 `setup-qubes.sh::fetchSaltTree` pulls **one** tar stream from `REPO_VM`, validates **every** archive entry before extraction (regular files/directories only — no symlinks/hardlinks/devices; paths rooted at `salt/` or `install-scripts/`; safe charset; no `..`; no whitespace), prints the transfer SHA256 for out-of-band comparison against an independent machine, then gates installation: a re-fetch is diffed against the tree already in `/srv` and requires a typed `CONTINUE` (identical re-fetch: no prompt); the first fetch requires `CONTINUE` after the hash display, with `--fetch-only` available for a full pre-apply audit. The installed trees are root-owned, non-group/other-writable, and carry a `.seqs-managed` marker — the runner refuses to replace `/srv` trees it did not create.
-- **Residual risk:** The gate is only as good as the operator's diligence at it. On the first fetch there is no installed tree to diff against, so "review" means `--fetch-only` plus reading `/srv`, or trusting an independently reproduced SHA256 comparison.
+- **Trust assumption:** The tree staged under `/srv` is the fetched tree you reviewed.
+- **Established by:** 📝 Fetch validates one tar stream and saves it under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the `/srv` diff, and copies it root-owned. Build requires the stage completion markers.
+- **Residual risk:** These boundaries help only if the operator reviews the fetched data before staging and building it.
 
 ### `setup-qubes.sh` (thin dom0 runner)
-- **Trust assumption:** Orchestrates fetch → review gate → policy-takeover prompt → `qubesctl` applies correctly, and fails loudly when a state fails.
+- **Trust assumption:** Orchestrates fetch → stage → build correctly and fails loudly when a state fails.
 - **Established by:** 📝 Reviewed. All qube creation and provisioning logic lives in the Salt states; the runner only sequences them (dom0 state, then templates, then app qubes, with `qvm-shutdown --wait` barriers so template root volumes are committed before app qubes snapshot them).
 - **Residual risk:** Runs with the dom0 user's privileges plus `sudo` for `/srv` staging and `qubesctl`. Failure detection is belt-and-braces: `qubesctl`'s exit code **and** a scan of its (sanitized) output for salt's own failure markers (`Result: False`, non-zero `Failed:` summary), because qubesctl versions differ in whether failed states propagate non-zero. For `offline` qubes the runner independently re-checks `qvm-prefs <vm> netvm` after the dom0 apply and refuses to provision anything if the air gap is not in effect.
 

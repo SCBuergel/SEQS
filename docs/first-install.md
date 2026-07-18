@@ -142,34 +142,38 @@ Still in dom0, while the disposable remains running:
 ```
 
 The runner validates every archive entry, displays the transfer hash, and
-installs the tree under `/srv`. On a first install no prior tree exists for a
-diff, so the review obligation is particularly important. The hash supports
+saves the result under `/var/lib/seqs/fetched`. The hash supports
 comparison with an independent trusted copy; a hash produced only from the
 download qube does not prove that qube is honest.
 
-Type `CONTINUE` only for content you already intended to trust. After
-`--fetch-only` succeeds, shut down the download disposable. Dom0 no longer
-needs it.
+After `--fetch-only` succeeds, shut down the download disposable. Dom0 no
+longer needs it.
 
-## 7. Review the installed tree
+## 7. Review and stage the fetched tree
 
-The exact root-owned code that will run is now under `/srv`. At minimum inspect:
+The validated, root-owned fetched data is under `/var/lib/seqs/fetched`. At
+minimum inspect:
 
 ```bash
-sudo less /srv/pillar/seqs/config.sls
-sudo less /srv/salt/seqs/dom0.sls
-sudo less /srv/salt/seqs/qube.sls
+sudo less /var/lib/seqs/fetched/pillar/config.sls
+sudo less /var/lib/seqs/fetched/salt/dom0.sls
+sudo less /var/lib/seqs/fetched/salt/qube.sls
 ```
 
 Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md). Confirm the
-installed bytes match the revision and machine configuration you approved.
+fetched bytes match the revision and machine configuration you approved. Then
+place the reviewed tree under `/srv`:
+
+```bash
+~/s.sh --stage-only
+```
 
 ## 8. Apply locally
 
-Apply without contacting any repo/download qube:
+Build without contacting any repo/download qube:
 
 ```bash
-~/s.sh --skip-fetch
+~/s.sh --build-only
 ```
 
 Watch for:
@@ -180,7 +184,7 @@ Watch for:
 - component key/signature checks documented in `VERIFY-HUMAN.md`.
 
 Re-runs converge after a failure; fix the reported cause and rerun
-`--skip-fetch`. Some applications require a one-time app-qube reboot.
+`--build-only`. Some applications require a one-time app-qube reboot.
 
 ## 9. Verify before use
 

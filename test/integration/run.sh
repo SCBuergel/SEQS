@@ -4,7 +4,7 @@
 # mocks/bin) and scratch /srv + /var/lib paths (SEQS_* overrides).
 #
 # This exercises the parts no amount of Salt-rendering can: the fetch ->
-# tar-validation -> review-gate -> install -> apply -> readTargets ->
+# tar-validation -> stage -> build -> readTargets ->
 # verifyAirgap control flow of the runner itself. It does NOT prove software
 # installs correctly inside a qube (that needs real Qubes -- see test/README.md
 # "Layer 5").
@@ -23,6 +23,7 @@ new_sandbox() {
 	export SEQS_SALT_TREE="${SBX}/srv/salt/seqs"
 	export SEQS_PILLAR_TREE="${SBX}/srv/pillar/seqs"
 	export SEQS_TARGETS_FILE="${SBX}/var/lib/seqs/targets"
+	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
 	export SEQS_REPO_VM="personal"
 	export SEQS_REPO_ROOT="${REPO}"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
@@ -36,12 +37,12 @@ run_setup() {  # runs setup-qubes.sh under a pty, capturing combined output
 }
 
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
-echo "== scenario: fresh full install (fetch + validate + gate + apply) =="
+echo "== scenario: fresh full workflow (fetch + stage + build) =="
 new_sandbox
 out="$(run_setup 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
-grep -q "Salt tree installed" <<<"$out" && ok || bad "expected the salt tree to be installed"
+grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
 # The tree really landed in the sandbox /srv, root markers and all.
@@ -54,12 +55,15 @@ grep -q "app A-keepass offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 	|| bad "keepass should be listed offline in targets"
 rm -rf "${SBX}"
 
-# ── Scenario 2: --skip-fetch before any install must refuse ────────────────
-echo "== scenario: --skip-fetch with nothing installed refuses =="
+# ── Scenario 2: later stages refuse when prerequisites are absent ──────────
+echo "== scenario: stage/build prerequisites are enforced =="
 new_sandbox
-out="$(run_setup --skip-fetch 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && ok || bad "--skip-fetch should fail when /srv is empty"
-grep -q "not installed yet" <<<"$out" && ok || bad "expected 'not installed yet' message"
+out="$(run_setup --stage-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "--stage-only should fail before fetch"
+grep -q "fetch stage is incomplete" <<<"$out" && ok || bad "expected fetch prerequisite error"
+out="$(run_setup --build-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "--build-only should fail before staging"
+grep -q "stage is incomplete" <<<"$out" && ok || bad "expected stage prerequisite error"
 rm -rf "${SBX}"
 
 # ── Scenario 3: hostile archive is rejected at the tar-validation gate ──────
@@ -86,16 +90,27 @@ grep -qi "air gap NOT in effect" <<<"$out" && ok || bad "expected an air-gap fai
 rm -rf "${SBX}"
 
 # ── Scenario 5: identical re-fetch skips the review-gate prompt ────────────
-echo "== scenario: re-running with an identical tree needs no confirmation =="
+echo "== scenario: re-running recognizes an identical staged tree =="
 new_sandbox
 run_setup >/dev/null 2>&1            # first install (auto-confirmed via pty)
 out="$(run_setup 2>&1)"; rc=$?       # second run: tree identical
 [ "$rc" -eq 0 ] && ok || bad "identical re-run should succeed"
-grep -q "identical to the tree already installed" <<<"$out" && ok \
-	|| bad "expected the 'identical tree' fast-path message on re-run"
+grep -q "identical to the tree already staged" <<<"$out" && ok \
+	|| bad "expected the identical staged-tree message on re-run"
 rm -rf "${SBX}"
 
-# ── Scenario 6: delete-vms.sh removes only the named A-/Z- qubes ────────────
+# ── Scenario 6: each explicit stage runs independently ────────────────────
+echo "== scenario: explicit fetch, stage, and build commands compose =="
+new_sandbox
+run_setup --fetch-only >/dev/null 2>&1 && ok || bad "--fetch-only failed"
+[ -f "${SEQS_FETCH_ROOT}/.seqs-complete" ] && ok || bad "fetch completion marker missing"
+run_setup --stage-only >/dev/null 2>&1 && ok || bad "--stage-only failed"
+[ -f "${SEQS_SALT_TREE}/.seqs-complete" ] && ok || bad "stage completion marker missing"
+run_setup --build-only >/dev/null 2>&1 && ok || bad "--build-only failed"
+[ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "build did not create targets"
+rm -rf "${SBX}"
+
+# ── Scenario 7: delete-vms.sh removes only the named A-/Z- qubes ────────────
 # delete-vms.sh is the destructive half of the tooling, so its guard rails get
 # a scenario of their own. The mock inventory (SEQS_MOCK_STATE) is stateful:
 # qvm-kill marks a qube halted, qvm-remove drops it, qvm-check reads it back.

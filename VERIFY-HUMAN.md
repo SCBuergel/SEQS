@@ -17,7 +17,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 
 - **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
-- **`REPO_VM`.** This qube serves the salt tree (states + install scripts) into dom0, where it runs as root; a compromise here is a compromise of everything unless your independent review catches it. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Do not use your daily `personal` qube. A disposable provides containment and a clean starting state, not authenticity: independently verify the revision and review the exact installed `/srv` bytes before applying them.
+- **`REPO_VM`.** This qube serves the Salt tree into dom0, where it eventually runs as root. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Independently verify the revision and review `/var/lib/seqs/fetched` before staging and building.
 
 ## 2. Read what you'll run
 
@@ -34,7 +34,7 @@ Read top-to-bottom, in this order:
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
 
-For a first install, the most controlled path is `./setup-qubes.sh --fetch-only`, then read the installed trees at `/srv/salt/seqs` and `/srv/pillar/seqs` directly (that is byte-for-byte what will run), then `./setup-qubes.sh --skip-fetch`.
+For a first install, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only`.
 
 The README warning is in earnest: you are running these scripts in dom0.
 
@@ -59,7 +59,7 @@ Each component's `template-vm.sh` header also documents the three sources it was
 
 When you run `setup-qubes.sh`:
 
-1. **The fetch + review gate.** After the single tar transfer you see the transfer SHA256 (compare it out-of-band — hash the same `tar` invocation on an independent machine holding the same git commit; hashing inside `REPO_VM` itself proves nothing). On a re-fetch you then see a diff against the tree already installed in `/srv` — read it; that diff is exactly the code change you are about to run as root. Type `CONTINUE` only if it matches what you expect (an identical re-fetch skips the prompt). On a first fetch, prefer aborting here and using `--fetch-only` for a full read.
+1. **Fetch and stage.** Fetch prints the transfer SHA256 for independent comparison and saves a validated tree under `/var/lib/seqs/fetched`. Review it before `--stage-only`; staging shows the diff that will be placed under `/srv`.
 
 2. **The pre-flight validation** runs inside `qubesctl state.apply seqs.dom0` and checks everything before anything is changed: base template exists, `browser_vm` resolves, every component directory exists, extension IDs are well-formed, no duplicate qube names, cleanup paths are in-bounds, prefixes match the `.top` globs, and no same-named qube exists that SEQS didn't create. A failure shows as `seqs-validation-failed` with the reasons in its comment — *no* qubes are built before this passes.
 
