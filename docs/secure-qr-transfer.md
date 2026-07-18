@@ -62,44 +62,12 @@ hardware separation.
 
 ## Adding this to an existing SEQS installation
 
-The installer is convergent: after updating the repository, rerun it to create
-the missing QR qubes while preserving existing qubes marked `seqs-managed`.
-Configure and verify the controller as described in the next section **before**
-applying the update. Leaving `webcam_usb_controller` empty still installs the
-two QR DisposableVM templates, but deliberately does not create or attach the
-webcam USB backend.
-
-If the updated repository is in an existing trusted repo qube, rerun the normal
-README installation command. If it is downloaded into a temporary networked
-DisposableVM, keep that disposable running during the fetch and note its name
-(for example `disp1234`). In dom0, copy the updated runner while suppressing
-untrusted stderr:
-
-```bash
-DOWNLOAD_QUBE=disp1234
-qvm-run -p "$DOWNLOAD_QUBE" \
-  'cat /home/user/SEQS/setup-qubes.sh' \
-  2>/dev/null > ~/seqs-update.sh
-chmod 700 ~/seqs-update.sh
-```
-
-Fetch and install the new Salt tree without applying it yet:
-
-```bash
-SEQS_REPO_VM="$DOWNLOAD_QUBE" \
-SEQS_REPO_PATH=/home/user/SEQS \
-~/seqs-update.sh --fetch-only
-```
-
-Review the displayed diff and the resulting `/srv/salt/seqs` and
-`/srv/pillar/seqs` trees. The download qube is a source of dom0 configuration
-and therefore part of the build's trust path; verify the repository revision
-independently before accepting it. After the fetch completes, the disposable
-may be shut down. Apply only the reviewed local tree:
-
-```bash
-~/seqs-update.sh --skip-fetch
-```
+Follow the general [upgrade procedure](upgrading.md): update and configure the
+repository source of truth, copy the current runner into dom0, fetch with
+`--fetch-only`, review the installed `/srv` diff, and apply with `--skip-fetch`.
+Configure and verify the controller described above **before** applying.
+Leaving the mode disabled and controller empty still installs the QR qubes but
+deliberately does not create or attach the webcam USB backend.
 
 The expected new persistent objects are `Z-qr-display`, `A-qr-display`,
 `Z-qr-camera`, `A-qr-camera`, `Z-qr-staging`, and `A-qr-staging`; the display

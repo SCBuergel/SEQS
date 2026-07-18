@@ -5,6 +5,10 @@ All configuration lives in **one file**: `salt/pillar/seqs/config.sls`
 re-run `./setup-qubes.sh`, or edit the installed copy in dom0 and re-run with
 `--skip-fetch`.
 
+For an already installed machine, follow [the upgrade procedure](upgrading.md).
+In particular, repository changes must be fetched into `/srv` before
+`--skip-fetch` can apply them.
+
 The README covers the common case — [editing `qube_list`](../README.md#22-choose-your-qubes-saltpillarseqsconfigsls).
 This document covers the component catalogue and everything else.
 

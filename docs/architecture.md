@@ -53,6 +53,12 @@ completion markers in `/rw/config/seqs/`, existing qubes are reconfigured rather
 than rebuilt, and qubes not created by SEQS are refused (no-clobber via the
 `seqs-managed` qvm-feature).
 
+Convergence is deliberately non-destructive: removing configuration does not
+automatically uninstall components or delete qubes, and changed component
+installers remain skipped while their completion markers exist. See
+[upgrading.md](upgrading.md) for the supported update procedure and exact
+behavior by change type.
+
 ## Bootstrap window
 
 The dom0 one-liner that copies `setup-qubes.sh` out of the repo qube appends

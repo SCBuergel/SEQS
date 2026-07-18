@@ -21,12 +21,16 @@ are prefixed `A-[AppName]`, to keep the Qubes menu tidy.
 2. **Configure** what gets built — two edits (§2).
 3. **Run the installer** from dom0 (§3).
 
+Already installed SEQS and want to add a newly introduced qube or setting?
+Do not reinstall Qubes; follow [Upgrading an existing SEQS installation](docs/upgrading.md).
+
 ## Further reading
 
 | Topic | Where |
 |---|---|
 | Full Qubes OS install + ISO verification | [docs/install-qubes.md](docs/install-qubes.md) |
 | How the runner works, trust story        | [docs/architecture.md](docs/architecture.md), [TRUST.md](TRUST.md) |
+| Upgrade an existing SEQS installation or add new qubes | [docs/upgrading.md](docs/upgrading.md) |
 | Components, flags, air gaps, adding your own | [docs/configuration.md](docs/configuration.md) |
 | Verify before you trust the qubes        | [VERIFY-HUMAN.md](VERIFY-HUMAN.md), [VERIFY-LLM.md](VERIFY-LLM.md) |
 | Extra recipes (VPN tray, firewall, ADB…) | [docs/recipes.md](docs/recipes.md) |
@@ -111,4 +115,6 @@ extensions, and how to add your own component are in
 ./setup-qubes.sh --verbose       # show full per-state qubesctl output (debug)
 ```
 
-See [docs/architecture.md](docs/architecture.md) for exactly what each phase does.
+See [docs/upgrading.md](docs/upgrading.md) before changing an existing
+installation, and [docs/architecture.md](docs/architecture.md) for exactly what
+each phase does.
