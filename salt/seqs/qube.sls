@@ -107,9 +107,7 @@ seqs-stage-{{ comp }}:
     - dir_mode: '0755'
     - file_mode: '0755'
 
-# ... then overlay the shared libs AFTER the component files, so a component
-# asset can never shadow a lib like verify-gpg.sh (the old fetchRunClean
-# aborted on that collision; here the lib simply wins).
+# ... then overlay shared libraries so component assets cannot shadow them.
 seqs-stage-{{ comp }}-libs:
   file.recurse:
     - name: /run/seqs/stage/{{ comp }}

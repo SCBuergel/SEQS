@@ -1,11 +1,8 @@
 # How the SEQS runner works
 
 `setup-qubes.sh` is a thin dom0 entry point around the Qubes-native Salt
-management stack. It replaces the old imperative installer (a ~1400-line dom0
-bash script that repeatedly pulled files from a live app qube and piped VM
-output through the dom0 terminal — preserved in git history). This document
-explains what it does and why the trust story is better. For the per-component
-trust analysis see [TRUST.md](../TRUST.md).
+management stack. This document explains its data flow and controls. For the
+per-component trust analysis see [TRUST.md](../TRUST.md).
 
 ## What the runner does, in order
 
@@ -14,10 +11,7 @@ trust analysis see [TRUST.md](../TRUST.md).
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
    This is the **only** VM→dom0 data flow in the whole system. The transfer
-   SHA256 is printed for out-of-band comparison. The old installer, by contrast,
-   re-fetched scripts, libs, assets and directory listings from the untrusted
-   repo qube throughout the entire build and interpolated its listings into
-   remote shell commands.
+   SHA256 is printed for out-of-band comparison.
 
 2. **Review gate.** Before the fetched tree becomes root-owned salt code you
    must type `CONTINUE`. On a re-fetch the incoming tree is diffed against what

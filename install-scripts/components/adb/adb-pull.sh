@@ -197,10 +197,8 @@ verify_device_identity() {
     fi
 }
 
-# Try reconnecting to saved device, return 0 on success. The first time
-# in a given script run it asks for explicit confirmation -- silently
-# auto-reconnecting to whatever IP was last saved was the previous
-# behavior and is risky on networks where the IP may have changed hands.
+# Try reconnecting to a saved device after explicit confirmation; its IP may
+# have changed hands since it was saved.
 adb_reconnect_saved() {
     local saved ans
     saved=$(load_saved_device)

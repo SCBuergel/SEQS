@@ -3,8 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Shared gpg detached-sig verification helper; setup-qubes.sh moves
-# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -23,7 +22,6 @@ BASE_URL="https://github.com/BitBoxSwiss/bitbox-wallet-app/releases/download/v${
 #   * keyserver.ubuntu.com  (by key id)
 #   * keys.openpgp.org      (by key id)
 # uid: "ShiftCrypto Security <security@shiftcrypto.ch>".
-# (An earlier key, 1AA6 2C17 ... 0AD5 161E, was revoked and replaced by this one.)
 #
 # The key is embedded below so nothing is fetched over the network to
 # establish trust. Re-verify the fingerprint if you ever replace it.

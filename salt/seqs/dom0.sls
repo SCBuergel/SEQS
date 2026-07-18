@@ -107,7 +107,7 @@
 {%   endif %}
 {% endif %}
 
-{# ── Per-qube validation (replaces the old validateAllQubes) ───────────── #}
+{# ── Per-qube validation ───────────────────────────────────────────────── #}
 {% for name, q in qmap.items() %}
 {%   if name | regex_match(name_re) is none %}
 {%     do errors.append("qube name '" ~ name ~ "' is unsafe") %}
@@ -149,16 +149,8 @@
 {%         endfor %}
 {%       endif %}
 {%     endif %}
-{#     No-clobber guard: the old script refused to touch a pre-existing
-       Z-NAME / A-NAME. Salt converges instead of refusing, so we only adopt
-       qubes that carry the 'seqs-managed' feature this state sets right
-       after creation. A same-named qube WITHOUT the feature is someone
-       else's qube -- refuse before any state runs. Exception: an intent
-       marker under /var/lib/seqs/intents/ proves a previous SEQS run
-       created this qube and was interrupted before tagging it (the marker
-       is written before creation and removed after tagging) -- adopt it,
-       otherwise an interrupted first run would lock the operator out of
-       every re-run. #}
+{#     Only adopt qubes carrying seqs-managed or an interrupted-run intent
+       marker; refuse unrelated same-named qubes before any state runs. #}
 {%     for vmname in [ptpl ~ name, papp ~ name] %}
 {%       if salt['cmd.retcode']('qvm-check -q -- ' ~ vmname) == 0 %}
 {%         if salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim != '1'
@@ -189,11 +181,8 @@ seqs-validation-failed:
 {% else %}
 
 # ── qrexec policies ────────────────────────────────────────────────────────
-# The old script's interactive confirmPolicyOverwrite gate is replaced by a
-# marker-based takeover prompt in setup-qubes.sh: a policy file that exists
-# WITHOUT the "Managed by SEQS" header is never silently overwritten -- the
-# runner refuses to invoke this state until the operator confirms. After
-# that, salt owns these files and re-applies converge them.
+# setup-qubes.sh requires confirmation before taking over any policy without
+# the "Managed by SEQS" header. Salt then owns and converges the files.
 
 {% if webcam_mode in ['dedicated', 'sequential'] %}
 # The camera-exposed backend must never become an input source for dom0, even
@@ -276,18 +265,14 @@ seqs-policy-browser-suppress:
         qubes.OpenURL  *  {{ vm }}  @anyvm  deny
         {%- endfor %}
 {% else %}
-# No offline/no_handoff qubes configured: remove a stale suppress policy from
-# a previous run, but ONLY if it is ours (carries the managed marker).
+# No offline/no_handoff qubes configured: remove only our managed policy.
 seqs-policy-browser-suppress:
   cmd.run:
     - name: rm -f /etc/qubes/policy.d/28-browser-suppress.policy
     - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/28-browser-suppress.policy
 {% endif %}
 
-{# USB keyboard override -- only relevant on Qubes 4.3 with sys-usb present
-   (the shipped 50-config-input.policy silently denies qubes.InputKeyboard
-   there). Same semantics as the old setupUsbKeyboardPolicy: skip -- never
-   delete -- on other releases. #}
+{# Qubes 4.3 USB-keyboard override; skip without deleting on other releases. #}
 {% set release = salt['cmd.shell']("grep -oE '[0-9]+\\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1") | trim %}
 {% if release == '4.3' and salt['cmd.retcode']('qvm-check -q -- sys-usb') == 0 %}
 seqs-policy-usb-keyboard:
@@ -392,12 +377,7 @@ seqs-app-{{ name }}:
 {%   endif %}
 
 {%   if q.get('offline') %}
-# Air gap (e.g. keepass): same CLI invocation the old installer used in
-# production ('qvm-prefs <vm> netvm none') -- the declarative qvm.prefs
-# netvm-clearing syntax differs across releases and stays out until verified
-# on real hardware. setup-qubes.sh independently re-checks this pref after
-# the dom0 apply and refuses to provision anything if the air gap is not in
-# effect.
+# Clear the NetVM, then let setup-qubes.sh independently verify the air gap.
 seqs-offline-{{ name }}:
   cmd.run:
     - name: qvm-prefs -- {{ app }} netvm none
@@ -467,7 +447,7 @@ seqs-tag-app-{{ name }}:
 {% if webcam_mode in ['dedicated', 'sequential'] %}
 # A named disposable USB backend is created only after the operator explicitly
 # configures a controller BDF and mode. Dedicated mode removes the controller
-# from its old backend. Sequential mode leaves the normal sys-usb assignment in
+# from its current backend. Sequential mode leaves the normal sys-usb assignment in
 # place and assigns the same PCI device to an autostart-disabled webcam backend;
 # the ceremony enforces that only one owner runs at a time.
 seqs-webcam-usb-backend:

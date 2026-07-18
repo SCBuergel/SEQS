@@ -6,16 +6,13 @@
 #   ./setup-qubes.sh                fetch + install + apply everything
 #   ./setup-qubes.sh --fetch-only   fetch + install to /srv, then stop for review
 #   ./setup-qubes.sh --skip-fetch   apply from /srv (never contacts REPO_VM)
-#   ./setup-qubes.sh --repo-vm VM   fetch from VM instead of the legacy default
+#   ./setup-qubes.sh --repo-vm VM   fetch from the named repository qube
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
 
 # ---- Config -- usually set once when first installing SEQS. -----------------
-# REPO_VM/REPO_PATH: where this repo lives; only contacted during the fetch
-# step. The legacy fallback is personal, but the README's first-install path
-# explicitly overrides it with a fresh DisposableVM. Never use an in-use
-# daily-driver qube; see README §2.
+# REPO_VM/REPO_PATH identify the fetch source. Use --repo-vm as in README §2.
 REPO_VM="${SEQS_REPO_VM:-personal}"
 REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 

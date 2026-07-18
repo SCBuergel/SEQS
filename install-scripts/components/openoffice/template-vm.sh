@@ -3,8 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Shared gpg detached-sig verification helper; setup-qubes.sh moves
-# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────

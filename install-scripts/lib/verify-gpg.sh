@@ -46,11 +46,7 @@
 #                     line is the primary-key fingerprint, which is what we
 #                     pin against.
 #
-# Earlier versions of this verification (inlined in each component) only
-# scanned for "VALIDSIG <fpr>" and used `|| true` after the gpg call, which
-# meant a gpg-side failure was masked AND a multi-signature file mixing a
-# good VALIDSIG with an EXPKEYSIG / REVKEYSIG / BADSIG elsewhere in the
-# output would still pass.
+# Any negative GPG status is fatal; GOODSIG and VALIDSIG must both match.
 # -----------------------------------------------------------------------------
 
 # verify_detached_sig SIGFILE DATAFILE PIN_FPR LABEL
@@ -110,8 +106,7 @@ verify_detached_sig() {
 # key whose fingerprint is PIN_FPR. Aborts the calling script if anything
 # else is present.
 #
-# Why this is its own check (parser-shape footgun): the earlier inline
-# pattern
+# This avoids the parser-shape footgun in a pattern such as
 #       gpg --with-colons --fingerprint | awk '... $1=="fpr" ... exit'
 # parses only the FIRST pub key in the keyring. If the embedded PGP key
 # block in a future commit (accidentally, or maliciously) holds a second

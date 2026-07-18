@@ -3,8 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Shared gpg detached-sig verification helper; setup-qubes.sh moves
-# verify-gpg.sh in next to this script via the LIB_FILES mechanism.
+# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -34,9 +33,8 @@ echo "Installing KeePassXC ${KEEPASSXC_VERSION} from AppImage"
 sudo apt-get update
 # gpg: needed to verify the release signature below
 command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
-# AppImage runtime needs FUSE 2 (libfuse2t64 on Debian 13, libfuse2 on
-# Debian 12). Pick by availability instead of `install || install` with
-# suppressed stderr -- that pattern hid the real apt error when the actual
+# AppImage runtime needs FUSE 2. Pick its package by availability instead of
+# suppressing fallback errors, which would hide the real error when the actual
 # install failed for an unrelated reason (proxy down, dpkg lock, ...).
 if apt-cache show libfuse2t64 >/dev/null 2>&1; then
 	sudo apt-get install -y libfuse2t64

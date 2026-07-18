@@ -3,9 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Shared gpg helper -- shipped next to this script by setup-qubes.sh via
-# the LIB_FILES mechanism. Used to require the embedded key block to
-# contain EXACTLY the pinned fingerprint (and no second smuggled key).
+# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────

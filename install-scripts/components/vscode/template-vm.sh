@@ -3,9 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Shared gpg helper -- shipped next to this script by setup-qubes.sh via
-# the LIB_FILES mechanism. Used to require the embedded key block to
-# contain EXACTLY the pinned fingerprint (and no second smuggled key).
+# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Microsoft (packages.microsoft.com) signing key ──────────────────────────
@@ -30,7 +28,7 @@ set -Eeuo pipefail
 # Microsoft has additionally introduced a new key for distro-prod repos
 # created after April 2025 (RHEL 10, Debian 13, Ubuntu 25.10):
 #   AA86 F75E 427A 19DD 3334  6403 EE4D 7792 F748 182B
-# The /repos/code channel SEQS uses is still the legacy standalone repo
+# The /repos/code channel SEQS uses is a standalone repo
 # signed with BC528686..., so we keep this key. If/when Microsoft re-homes
 # `code` onto a distro-prod repo, this component will need a second pinned
 # key for that path.

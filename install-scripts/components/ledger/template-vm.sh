@@ -29,8 +29,7 @@ echo "reloading rules..."
 sudo udevadm control --reload-rules
 
 # Ledger Live AppImage needs FUSE 2 at runtime.
-# Debian 13 ships it as libfuse2t64; Debian 12 as libfuse2. Pick by
-# availability instead of `install || install` with suppressed stderr --
+# Pick the available FUSE 2 package instead of suppressing installation errors;
 # that pattern hid the real apt error when the actual install failed for
 # an unrelated reason (proxy down, dpkg lock, ...).
 echo "installing FUSE 2 runtime for the Ledger Live AppImage..."
@@ -49,14 +48,8 @@ sudo apt-get install -y curl
 # unversioned ("latest"), so the download cannot be cryptographically
 # verified or version-pinned -- see TRUST.md, "Ledger Live ❌".
 #
-# We install it system-wide in the TEMPLATE phase (not the app-vm phase, as
-# previously) so the final artifact is owned root:root at /usr/bin/.
-# Reason: the app-vm phase previously placed it at ~/LedgerLive.AppImage
-# owned user:user, where anything running as the qube user account could
-# overwrite the AppImage between sessions. That makes a one-time-clean
-# install only good until the first piece of user-account code execution
-# in the wallet qube. KeePass already installs its AppImage this way
-# (/usr/bin/keepassxc.AppImage, root-owned) -- this brings Ledger in line.
+# Install system-wide and root-owned so qube-user processes cannot replace the
+# AppImage between sessions.
 #
 # Templates have no direct network; route the curl through the Qubes
 # apt proxy. -f makes curl fail on an HTTP error instead of saving an

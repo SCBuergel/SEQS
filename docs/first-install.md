@@ -43,8 +43,7 @@ used as `REPO_VM` in dom0 later. Keep this disposable alive through the
 `--fetch-only` step; closing it earlier destroys its checkout.
 
 For ongoing maintenance, repeat this disposable workflow or use a dedicated,
-minimal repo qube. The runner retains `personal` as a legacy compatibility
-fallback, but the documented workflow always passes an explicit source qube.
+minimal repo qube. Always pass the source qube explicitly with `--repo-vm`.
 
 ## 3. Review what will become trusted
 

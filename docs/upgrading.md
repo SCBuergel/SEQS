@@ -145,7 +145,7 @@ USB/QR setup has hardware and policy checks in
 | Change a supported label, offline flag, firewall, policy, or generated dom0 file | Reapplies the declared setting |
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
 | Change an installer script for a component already completed | Skipped until its completion marker is deliberately removed |
-| Remove a component from a qube | Stops managing it; does not uninstall software or data it previously created |
+| Remove a component from a qube | Stops managing it; does not uninstall its existing software or data |
 | Remove a qube from `qube_list` | Stops managing/targeting it; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |
 

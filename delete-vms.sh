@@ -5,8 +5,7 @@ set -Eeuo pipefail
 
 # Removes matching A-/Z- qubes; run with --help and use --dry-run first.
 
-# Prefixes to check for each <name>. Keep in sync with PREFIX_APP_VM /
-# PREFIX_TEMPLATE_VM in setup-qubes.sh.
+# Prefixes to check for each configured base name.
 PREFIXES=(A Z)
 
 # How long to wait, in seconds, for a killed qube to actually leave the
@@ -46,9 +45,7 @@ if [ "${#ARGS[@]}" -eq 0 ]; then
 	exit 1
 fi
 
-# waitForShutdown VM [VM ...] -- poll qvm-check --running until none of the
-# named qubes are running, or SHUTDOWN_TIMEOUT elapses. Replaces the previous
-# fixed 'sleep 3' which was a guess and unreliable under load.
+# waitForShutdown VM [VM ...] -- poll until shutdown or SHUTDOWN_TIMEOUT.
 waitForShutdown() {
 	local deadline=$(( SECONDS + SHUTDOWN_TIMEOUT ))
 	local vm still_running
@@ -79,8 +76,6 @@ for app in "${ARGS[@]}"; do
 	fi
 
 	# Build the kill list by literal name + existence check -- no regex.
-	# Explicit per-prefix loop makes the prefix set (A-, Z-) clear, instead of
-	# the previous '^[A-Z]-...' which would have also matched B-, C-, ...
 	echo "looking for qubes matching ${PREFIXES[*]/%/-${app}}..."
 	found=()
 	for prefix in "${PREFIXES[@]}"; do
@@ -103,9 +98,7 @@ for app in "${ARGS[@]}"; do
 		continue
 	fi
 
-	# Surface kill errors instead of silently swallowing them with 2>/dev/null
-	# (the previous behavior could let qvm-remove run against a still-running
-	# qube without the user ever seeing why the shutdown didn't take).
+	# Surface kill errors before attempting removal.
 	echo "killing..."
 	for vm in "${found[@]}"; do
 		qvm-kill "${vm}" || echo "  qvm-kill ${vm} failed (continuing)" >&2

@@ -208,7 +208,7 @@ dupes=$(sed -n "/^{%- set brave_extensions = {/,/^} %}/p" salt/pillar/seqs/confi
 Read each verifier script (no automated check; do it manually) and confirm the abort-on-mismatch happens **before** any side effect that would commit the unverified material:
 
 - **`lib/brave.sh` → `install_brave()`** — compares sorted `${got}` against sorted `${expected}` (the three pinned `BRAVE_KEY_FPRS`). On mismatch the function does `rm -f "${tmp}"` and `exit 1` **before** `sudo install -m 0644 "${tmp}" "${keyring}"`.
-- **`lib/verify-gpg.sh` → `verify_detached_sig()`** — the single source of truth for detached-signature verification used by the keepass / bitbox / openoffice installers. Captures `gpg --status-fd 1 --verify`'s exit code explicitly into `$rc` (NO `|| true` masking, unlike the earlier inlined version), then runs an awk filter that:
+- **`lib/verify-gpg.sh` → `verify_detached_sig()`** — the single source of truth for detached-signature verification used by the keepass / bitbox / openoffice installers. Captures `gpg --status-fd 1 --verify`'s exit code explicitly into `$rc` without masking failures, then runs an awk filter that:
   - **requires both** a `[GNUPG:] GOODSIG` line and a `[GNUPG:] VALIDSIG <… primary_fpr>` line whose primary-key fingerprint equals the pin (one or the other alone is insufficient — `VALIDSIG` fires whenever the math works, including for expired/revoked keys);
   - **rejects** any `[GNUPG:] BADSIG` / `ERRSIG` / `EXPSIG` / `EXPKEYSIG` / `REVKEYSIG` / `KEYEXPIRED` / `KEYREVOKED` / `NO_PUBKEY` line anywhere in the output.
 
@@ -233,7 +233,7 @@ The consolidation helpers only protect SEQS if every site that *should* use them
 ```sh
 # 9a.i -- every component that downloads a tarball / .deb / AppImage and a
 # detached signature must source verify-gpg.sh AND call verify_detached_sig,
-# AND must NOT contain the old inline-awk VALIDSIG pattern.
+# AND must not duplicate the helper's inline-awk VALIDSIG logic.
 for c in keepass bitbox openoffice; do
     f="install-scripts/components/$c/template-vm.sh"
     ok=1
