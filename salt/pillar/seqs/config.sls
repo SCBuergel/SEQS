@@ -10,6 +10,8 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {#- Browser-link target; see docs/configuration.md. #}
 {%- set browser_vm = prefix_app ~ 'brave' %}
 {%- set browser_desktop = 'open-links-in-browser-qube.desktop' %}
+{#- Explicitly forget preserved browser-suppression denies by base name. #}
+{%- set browser_suppress_prune = [] %}
 {#- Per-component installation timeout in seconds. #}
 {%- set component_timeout = 900 %}
 
@@ -91,6 +93,7 @@ seqs:
   base_template: '{{ base_template }}'
   browser_vm: '{{ browser_vm }}'
   browser_desktop: '{{ browser_desktop }}'
+  browser_suppress_prune: {{ browser_suppress_prune | tojson }}
   component_timeout: {{ component_timeout }}
   config_errors: {{ config_errors | tojson }}
   qubes: {{ qubes | tojson }}

@@ -55,6 +55,20 @@ flags:
 
 Duplicate names abort the pre-flight.
 
+Browser-suppression denies are additive across partial upgrades. When a run
+configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules for
+existing qubes carrying the `seqs-managed` feature; it never imports arbitrary
+policy text or allow rules. To deliberately forget a preserved entry, add its
+base name to `browser_suppress_prune`, for example:
+
+```jinja
+{%- set browser_suppress_prune = ['old-wallet'] %}
+```
+
+A qube that is still configured with `offline` or `no_handoff` remains denied
+even if named in the prune list. Remove that flag as well when intentionally
+re-enabling browser handoff.
+
 ## Secure QR USB modes
 
 `webcam_usb_mode` is `disabled` by default. After completing the qualification

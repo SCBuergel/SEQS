@@ -43,6 +43,10 @@ def ids_containing(parsed, needle):
     return [k for k in parsed if needle in k]
 
 
+def state_arg(parsed, state_id, function, key):
+    return next(item[key] for item in parsed[state_id][function] if key in item)
+
+
 # ---------------------------------------------------------------------------
 # Pillar slicing
 # ---------------------------------------------------------------------------
@@ -123,6 +127,41 @@ def test_dom0_idempotent_rerun():
     check(not ids_containing(parsed, "seqs-tag-app-"),
           "re-run over tagged qubes should not re-tag anything")
     check("seqs-targets" in parsed, "targets file is still (re)written on re-run")
+
+
+def test_dom0_partial_upgrade_preserves_strict_browser_denies():
+    case("dom0.sls: partial upgrades preserve only strict denies for managed qubes")
+    policy = "/etc/qubes/policy.d/28-browser-suppress.policy"
+    old = """\
+qubes.OpenURL * A-keepass @anyvm deny
+qubes.OpenURL * A-old-wallet @anyvm deny
+qubes.OpenURL * A-unmanaged @anyvm deny
+qubes.OpenURL * A-danger @anyvm allow
+not.a.valid policy line
+"""
+    pillar = _bad_pillar(
+        qubes={"qr-display": {"label": "black", "components": ["qr-display"],
+                              "offline": True, "dispvm_template": True}},
+        browser_suppress_prune=[])
+    sc = Scenario(
+        existing_qubes=["A-brave", "A-keepass", "A-old-wallet", "A-unmanaged"],
+        tagged_qubes=["A-keepass", "A-old-wallet"],
+        file_contents={policy: old})
+    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
+    check("A-qr-display" in contents, "new offline qube deny must be emitted")
+    check("A-keepass" in contents and "A-old-wallet" in contents,
+          "strict denies for existing managed qubes must survive a partial upgrade")
+    check("A-unmanaged" not in contents,
+          "deny for an untagged qube must not be imported")
+    check("A-danger" not in contents and "not.a.valid" not in contents,
+          "allow and arbitrary policy lines must not be imported")
+
+    pillar["browser_suppress_prune"] = ["old-wallet"]
+    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
+    check("A-keepass" in contents and "A-old-wallet" not in contents,
+          "explicit prune must remove only the named preserved deny")
 
 
 def test_dom0_refuses_unmanaged_qube():
@@ -245,6 +284,8 @@ def test_dom0_validation_catches_bad_config():
     check(_validation_fails(_bad_pillar(
         config_errors=["duplicate qube name 'brave'"])),
         "config_errors from pillar compilation must abort the dom0 apply")
+    check(_validation_fails(_bad_pillar(browser_suppress_prune=["bad name"])),
+          "unsafe browser-suppression prune name must fail validation")
     check(_validation_fails(_bad_pillar(base_template="no-such-template")),
         "a missing base template must fail validation")
     # ...and a clean pillar must NOT trip validation (guards against a check

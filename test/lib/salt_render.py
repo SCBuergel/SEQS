@@ -75,6 +75,7 @@ class Scenario:
         existing_qubes=None,     # names for which `qvm-check` returns 0
         tagged_qubes=None,       # names whose `seqs-managed` feature is '1'
         existing_files=None,     # paths for which file.file_exists is True
+        file_contents=None,      # path -> contents returned by file.read
         component_dirs=None,     # component names present under files/components/
         release="4.2",           # /etc/qubes-release version, '' = unreadable
         sys_usb=False,           # does a `sys-usb` qube exist?
@@ -88,7 +89,8 @@ class Scenario:
         if sys_usb:
             self.existing_qubes.add("sys-usb")
         self.tagged_qubes = set(tagged_qubes or [])
-        self.existing_files = set(existing_files or [])
+        self.file_contents = dict(file_contents or {})
+        self.existing_files = set(existing_files or []) | set(self.file_contents)
         if component_dirs is None:
             component_dirs = _repo_component_dirs()
         self.component_dirs = set(component_dirs)
@@ -124,6 +126,9 @@ class Scenario:
     def file_file_exists(self, path):
         return path in self.existing_files
 
+    def file_read(self, path):
+        return self.file_contents.get(path, "")
+
 
 class _MockSalt(dict):
     """Stand-in for Salt's `__salt__` execution-module dict.
@@ -148,6 +153,7 @@ class _MockSalt(dict):
             "cmd.run": sc.cmd_shell,
             "file.directory_exists": sc.file_directory_exists,
             "file.file_exists": sc.file_file_exists,
+            "file.read": sc.file_read,
         }
         if key in table:
             return table[key]

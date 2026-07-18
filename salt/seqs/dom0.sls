@@ -5,6 +5,7 @@
 {% set papp = seqs.get('prefix_app', '') %}
 {% set base_template = seqs.get('base_template', '') %}
 {% set browser_vm = seqs.get('browser_vm', '') %}
+{% set browser_suppress_prune = seqs.get('browser_suppress_prune', []) %}
 {% set qmap = seqs.get('qubes', {}) %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
@@ -68,6 +69,15 @@
 {% for e in seqs.get('config_errors', []) %}
 {%   do errors.append(e) %}
 {% endfor %}
+{% if browser_suppress_prune is string or browser_suppress_prune is not sequence %}
+{%   do errors.append('browser_suppress_prune must be a list of qube base names') %}
+{% else %}
+{%   for name in browser_suppress_prune %}
+{%     if name | regex_match(name_re) is none %}
+{%       do errors.append("browser_suppress_prune contains unsafe name '" ~ name ~ "'") %}
+{%     endif %}
+{%   endfor %}
+{% endif %}
 
 {# ── Pillar present at all? ─────────────────────────────────────────────── #}
 {% if not qmap or not base_template or not browser_vm or not ptpl or not papp %}
@@ -244,10 +254,30 @@ seqs-policy-browser:
         # which is evaluated first.
         qubes.OpenURL  *  @anyvm  {{ browser_vm }}  allow
 
+{# Preserve strict deny rules for existing SEQS-managed qubes during partial
+   upgrade runs. Only the exact rule shape below is imported; arbitrary policy
+   text and allow rules are never carried forward. Explicit prune entries use
+   config base names and affect preserved entries, not currently configured
+   offline/no_handoff qubes. #}
 {% set suppressed = [] %}
 {% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') %}
 {%   do suppressed.append(papp ~ name) %}
 {% endfor %}
+{% set suppress_policy = '/etc/qubes/policy.d/28-browser-suppress.policy' %}
+{% if salt['file.file_exists'](suppress_policy) %}
+{%   for line in salt['file.read'](suppress_policy).splitlines() %}
+{%     set fields = line.split() %}
+{%     if fields | length == 5 and fields[0] == 'qubes.OpenURL' and fields[1] == '*' and fields[3] == '@anyvm' and fields[4] == 'deny' %}
+{%       set vm = fields[2] %}
+{%       set base = vm[(papp | length):] if papp and vm.startswith(papp) else '' %}
+{%       if base and vm | regex_match(name_re) is not none and base not in browser_suppress_prune and vm not in suppressed
+            and salt['cmd.retcode']('qvm-check -q -- ' ~ vm) == 0
+            and salt['cmd.shell']('qvm-features -- ' ~ vm ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+{%         do suppressed.append(vm) %}
+{%       endif %}
+{%     endif %}
+{%   endfor %}
+{% endif %}
 {% if suppressed %}
 seqs-policy-browser-suppress:
   file.managed:
@@ -261,6 +291,8 @@ seqs-policy-browser-suppress:
         # target. Evaluated before 29-browser.policy, so the deny fires before
         # the @anyvm allow rule -- the opt-out is enforced at the dom0
         # boundary, not just at each qube's xdg config.
+        # Existing strict denies for SEQS-managed qubes are preserved across
+        # partial upgrades; use browser_suppress_prune to remove stale entries.
         {%- for vm in suppressed %}
         qubes.OpenURL  *  {{ vm }}  @anyvm  deny
         {%- endfor %}
