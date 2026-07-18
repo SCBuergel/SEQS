@@ -146,36 +146,106 @@ to operate the machine.
 
 ### 3. Resolve a candidate bus to its controller
 
-For a camera shown as `sys-usb:2-1`, inspect it inside its backend:
+#### 3a. Trace the camera path
+
+**Looking for:** the virtual PCI address immediately before `/usbN` in the
+camera's sysfs path. For a camera shown by `qvm-usb` as `sys-usb:4-2`, run:
 
 ```bash
-qvm-run -p sys-usb 'readlink -f /sys/bus/usb/devices/2-1'
+qvm-run -p sys-usb 'readlink -f /sys/bus/usb/devices/4-2'
 ```
 
-An output path may include something like:
+Example output:
 
 ```text
-/sys/devices/pci0000:00/0000:00:09.0/usb2/2-1
+/sys/devices/pci0000:00/0000:00:09.0/usb4/4-2
 ```
 
-Here `00:09.0` is the controller's **virtual** address inside `sys-usb`, not
-the physical dom0 BDF. Obtain its device identity inside `sys-usb`:
+Relevant excerpt:
+
+```text
+0000:00:09.0
+```
+
+This is the controller's **virtual** address inside `sys-usb`. It is not
+necessarily its physical dom0 BDF, so do not convert it to `00_09.0` for the
+SEQS configuration.
+
+#### 3b. Read the controller identity
+
+**Looking for:** the controller's vendor and device IDs. Minimal `sys-usb`
+templates may not contain `lspci`, so read the IDs directly from sysfs. Replace
+`0000:00:09.0` if the preceding command returned a different address:
 
 ```bash
-qvm-run -p sys-usb 'lspci -nn -s 00:09.0'
+qvm-run -p sys-usb \
+  'p=/sys/bus/pci/devices/0000:00:09.0; printf "vendor="; cat "$p/vendor"; printf "device="; cat "$p/device"'
 ```
 
-Compare the controller description and `[vendor:device]` ID with candidate
-physical USB controllers in dom0, for example:
+Example output:
+
+```text
+vendor=0x8086
+device=0xa36d
+```
+
+Relevant excerpt:
+
+```text
+8086:a36d
+```
+
+Record that combined `vendor:device` ID without the `0x` prefixes.
+
+#### 3c. List the physical candidates
+
+**Looking for:** the physical dom0 BDF of each USB controller. In dom0, run:
+
+```bash
+qvm-pci | grep -i usb
+```
+
+Example output:
+
+```text
+dom0:00_14.0  USB controller: Intel Corporation USB 3.1 xHCI Host Controller
+```
+
+Relevant excerpt:
+
+```text
+dom0:00_14.0
+```
+
+This address is physical, but first confirm that its identity matches the
+camera controller.
+
+#### 3d. Match the physical controller
+
+**Looking for:** the same `[vendor:device]` ID recorded in step 3b. Convert a
+candidate such as `00_14.0` to the colon form `00:14.0` for `lspci`:
 
 ```bash
 lspci -nn -s 00:14.0
 ```
 
-Use the matching physical address in Qubes underscore notation: physical
-`00:14.0` becomes `00_14.0`. If multiple physical controllers have identical
-IDs and cannot be distinguished confidently, do not guess—test by assigning
-hardware only with a recovery plan, or use a different/add-in controller.
+Example output:
+
+```text
+00:14.0 USB controller: Intel Corporation USB 3.1 xHCI Host Controller [8086:a36d]
+```
+
+Relevant excerpt:
+
+```text
+[8086:a36d]
+```
+
+When this matches step 3b, the candidate's dom0 address is the physical BDF to
+use. In this example, enter it in Qubes underscore notation as `00_14.0`. If
+multiple physical controllers have identical IDs and cannot be distinguished
+confidently, do not guess—test by assigning hardware only with a recovery plan,
+or use a different/add-in controller.
 
 ### 4. Confirm whether this machine qualifies for the resilient path
 
