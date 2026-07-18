@@ -1,5 +1,15 @@
 # Secure air-gapped data transfer with QR codes
 
+This process aims to move a secret file between two offline Qubes machines
+without connecting them by a network or removable drive: the source encrypts
+the file, shows the encrypted data as a QR code, and the target scans it before
+checking and decrypting it. In the preferred dedicated-controller path, the
+webcam always uses its own USB controller and isolated disposable qubes; in the
+reduced-assurance sequential path, the webcam and keyboard share a controller,
+so an automated ceremony uses them at different times, copies only the scanned
+ciphertext into offline staging, and powers the machine off before keyboard use
+resumes.
+
 SEQS provisions two offline DisposableVM templates for one-way QR transfers:
 
 - `A-qr-display` supplies `qrencode` and is used only to display ciphertext.
