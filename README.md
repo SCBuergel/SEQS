@@ -23,12 +23,19 @@ For explanations and verification details, follow
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
    cd /home/user/SEQS
    printf 'Use as REPO_VM in dom0: '; hostname
-   nano salt/pillar/seqs/config.sls
+   vim salt/pillar/seqs/config.sls
    ```
+
+   In `config.sls`, normally you only need to set `base_template` and edit
+   `qube_list`: add or remove qubes, choose each `label`, and select its
+   `components`. Keep `offline: True` for qubes that must have no network and
+   leave `webcam_usb_mode` disabled unless you follow the
+   [secure QR guide](docs/secure-qr-transfer.md). See the
+   [configuration guide](docs/configuration.md) for all fields and components.
 
    Keep the disposable running. Review the checkout before trusting it; the
    [first-install guide](docs/first-install.md) explains the revision and code
-   checks. In `nano`, save with `Ctrl+O`, Enter, then exit with `Ctrl+X`.
+   checks. In `vim`, press `Esc`, type `:wq`, and press Enter to save and exit.
 
 3. In dom0, replace `disp1234` with the disposable name printed above:
 
@@ -38,8 +45,9 @@ For explanations and verification details, follow
    ~/s.sh --repo-vm disp1234 --fetch-only
    ```
 
-4. After reviewing the installed `/srv/salt/seqs` and `/srv/pillar/seqs`
-   trees, shut down the download disposable and apply locally in dom0:
+4. Follow the [installed-tree review instructions](docs/first-install.md#7-review-the-installed-tree)
+   for `/srv/salt/seqs` and `/srv/pillar/seqs`. After that review, shut down
+   the download disposable and apply locally in dom0:
 
    ```bash
    ~/s.sh --skip-fetch

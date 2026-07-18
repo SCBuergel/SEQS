@@ -115,7 +115,7 @@ qvm-prefs sys-gnosisvpn vcpus 2
 
 Create the xenstore watcher:
 ```bash
-sudo nano /usr/local/bin/watch-gnosisvpn.sh
+sudo vim /usr/local/bin/watch-gnosisvpn.sh
 ```
 ```bash
 #!/bin/bash
@@ -133,7 +133,7 @@ sudo chmod +x /usr/local/bin/watch-gnosisvpn.sh
 
 Create and enable the systemd service:
 ```bash
-sudo nano /etc/systemd/system/watch-gnosisvpn.service
+sudo vim /etc/systemd/system/watch-gnosisvpn.service
 ```
 ```ini
 [Unit]

@@ -88,11 +88,11 @@ Edit it inside the disposable:
 
 ```bash
 cd /home/user/SEQS
-nano salt/pillar/seqs/config.sls
+vim salt/pillar/seqs/config.sls
 ```
 
-Save in `nano` with `Ctrl+O`, Enter, then exit with `Ctrl+X`. Do not move this
-configuration step into dom0. See [configuration.md](configuration.md) for the
+Save in `vim` by pressing `Esc`, typing `:wq`, and pressing Enter. Do not move
+this configuration step into dom0. See [configuration.md](configuration.md) for the
 component catalogue, `offline`, `no_handoff`, DisposableVM templates, firewall
 rules, and extension settings.
 
