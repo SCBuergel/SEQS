@@ -28,6 +28,7 @@ new_sandbox() {
 	export SEQS_REPO_ROOT="${REPO}"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
+	unset SEQS_MOCK_SUDO_LOG
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
@@ -110,7 +111,23 @@ run_setup --build-only >/dev/null 2>&1 && ok || bad "--build-only failed"
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "build did not create targets"
 rm -rf "${SBX}"
 
-# ── Scenario 7: delete-vms.sh removes only the named A-/Z- qubes ────────────
+# ── Scenario 7: protected staged trees are inspected through sudo ──────────
+echo "== scenario: staged-tree guard and preview use privileged reads =="
+new_sandbox
+run_setup --fetch-only >/dev/null 2>&1
+run_setup --stage-only >/dev/null 2>&1
+export SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log"
+out="$(run_setup --stage-only 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "privileged-preview stage exited non-zero ($rc)"
+grep -Fq "test -e ${SEQS_SALT_TREE}" "${SEQS_MOCK_SUDO_LOG}" && ok \
+	|| bad "staged-tree ownership guard did not use sudo"
+grep -Fq "diff -r --exclude=.seqs-complete ${SEQS_SALT_TREE} ${SEQS_FETCH_ROOT}/salt" \
+	"${SEQS_MOCK_SUDO_LOG}" && ok || bad "staged-tree preview did not use sudo"
+grep -q "identical to the tree already staged" <<<"$out" && ok \
+	|| bad "privileged preview should recognize the identical tree"
+rm -rf "${SBX}"
+
+# ── Scenario 8: delete-vms.sh removes only the named A-/Z- qubes ────────────
 # delete-vms.sh is the destructive half of the tooling, so its guard rails get
 # a scenario of their own. The mock inventory (SEQS_MOCK_STATE) is stateful:
 # qvm-kill marks a qube halted, qvm-remove drops it, qvm-check reads it back.

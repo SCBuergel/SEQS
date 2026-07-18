@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Mock sudo: strip leading options (-n, -u user, ...) then exec the command.
 # The sandbox dirs are user-writable, so no real privilege is needed.
+if [ -n "${SEQS_MOCK_SUDO_LOG:-}" ]; then
+  printf '%q ' "$@" >> "${SEQS_MOCK_SUDO_LOG}"
+  printf '\n' >> "${SEQS_MOCK_SUDO_LOG}"
+fi
 while [ $# -gt 0 ]; do
   case "$1" in
     -n|-E|-H|-k) shift ;;

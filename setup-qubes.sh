@@ -196,15 +196,37 @@ stageSaltTree() {
 		&& [ -f "${FETCH_PILLAR_TREE}/.seqs-managed" ] \
 		|| die "fetch stage is incomplete -- run --fetch-only first"
 
-	local d diffout
+	local d diffout one rc i
 	for d in "${SALT_TREE}" "${PILLAR_TREE}"; do
-		if [ -e "${d}" ] && [ ! -e "${d}/.seqs-managed" ]; then
-			die "${d} exists but is not managed by SEQS -- refusing to replace it"
+		# /srv may not be traversable by the dom0 user. Inspect it with the
+		# same privilege used for staging; otherwise a permission error looks
+		# exactly like an absent path and bypasses the ownership guard.
+		if sudo test -e "${d}"; then
+			sudo test -e "${d}/.seqs-managed" \
+				|| die "${d} exists but is not managed by SEQS -- refusing to replace it"
+		elif ! sudo test ! -e "${d}"; then
+			die "could not inspect ${d}"
 		fi
 	done
 
-	diffout="$( { diff -r --exclude=.seqs-complete "${SALT_TREE}" "${FETCH_SALT_TREE}" 2>&1; \
-	              diff -r --exclude=.seqs-complete "${PILLAR_TREE}" "${FETCH_PILLAR_TREE}" 2>&1; } || true )"
+	# Preview with privileged reads too. Treat a real diff as expected, but do
+	# not turn a read/permission failure into a misleading list of changes.
+	diffout=""
+	local -a current_trees=("${SALT_TREE}" "${PILLAR_TREE}")
+	local -a fetched_trees=("${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}")
+	for i in 0 1; do
+		if sudo test -e "${current_trees[$i]}"; then
+			one="$(sudo diff -r --exclude=.seqs-complete \
+				"${current_trees[$i]}" "${fetched_trees[$i]}" 2>&1)"
+			rc=$?
+			[ "${rc}" -le 1 ] || die "could not compare ${current_trees[$i]} with fetched tree: ${one}"
+		else
+			one="${current_trees[$i]} is not yet staged"
+		fi
+		if [ -n "${one}" ]; then
+			diffout="${diffout}${diffout:+$'\n'}${one}"
+		fi
+	done
 	if [ -z "${diffout}" ]; then
 		echo "Fetched tree is identical to the tree already staged in /srv."
 	else
