@@ -4,7 +4,11 @@ This process aims to move a secret file between two offline Qubes machines
 without connecting them by a network or removable drive: the source encrypts
 the file with a one-time paper-recorded passphrase, shows only the ciphertext
 as a QR code, and the target scans and authenticates that ciphertext before the
-passphrase is entered to decrypt it. Under this document's trust assumptions
+passphrase is entered to decrypt it.
+
+## 2-of-2 confidentiality property
+
+Under this document's trust assumptions
 (in particular, trusted source and target key qubes and dom0 installations,
 working isolation, and correct execution of the ceremony), this gives a
 conditional **2-of-2 confidentiality property**: compromise of the webcam/QR
@@ -13,6 +17,8 @@ channel alone reveals only the passphrase; recovering the plaintext from those
 two channels requires both. This is a protocol-level property under the stated
 assumptions, not a cryptographic threshold scheme: an escape that compromises
 dom0 or a key qube defeats it.
+
+## Hardware isolation paths
 
 The preferred **dedicated-controller path** permanently assigns the webcam to
 its own USB controller and isolated disposable qubes, so camera-exposed
@@ -29,18 +35,34 @@ controller RAM and device state. An ordinary restart is not that boundary, and
 state that persists across complete power removal (for example compromised
 firmware) remains outside this guarantee.
 
-SEQS provisions two offline DisposableVM templates for one-way QR transfers:
+## Involved VMs
 
-- `A-qr-display` supplies `qrencode` and is used only to display ciphertext.
-- `A-qr-camera` supplies `zbarcam` and `qubes-usb-proxy` and is used only to
-  scan ciphertext.
+The core transfer ceremony involves four VMs across the two offline machines:
 
-The webcam backend, `sys-usb-webcam`, is also disposable. SEQS creates it and
-assigns its controller only when an active `webcam_usb_mode` and
-`webcam_usb_controller` are configured in `salt/pillar/seqs/config.sls`.
-Leaving the mode disabled and controller empty is intentional: no software can
-safely infer which physical ports share a controller with a keyboard, boot
-disk, or other critical device.
+- The trusted **source key qube** holds the original secret, encrypts it, and
+  records the passphrase and hashes for the operator.
+- A fresh disposable launched from `A-qr-display` receives and displays only
+  the ciphertext QR code.
+- A fresh disposable launched from `A-qr-camera` scans only the ciphertext QR
+  code. The template supplies `zbarcam` and `qubes-usb-proxy`.
+- The trusted **target key qube** authenticates the ciphertext, accepts the
+  paper-recorded passphrase, decrypts the secret, and verifies its plaintext
+  hash.
+
+`A-qr-display` and `A-qr-camera` are offline DisposableVM templates; the former
+supplies `qrencode`, and the latter supplies the camera tools. The two trusted
+key qubes are existing operator-selected qubes rather than objects provisioned
+by this QR setup.
+
+Supporting isolation qubes sit outside that four-VM data flow. The webcam
+backend, `sys-usb-webcam`, is also disposable. SEQS creates it and assigns its
+controller only when an active `webcam_usb_mode` and `webcam_usb_controller`
+are configured in `salt/pillar/seqs/config.sls`. Sequential mode additionally
+uses the offline persistent `A-qr-staging` qube and the named disposable
+`seqs-qr-scanner` to land ciphertext across the mandatory power-off boundary.
+Leaving webcam mode disabled and the controller empty is intentional: no
+software can safely infer which physical ports share a controller with a
+keyboard, boot disk, or other critical device.
 
 ## Start here: determine which path the machine qualifies for
 
