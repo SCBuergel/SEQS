@@ -64,11 +64,11 @@ Choose exactly one configuration:
 {%- set webcam_usb_no_strict_reset = False %}
 ```
 
-Use only a verified physical dom0 BDF. Sequential mode is for a machine whose
-keyboard and webcam sockets share that controller. It is rejected by setup if
-`webcam_usb_no_strict_reset` is enabled. It reduces risk through temporal
-isolation and a cold-power boundary, but it is not equivalent to permanent
-hardware separation.
+Use only a verified physical dom0 PCI bus-device-function (BDF) address.
+Sequential mode is for a machine whose keyboard and webcam sockets share that
+controller. It is rejected by setup if `webcam_usb_no_strict_reset` is enabled.
+It reduces risk through temporal isolation and a cold-power boundary, but it is
+not equivalent to permanent hardware separation.
 
 ## Adding this to an existing SEQS installation
 
