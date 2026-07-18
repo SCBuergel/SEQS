@@ -1,8 +1,12 @@
 # Seb's QubesOS Scripts (SEQS)
 
-SEQS builds purpose-specific Qubes OS qubes for chat, wallets, development,
-offline storage, USB transfer, and related tasks. Templates are named `Z-*` and
-their app qubes `A-*`. Re-running the installer converges an existing setup.
+[SEQS](https://github.com/SCBuergel/SEQS) turns a
+[Qubes OS](https://www.qubes-os.org/) installation into a configurable set of
+purpose-specific security domains for browsing, chat, wallets, development,
+offline storage, and controlled data transfer. It creates a separate `Z-*`
+TemplateVM and `A-*` AppVM for each selected workload, keeping unrelated tools
+and data out of the same qube while making the resulting layout reproducible
+from one reviewed configuration.
 
 > **Warning:** SEQS installs Salt code that runs as root in dom0. A malicious
 > checkout can compromise the whole machine. Before proceeding, use
@@ -35,7 +39,8 @@ For explanations and verification details, follow
 
    Keep the disposable running. Review the checkout before trusting it; the
    [first-install guide](docs/first-install.md) explains the revision and code
-   checks. In `vim`, press `Esc`, type `:wq`, and press Enter to save and exit.
+   checks. If `vim` is unfamiliar, use its built-in `vimtutor` or the
+   [Vim user manual](https://vimhelp.org/usr_01.txt.html#tutor).
 
 3. In dom0, replace `disp1234` with the disposable name printed above:
 

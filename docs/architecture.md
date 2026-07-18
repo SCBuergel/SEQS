@@ -1,8 +1,10 @@
 # How the SEQS runner works
 
-`setup-qubes.sh` is a thin dom0 entry point around the Qubes-native Salt
-management stack. This document explains its data flow and controls. For the
-per-component trust analysis see [TRUST.md](../TRUST.md).
+`setup-qubes.sh` is a thin dom0 entry point around
+[Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html),
+the Qubes-native configuration-management stack. This document explains its
+data flow and controls. For the per-component trust analysis see
+[TRUST.md](../TRUST.md).
 
 ## What the runner does, in order
 
@@ -33,6 +35,23 @@ per-component trust analysis see [TRUST.md](../TRUST.md).
    dom0 never executes, parses, or interpolates anything a target qube produces.
    (qubesctl's own summary output is still routed through the runner's terminal
    sanitizer.)
+
+## Why fetched data and `/srv` are separate
+
+The three locations represent different trust and execution states:
+
+| Location | Meaning |
+|---|---|
+| Repository qube | Network-fetched source; not present in dom0 yet |
+| `/var/lib/seqs/fetched` | Validated SEQS review copy; not active in Salt |
+| `/srv/salt/seqs` and `/srv/pillar/seqs` | Reviewed tree staged for `qubesctl` |
+
+Qubes Salt convention—not SEQS naming—defines `/srv/salt` as the state root
+and `/srv/pillar` as the pillar root. The runner uses `mkdir -p`, so it can
+create missing `/srv` ancestors defensively, but it claims and replaces only
+the `seqs` leaves carrying its management markers. Fetching alone cannot make
+Salt see the data; staging alone cannot create qubes; only the build stage runs
+`qubesctl`.
 
 ## Convergence
 

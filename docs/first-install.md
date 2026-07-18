@@ -6,7 +6,8 @@ daily qube as the bootstrap source.
 
 ## 1. Install and verify Qubes OS
 
-Follow [install-qubes.md](install-qubes.md). In summary:
+Follow [install-qubes.md](install-qubes.md) and the
+[official Qubes OS documentation](https://doc.qubes-os.org/). In summary:
 
 1. Obtain the Qubes ISO from the official Qubes site.
 2. Verify its signature and the Qubes signing-key fingerprint independently.
@@ -90,8 +91,9 @@ cd /home/user/SEQS
 vim salt/pillar/seqs/config.sls
 ```
 
-Save in `vim` by pressing `Esc`, typing `:wq`, and pressing Enter. Do not move
-this configuration step into dom0. See [configuration.md](configuration.md) for the
+If `vim` is unfamiliar, run `vimtutor` first or use the
+[Vim user manual](https://vimhelp.org/usr_01.txt.html#tutor). Do not move this
+configuration step into dom0. See [configuration.md](configuration.md) for the
 component catalogue, `offline`, `no_handoff`, DisposableVM templates, firewall
 rules, and extension settings.
 
@@ -149,6 +151,9 @@ download qube does not prove that qube is honest.
 After `--fetch-only` succeeds, shut down the download disposable. Dom0 no
 longer needs it.
 
+`/var/lib/seqs/fetched` is a SEQS-owned review area, not an active Salt tree.
+No qubes are created and no Salt state is applied during this step.
+
 ## 7. Review and stage the fetched tree
 
 The validated fetched data is root-owned but readable by the normal dom0 user
@@ -167,6 +172,12 @@ place the reviewed tree under `/srv`:
 ```bash
 ~/s.sh --stage-only
 ```
+
+`/srv` is not a SEQS product name. It is the standard location used by
+[Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html):
+states live under `/srv/salt` and pillar configuration under `/srv/pillar`.
+SEQS owns only the `seqs` subdirectories. Staging makes the reviewed files
+available to `qubesctl`; it still does not create or provision any qube.
 
 The staged `/srv/salt/seqs` and `/srv/pillar/seqs` trees are also readable
 without `sudo`; root ownership prevents the dom0 user from changing them.

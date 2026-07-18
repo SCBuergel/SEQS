@@ -91,6 +91,16 @@ joinCsv() {
 	echo "$*"
 }
 
+showWorkflow() {
+	echo "SEQS workflow and paths:"
+	echo "  FETCH  repository qube -> ${FETCH_ROOT}"
+	echo "         validated review copy; not active Salt configuration"
+	echo "  STAGE  ${FETCH_ROOT} -> ${SALT_TREE} + ${PILLAR_TREE}"
+	echo "         /srv/salt and /srv/pillar are the standard Qubes Salt roots"
+	echo "  BUILD  staged /srv tree -> configured TemplateVMs and AppVMs via qubesctl"
+	echo ""
+}
+
 # ---- Stage 1 -- fetch and validate -------------------------------------------
 
 fetchSaltTree() {
@@ -174,7 +184,8 @@ fetchSaltTree() {
 	sudo chmod -R a+rX,go-w "${FETCH_ROOT}"
 
 	rm -rf "${tarball}" "${stage}"
-	echo "    Fetch complete. Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
+	echo "    Fetch complete. No Salt state was staged or applied."
+	echo "    Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
 }
 
 # ---- Stage 2 -- stage the reviewed tree in /srv ------------------------------
@@ -213,7 +224,7 @@ stageSaltTree() {
 	sudo chown -R root:root "${SALT_TREE}" "${PILLAR_TREE}"
 	sudo chmod a+rx "$(dirname "${SALT_TREE}")" "$(dirname "${PILLAR_TREE}")"
 	sudo chmod -R a+rX,go-w "${SALT_TREE}" "${PILLAR_TREE}"
-	echo "    Staging complete."
+	echo "    Staging complete. The files are visible to Qubes Salt; no qubes were built."
 }
 
 # ---- Build helpers -----------------------------------------------------------
@@ -404,13 +415,14 @@ done
 
 QUBE_APPLY_OPTS=()
 [ "${VERBOSE}" -eq 1 ] && QUBE_APPLY_OPTS+=(--show-output)
+showWorkflow
 
 if [ "${EXPLICIT_STAGE}" -eq 0 ]; then
-	confirm "Stage 1/3 FETCH: transfer and validate repository data? type CONTINUE: " "CONTINUE"
+	confirm "Step 1/3 FETCH: transfer and validate repository data? type CONTINUE: " "CONTINUE"
 	fetchSaltTree
-	confirm "Stage 2/3 STAGE: copy the fetched tree into /srv? type CONTINUE: " "CONTINUE"
+	confirm "Step 2/3 STAGE: make the reviewed tree active in Qubes Salt under /srv? type CONTINUE: " "CONTINUE"
 	stageSaltTree
-	confirm "Stage 3/3 BUILD: create and provision the configured qubes? type CONTINUE: " "CONTINUE"
+	confirm "Step 3/3 BUILD: create and provision the configured qubes? type CONTINUE: " "CONTINUE"
 	buildQubes
 elif [ "${RUN_FETCH}" -eq 1 ]; then
 	fetchSaltTree
