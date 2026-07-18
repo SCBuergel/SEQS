@@ -2,6 +2,15 @@
 
 Companion to [TRUST.md](TRUST.md). This document walks you through verifying — *before* you trust the resulting qubes with anything valuable — that what SEQS installs matches what TRUST.md claims. Steps are ordered for a typical first-time setup; do them once when you first install, plus the maintenance section whenever upstreams rotate keys.
 
+> **Do not trust this verification guide merely because it is in the repository.**
+> A malicious or mistaken repository can alter `VERIFY-HUMAN.md` at the same
+> time as the code, omit the dangerous files, misdescribe behavior, or provide
+> checks designed to approve its own changes. This document is only a
+> convenience checklist for navigating the review. Verify every claim against
+> the actual runner, Salt states, pillar, component scripts, upstream primary
+> sources, and an independently obtained expectation of what the revision
+> should contain. Treat contradictions or unexplained omissions as a stop.
+
 ## 1. Trust assumptions you cannot verify from here
 
 Three things must be true *before* SEQS does anything useful — none of them provable from inside this repo:

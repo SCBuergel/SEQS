@@ -64,19 +64,26 @@ download with personal files; it does **not** authenticate what GitHub served.
 Inside that disposable:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y git
 git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
 cd /home/user/SEQS
-git status --short
-git rev-parse HEAD
-hostname
+git status --short                  # expected output: nothing (clean checkout)
+printf 'Revision to verify: '; git rev-parse HEAD
+printf 'Use as REPO_VM in dom0: '; hostname
 ```
 
-Record the complete commit ID and the disposable's name printed by `hostname`
-(normally something like `disp1234`). Keep this disposable running until the
-dom0 `--fetch-only` step completes. If it shuts down earlier, its checkout is
-destroyed, which is expected DisposableVM behavior.
+An empty `git status --short` means the checkout has no modified or untracked
+files immediately after cloning. Any output at this point needs investigation.
+
+The complete `Revision to verify` value identifies the exact source snapshot:
+compare it through an independent trusted channel or with a separately obtained
+known-good checkout during §3. It identifies bytes; it does not by itself prove
+they are trustworthy.
+
+The `Use as REPO_VM in dom0` value is the running disposable's Qubes name,
+normally something like `disp1234`. Substitute that exact value for
+`REPO_VM=disp1234` in §5 so dom0 knows which qube to fetch from. Keep the
+disposable running until `--fetch-only` completes. If it shuts down earlier,
+its checkout is destroyed, which is expected DisposableVM behavior.
 
 For ongoing maintenance after installation, prefer a dedicated minimal repo
 qube or repeat this fresh-disposable workflow; see
