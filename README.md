@@ -81,6 +81,7 @@ reinstall Qubes.
 | Understand the runner and dom0 data flow | [docs/architecture.md](docs/architecture.md) |
 | Select qubes, components, and flags | [docs/configuration.md](docs/configuration.md) |
 | Upgrade an existing installation | [docs/upgrading.md](docs/upgrading.md) |
+| Delete or rebuild managed qubes | [docs/deleting-vms.md](docs/deleting-vms.md) |
 | Configure secure QR transfer | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |
 | Use additional recipes | [docs/recipes.md](docs/recipes.md) |
 | Run repository tests | [test/README.md](test/README.md) |
