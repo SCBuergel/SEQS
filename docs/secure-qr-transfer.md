@@ -116,7 +116,8 @@ not equivalent to permanent hardware separation.
 Follow the general [upgrade procedure](upgrading.md): update and configure the
 repository source of truth, copy the current runner into dom0, fetch with
 `--fetch-only`, review the fetched tree, stage with `--stage-only`, and build
-with `--build-only`.
+with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
+`qr-staging` outside sequential mode).
 Configure and verify the controller described above **before** applying.
 Leaving the mode disabled and controller empty still installs the QR qubes but
 deliberately does not create or attach the webcam USB backend.

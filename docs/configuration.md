@@ -1,6 +1,6 @@
 # Configuring what SEQS builds
 
-All configuration lives in **one file**: `salt/pillar/seqs/config.sls`
+The reviewed catalogue lives in **one file**: `salt/pillar/seqs/config.sls`
 (installed to `/srv/pillar/seqs/config.sls`). Edit it in the repo qube and
 re-run the fetch and stage steps, or edit the staged copy in dom0 and rerun with
 `--build-only`.
@@ -9,13 +9,25 @@ For an already installed machine, follow [the upgrade procedure](upgrading.md).
 In particular, repository changes must be fetched into
 `/var/lib/seqs/fetched`, staged under `/srv`, and then built.
 
-The first-install guide covers the common case—
-[editing `qube_list`](first-install.md#41-choose-your-qubes-saltpillarseqsconfigsls).
+The first-install guide covers the common case—editing `qube_catalog` and
+selecting entries at build time.
 This document covers the component catalogue and everything else.
 
 ## Components
 
-Each qube in `qube_list` is built from a list of components:
+Each qube in `qube_catalog` is built from a list of components. The catalogue
+describes what the reviewed tree can build; it does not select every entry for
+every run. Select an explicit subset in dom0:
+
+```bash
+~/s.sh --build-only --qubes brave,signal,keepass
+~/s.sh --build-only --all
+```
+
+Staging always copies the complete reviewed tree. Consequently, changing only
+the runtime selection does not change the staged-tree hash. The runner prints a
+separate build-plan hash and records the canonical selection in
+`/var/lib/seqs/last-run`.
 
 | Component | What it installs |
 |---|---|
@@ -38,7 +50,7 @@ Each qube in `qube_list` is built from a list of components:
 | `vscode`       | Visual Studio Code |
 | `xournalpp`    | Xournal++ (Debian package) |
 
-## `qube_list` flags
+## `qube_catalog` flags
 
 Each entry is `{'name': ..., 'label': ..., 'components': [...]}` plus optional
 flags:
@@ -99,7 +111,7 @@ such reference in a qube.
 
 The `seqs.dom0` state configures every non-browser qube to open web links in
 `browser_vm` (default `A-brave`) via the dom0 qrexec policy
-`qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `qube_list`,
+`qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `qube_catalog`,
 also change `browser_vm` in `config.sls` to a browser qube you do have — the
 pre-flight refuses a `browser_vm` that is neither configured nor already
 existing.

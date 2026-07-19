@@ -8,17 +8,20 @@ case "$args" in
   *"top.enable"*)
     echo "local: enabled seqs.config" ;;
   *"state.apply seqs.dom0"*)
-    python3 - "$SEQS_REPO_ROOT" "$SEQS_TARGETS_FILE" <<'PY'
+    python3 - "$SEQS_REPO_ROOT" "$SEQS_TARGETS_FILE" "$SEQS_SELECTION_FILE" <<'PY'
 import sys, os
 sys.path.insert(0, os.path.join(sys.argv[1], "test", "lib"))
 import salt_render as sr
 seqs = sr.render_pillar("dom0")
+catalogue = seqs["catalogue"]
+selection = open(sys.argv[3]).read().splitlines()
+selected = catalogue if selection == ["@all"] else {n: catalogue[n] for n in selection}
 ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
 lines = ["# Managed by SEQS (mock).",
          "# Format: <template|app> <qube-name> [offline]"]
-for n in seqs["qubes"]:
+for n in selected:
     lines.append("template %s%s" % (ptpl, n))
-for n, q in seqs["qubes"].items():
+for n, q in selected.items():
     lines.append("app %s%s%s" % (papp, n, " offline" if q.get("offline") else ""))
 os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 open(sys.argv[2], "w").write("\n".join(lines) + "\n")

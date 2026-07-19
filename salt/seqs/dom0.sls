@@ -6,7 +6,20 @@
 {% set base_template = seqs.get('base_template', '') %}
 {% set browser_vm = seqs.get('browser_vm', '') %}
 {% set browser_suppress_prune = seqs.get('browser_suppress_prune', []) %}
-{% set qmap = seqs.get('qubes', {}) %}
+{% set qcatalog = seqs.get('catalogue', seqs.get('qubes', {})) %}
+{% set selection_file = '/var/lib/seqs/selection' %}
+{% set selection_raw = salt['cmd.shell']('cat ' ~ selection_file ~ ' 2>/dev/null') %}
+{% set selection = selection_raw.splitlines() %}
+{% set qmap = {} %}
+{% if selection == ['@all'] %}
+{%   do qmap.update(qcatalog) %}
+{% else %}
+{%   for selected_name in selection %}
+{%     if selected_name in qcatalog %}
+{%       do qmap.update({selected_name: qcatalog[selected_name]}) %}
+{%     endif %}
+{%   endfor %}
+{% endif %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
@@ -22,6 +35,19 @@
 {% set labels = ['red', 'orange', 'yellow', 'green', 'gray', 'blue', 'purple', 'black'] %}
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
+
+{% if not selection %}
+{%   do errors.append("runtime selection is missing -- invoke setup-qubes.sh with --qubes or --all") %}
+{% elif '@all' in selection and selection != ['@all'] %}
+{%   do errors.append("runtime selection mixes @all with named entries") %}
+{% endif %}
+{% for selected_name in selection if selected_name != '@all' %}
+{%   if selected_name | regex_match(name_re) is none %}
+{%     do errors.append("runtime selection contains unsafe name '" ~ selected_name ~ "'") %}
+{%   elif selected_name not in qcatalog %}
+{%     do errors.append("runtime selection names unknown catalogue entry '" ~ selected_name ~ "'") %}
+{%   endif %}
+{% endfor %}
 
 {% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
@@ -43,13 +69,13 @@
 {% if webcam_controller and (not webcam_scanner_dvm or webcam_scanner_dvm | regex_match(name_re) is none) %}
 {%   do errors.append("webcam_scanner_dvm is missing or unsafe") %}
 {% endif %}
-{% if webcam_controller and 'qr-camera' not in qmap %}
-{%   do errors.append("webcam_usb_controller is configured but the required qr-camera qube is absent") %}
+{% if webcam_controller and 'qr-camera' not in qmap and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_scanner_dvm) != 0 %}
+{%   do errors.append("webcam_usb_controller requires qube 'qr-camera': select it in this run or build it first") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap %}
-{%   do errors.append("sequential webcam mode requires the qr-staging qube") %}
+{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_staging_qube) != 0 %}
+{%   do errors.append("sequential webcam mode requires qube 'qr-staging': select it in this run or build it first") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and (not qmap.get('qr-staging', {}).get('offline') or not qmap.get('qr-staging', {}).get('preserve_incoming')) %}
+{% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
 {%   do errors.append("sequential webcam mode requires qr-staging to be offline with preserve_incoming enabled") %}
 {% endif %}
 {% if webcam_mode == 'sequential' and webcam_no_strict_reset %}
@@ -65,7 +91,7 @@
 {% endfor %}
 
 {# ── Errors detected while the pillar itself was compiled (duplicate qube
-     names etc. -- see qube_list handling in pillar config.sls). ────────── #}
+     names etc. -- see qube_catalog handling in pillar config.sls). ─────── #}
 {% for e in seqs.get('config_errors', []) %}
 {%   do errors.append(e) %}
 {% endfor %}
@@ -80,7 +106,7 @@
 {% endif %}
 
 {# ── Pillar present at all? ─────────────────────────────────────────────── #}
-{% if not qmap or not base_template or not browser_vm or not ptpl or not papp %}
+{% if not qcatalog or not base_template or not browser_vm or not ptpl or not papp %}
 {%   do errors.append("pillar 'seqs' is missing or incomplete -- was 'sudo qubesctl top.enable seqs.config pillar=true' run, and does /srv/pillar/seqs/config.sls exist?") %}
 {% endif %}
 
@@ -118,7 +144,7 @@
 {% endif %}
 
 {# ── Per-qube validation ───────────────────────────────────────────────── #}
-{% for name, q in qmap.items() %}
+{% for name, q in qcatalog.items() %}
 {%   if name | regex_match(name_re) is none %}
 {%     do errors.append("qube name '" ~ name ~ "' is unsafe") %}
 {%   else %}
@@ -159,8 +185,10 @@
 {%         endfor %}
 {%       endif %}
 {%     endif %}
-{#     Only adopt qubes carrying seqs-managed or an interrupted-run intent
+{#     Only selected entries are candidates for adoption/creation this run.
+       Adopt qubes carrying seqs-managed or an interrupted-run intent
        marker; refuse unrelated same-named qubes before any state runs. #}
+{%     if name in qmap %}
 {%     for vmname in [ptpl ~ name, papp ~ name] %}
 {%       if salt['cmd.retcode']('qvm-check -q -- ' ~ vmname) == 0 %}
 {%         if salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim != '1'
@@ -169,6 +197,7 @@
 {%         endif %}
 {%       endif %}
 {%     endfor %}
+{%     endif %}
 {%   endif %}
 {% endfor %}
 

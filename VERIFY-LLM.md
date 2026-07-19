@@ -159,7 +159,7 @@ done
 
 ## 7. Qube spec validation (mirror the `seqs.dom0` pre-flight)
 
-Cross-check every component in every `qube_list` entry (in `salt/pillar/seqs/config.sls`) against the actual components directory and the `brave_extensions` registry; names must be unique. This statically mirrors what the `seqs.dom0` state validates at render time.
+Cross-check every component in every `qube_catalog` entry (in `salt/pillar/seqs/config.sls`) against the actual components directory and the `brave_extensions` registry; names must be unique. This statically mirrors what the `seqs.dom0` state validates at render time.
 
 ```sh
 EXT_NAMES=$(sed -n "/^{%- set brave_extensions = {/,/^} %}/p" salt/pillar/seqs/config.sls \
@@ -180,7 +180,7 @@ while IFS= read -r line; do
                 grep -qx "$c" <<<"$COMPS" || { echo "  FAIL: unknown component '$c' in '$name'"; errors=$((errors+1)); } ;;
         esac
     done
-done < <(sed -n "/^{%- set qube_list = \[/,/^\] %}/p" salt/pillar/seqs/config.sls)
+done < <(sed -n "/^{%- set qube_catalog = \[/,/^\] %}/p" salt/pillar/seqs/config.sls)
 [ "$errors" -eq 0 ] && echo "  qube specs: PASS" || echo "  qube specs: FAIL ($errors errors)"
 ```
 

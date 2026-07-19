@@ -81,6 +81,7 @@ class Scenario:
         sys_usb=False,           # does a `sys-usb` qube exist?
         base_template="debian-13-xfce",
         top_content=None,        # contents of /srv/pillar/seqs/config.top
+        selection="@all",        # runtime catalogue selection, one name per line
     ):
         self.existing_qubes = set(existing_qubes or [])
         # The base template is expected to exist on any real dom0 running SEQS.
@@ -98,6 +99,7 @@ class Scenario:
         if top_content is None:
             top_content = _read_repo("salt/pillar/seqs/config.top")
         self.top_content = top_content
+        self.selection = selection
 
     # -- individual salt[...] handlers ------------------------------------
     def cmd_retcode(self, cmd, **_):
@@ -107,6 +109,8 @@ class Scenario:
         return 0
 
     def cmd_shell(self, cmd, **_):
+        if "/var/lib/seqs/selection" in cmd:
+            return self.selection
         if "config.top" in cmd:
             return self.top_content
         if "qubes-release" in cmd:

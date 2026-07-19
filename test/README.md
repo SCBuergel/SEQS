@@ -98,7 +98,7 @@ needs a real Salt run. Two options, in ascending fidelity:
 
 2. **A throwaway Qubes VM.** Install Qubes in a nested VM (or a spare machine),
    set `REPO_VM` to a scratch qube holding the repo, and run the full flow. Use
-   a cut-down `qube_list` (one networked qube + `keepass`) for a fast smoke, and
+   a cut-down `qube_catalog` (one networked qube + `keepass`) for a fast smoke, and
    `delete-vms.sh` to reset between runs. This is the closest to production and
    the only thing that catches component install scripts breaking against a real
    template — but it's minutes, not milliseconds, so keep it for pre-release,

@@ -25,7 +25,9 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {%- set webcam_sequential_scanner = 'seqs-qr-scanner' %}
 {%- set webcam_staging_qube = prefix_app ~ 'qr-staging' %}
 
-{%- set qube_list = [
+{#- Catalogue of everything this reviewed tree is able to build. The runner's
+    mandatory --qubes/--all argument selects entries for each invocation. #}
+{%- set qube_catalog = [
   {'name': 'brave',             'label': 'red',    'components': ['brave']},
   {'name': 'element',           'label': 'red',    'components': ['element']},
   {'name': 'telegram',          'label': 'red',    'components': ['telegram']},
@@ -73,12 +75,12 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
     is changed. #}
 {%- set config_errors = [] %}
 {%- set qubes = {} %}
-{%- for q in qube_list %}
+{%- for q in qube_catalog %}
 {%-   set qname = q.get('name', '') %}
 {%-   if not qname %}
-{%-     do config_errors.append('qube entry without a name in qube_list') %}
+{%-     do config_errors.append('qube entry without a name in qube_catalog') %}
 {%-   elif qname in qubes %}
-{%-     do config_errors.append("duplicate qube name '" ~ qname ~ "' in qube_list") %}
+{%-     do config_errors.append("duplicate qube name '" ~ qname ~ "' in qube_catalog") %}
 {%-   else %}
 {%-     do qubes.update({qname: q}) %}
 {%-   endif %}
@@ -96,7 +98,7 @@ seqs:
   browser_suppress_prune: {{ browser_suppress_prune | tojson }}
   component_timeout: {{ component_timeout }}
   config_errors: {{ config_errors | tojson }}
-  qubes: {{ qubes | tojson }}
+  catalogue: {{ qubes | tojson }}
   brave_extensions: {{ brave_extensions | tojson }}
   cleanup_dirs: {{ cleanup_dirs | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'

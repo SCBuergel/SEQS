@@ -25,7 +25,7 @@ def try_render(desc, fn):
 def main():
     minions = ["dom0"]
     dom0 = sr.render_pillar("dom0")
-    for name in dom0.get("qubes", {}):
+    for name in dom0.get("catalogue", {}):
         minions.extend(["Z-" + name, "A-" + name])
     minions.append("A-not-a-seqs-qube")  # stray-glob path
 

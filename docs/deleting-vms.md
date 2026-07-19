@@ -11,7 +11,7 @@ require deletion.
 Deletion is destructive. Back up any data that must survive and close work in
 the affected qubes first.
 
-The argument is the **base name** from `qube_list`, not a complete VM name. For
+The argument is the **base name** from `qube_catalog`, not a complete VM name. For
 example, use `keepass` to target both `A-keepass` and `Z-keepass`.
 
 Review what would happen without changing anything:
@@ -48,8 +48,9 @@ Replace `seqs-repo` and the repository path when using different names. Keep
 `2>/dev/null`: source-qube stderr must not reach the dom0 terminal during this
 copy.
 
-For permanent removal, also delete the entry from `qube_list` in the repository
-source of truth. Otherwise a later `--build-only` run will recreate the qubes.
+For permanent removal, also delete the entry from `qube_catalog` in the
+repository source of truth. Otherwise a later build that selects it will
+recreate the qubes.
 To rebuild from scratch, leave the configuration entry in place, delete the
 qubes, and run the normal reviewed fetch, stage, and build workflow.
 

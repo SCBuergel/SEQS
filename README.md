@@ -33,7 +33,7 @@ configured TemplateVMs and AppVMs. The minimum command path is:
    vim salt/pillar/seqs/config.sls
    ```
 
-   In `config.sls`, normally you only need to edit `qube_list`: add or remove
+   In `config.sls`, normally you only need to edit `qube_catalog`: add or remove
    qubes, choose each `label`, and select its `components`. Keep `offline: True`
    for qubes that must have no network and leave `webcam_usb_mode` disabled
    unless you follow the
@@ -58,11 +58,12 @@ configured TemplateVMs and AppVMs. The minimum command path is:
 
    ```bash
    ~/s.sh --stage-only
-   ~/s.sh --build-only
+   ~/s.sh --build-only --qubes brave,signal,keepass
    ```
 
-Running `~/s.sh --repo-vm disp1234` without a stage flag performs fetch,
-stage, and build in order, requiring `CONTINUE` before each stage.
+Running `~/s.sh --repo-vm disp1234 --all` without a stage flag performs fetch,
+stage, and a full-catalogue build in order, requiring `CONTINUE` before each
+stage. Every build requires either `--qubes NAME[,NAME...]` or explicit `--all`.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md).

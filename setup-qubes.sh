@@ -3,10 +3,11 @@
 # SEQS dom0 runner; see docs/architecture.md and docs/configuration.md.
 #
 # Usage:
-#   ./setup-qubes.sh                fetch, stage, and build (confirm each stage)
+#   ./setup-qubes.sh --all          fetch, stage, and build the full catalogue
 #   ./setup-qubes.sh --fetch-only   fetch and validate into /var/lib/seqs/fetched
 #   ./setup-qubes.sh --stage-only   copy the fetched tree into /srv
-#   ./setup-qubes.sh --build-only   create and provision the configured qubes
+#   ./setup-qubes.sh --build-only --qubes brave,signal
+#   ./setup-qubes.sh --build-only --all
 #   ./setup-qubes.sh --repo-vm VM   fetch from the named repository qube
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
@@ -22,6 +23,8 @@ REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
 PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
 TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"  # written by seqs.dom0
+SELECTION_FILE="${SEQS_SELECTION_FILE:-/var/lib/seqs/selection}"
+RUN_MANIFEST="${SEQS_RUN_MANIFEST:-/var/lib/seqs/last-run}"
 FETCH_ROOT="${SEQS_FETCH_ROOT:-/var/lib/seqs/fetched}"
 FETCH_SALT_TREE="${FETCH_ROOT}/salt"
 FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
@@ -97,8 +100,70 @@ showWorkflow() {
 	echo "         validated review copy; not active Salt configuration"
 	echo "  STAGE  ${FETCH_ROOT} -> ${SALT_TREE} + ${PILLAR_TREE}"
 	echo "         /srv/salt and /srv/pillar are the standard Qubes Salt roots"
-	echo "  BUILD  staged /srv tree -> configured TemplateVMs and AppVMs via qubesctl"
+	echo "  BUILD  explicitly selected catalogue entries -> TemplateVMs and AppVMs"
 	echo ""
+}
+
+canonicalizeSelection() {
+	local raw name
+	local -a requested=()
+	if [ "${SELECT_ALL}" -eq 1 ]; then
+		SELECTED_NAMES=("@all")
+		return 0
+	fi
+	IFS=',' read -r -a requested <<< "${SELECT_QUBES}"
+	[ "${#requested[@]}" -gt 0 ] || die "--qubes requires a comma-separated list"
+	for raw in "${requested[@]}"; do
+		name="${raw}"
+		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+			|| die "unsafe or empty qube base name in --qubes: '${name}'"
+	done
+	mapfile -t SELECTED_NAMES < <(printf '%s\n' "${requested[@]}" | LC_ALL=C sort -u)
+}
+
+treeHash() {
+	local listing
+	listing=$(mktemp /tmp/seqs-tree-hash.XXXXXX) || die "mktemp failed"
+	if ! sudo find "${SALT_TREE}" "${PILLAR_TREE}" -type f ! -name .seqs-complete -print0 \
+		| LC_ALL=C sort -z | sudo xargs -0 sha256sum > "${listing}"; then
+		rm -f "${listing}"
+		die "could not hash staged tree"
+	fi
+	sha256sum "${listing}" | awk '{print $1}'
+	rm -f "${listing}"
+}
+
+writeBuildIntent() {
+	local selected tree_hash plan_hash selection_text
+	selected=$(printf '%s\n' "${SELECTED_NAMES[@]}")
+	selection_text=$(printf '%s\n' "${SELECTED_NAMES[@]}" | paste -sd, -)
+	tree_hash=$(treeHash)
+	plan_hash=$(printf '%s\n%s\n' "${tree_hash}" "${selected}" | sha256sum | awk '{print $1}')
+	sudo mkdir -p "${SELECTION_FILE%/*}" "${RUN_MANIFEST%/*}" \
+		|| die "could not create runtime state directory"
+	printf '%s\n' "${selected}" | sudo tee "${SELECTION_FILE}" >/dev/null \
+		|| die "could not write runtime selection to ${SELECTION_FILE}"
+	sudo chown root:root "${SELECTION_FILE}" && sudo chmod 0644 "${SELECTION_FILE}" \
+		|| die "could not protect ${SELECTION_FILE}"
+	echo "    Staged tree SHA256: ${tree_hash}"
+	echo "    Build-plan SHA256:  ${plan_hash}"
+	echo "    Requested qubes:    ${selection_text}"
+	RUN_TREE_HASH="${tree_hash}"
+	RUN_PLAN_HASH="${plan_hash}"
+}
+
+writeRunManifest() {
+	local result="$1" selected
+	selected=$(printf '%s\n' "${SELECTED_NAMES[@]}" | paste -sd, -)
+	{
+		printf 'staged_tree_sha256=%s\n' "${RUN_TREE_HASH}"
+		printf 'build_plan_sha256=%s\n' "${RUN_PLAN_HASH}"
+		printf 'selection=%s\n' "${selected}"
+		printf 'result=%s\n' "${result}"
+		printf 'recorded_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	} | sudo tee "${RUN_MANIFEST}" >/dev/null || die "could not write ${RUN_MANIFEST}"
+	sudo chown root:root "${RUN_MANIFEST}" && sudo chmod 0644 "${RUN_MANIFEST}" \
+		|| die "could not protect ${RUN_MANIFEST}"
 }
 
 # ---- Stage 1 -- fetch and validate -------------------------------------------
@@ -361,48 +426,52 @@ shutdownAll() {
 buildQubes() {
 	[ -f "${SALT_TREE}/.seqs-complete" ] && [ -f "${PILLAR_TREE}/.seqs-complete" ] \
 		|| die "stage is incomplete -- run --stage-only first"
-echo ""
-echo "==> Applying dom0 state (policies, qube creation)"
-runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
-confirmPolicyTakeover
-runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
+	writeBuildIntent
+	writeRunManifest started
+	echo ""
+	echo "==> Applying dom0 state (policies, qube creation)"
+	runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
+	confirmPolicyTakeover
+	runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
 
 readTargets
 verifyAirgap
 FAILED=0
 
 echo ""
-echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
-if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
+	echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
+	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${TEMPLATE_TARGETS[@]}")" state.apply seqs.qube; then
 	echo "WARNING: at least one template failed to provision (see summary above;" >&2
 	echo "         re-run with --verbose for full per-state output)." >&2
 	echo "         Re-run to converge -- finished components are skipped." >&2
 	FAILED=1
-fi
+	fi
 
 # Commit template root volumes before any app qube snapshots them.
 shutdownAll "${TEMPLATE_TARGETS[@]}"
 
 echo ""
-echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
-if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
+	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
+	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${APP_TARGETS[@]}")" state.apply seqs.qube; then
 	echo "WARNING: at least one app qube failed to provision (see summary above;" >&2
 	echo "         re-run with --verbose for full per-state output)." >&2
 	FAILED=1
-fi
+	fi
 
 shutdownAll "${APP_TARGETS[@]}"
 
 echo ""
-if [ "${FAILED}" -eq 0 ]; then
-	echo "==> SEQS setup complete. All targets provisioned."
-else
-	echo "==> SEQS setup finished WITH FAILURES -- see warnings above." >&2
-	echo "    Fix and re-run (the flow is convergent; no manual rollback needed)." >&2
-	exit 1
-fi
+	if [ "${FAILED}" -eq 0 ]; then
+		writeRunManifest success
+		echo "==> SEQS setup complete. All targets provisioned."
+	else
+		writeRunManifest failure
+		echo "==> SEQS setup finished WITH FAILURES -- see warnings above." >&2
+		echo "    Fix and re-run (the flow is convergent; no manual rollback needed)." >&2
+		exit 1
+	fi
 }
 
 # ---- Main -------------------------------------------------------------------
@@ -417,22 +486,39 @@ RUN_STAGE=0
 RUN_BUILD=0
 EXPLICIT_STAGE=0
 VERBOSE="${SEQS_VERBOSE:-0}"
+SELECT_ALL=0
+SELECT_QUBES=""
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--fetch-only) RUN_FETCH=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
 		--stage-only) RUN_STAGE=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
 		--build-only) RUN_BUILD=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
 		--verbose) VERBOSE=1 ;;
+		--all) SELECT_ALL=1 ;;
+		--qubes)
+			[ "$#" -gt 1 ] || die "--qubes requires a comma-separated list"
+			[ -z "${SELECT_QUBES}" ] || die "--qubes may be specified only once"
+			SELECT_QUBES="$2"
+			shift
+			;;
 		--repo-vm)
 			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
 			REPO_VM="$2"
 			shift
 			;;
-		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --repo-vm VM, --verbose)" ;;
+		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --repo-vm VM, --verbose)" ;;
 	esac
 	shift
 done
 [ "${EXPLICIT_STAGE}" -le 1 ] || die "choose only one of --fetch-only, --stage-only, or --build-only"
+[ "${SELECT_ALL}" -eq 0 ] || [ -z "${SELECT_QUBES}" ] || die "choose only one of --all or --qubes"
+if [ "${RUN_BUILD}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
+	[ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ] \
+		|| die "a build selection is required: use --qubes NAME[,NAME...] or --all"
+	canonicalizeSelection
+elif [ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ]; then
+	die "--qubes/--all applies only to a build or the full fetch-stage-build workflow"
+fi
 [[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe repo qube name: '${REPO_VM}'"
 
 QUBE_APPLY_OPTS=()

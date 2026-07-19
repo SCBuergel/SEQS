@@ -105,7 +105,7 @@ The repo qube can be shut down after `--fetch-only`. In dom0:
 
 ```bash
 ~/s.sh --stage-only
-~/s.sh --build-only
+~/s.sh --build-only --qubes brave,signal
 ```
 
 Before replacing anything, `--stage-only` displays a recursive diff between
@@ -121,12 +121,12 @@ These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
 1. validates configuration and applies dom0 policies/preferences;
 2. creates missing templates and app qubes without adopting unrelated
    same-named VMs;
-3. verifies every configured offline app qube has no NetVM;
+3. verifies every selected offline app qube has no NetVM;
 4. provisions templates and shuts them down to commit their root volumes; and
 5. provisions app qubes and shuts them down.
 
 If a state fails, fix the reported cause and rerun the same `--build-only`
-command. Completed work is normally skipped.
+command with the same selection. Completed work is normally skipped.
 
 ## 5. Verify the intended change
 
@@ -148,12 +148,12 @@ USB/QR setup has hardware and policy checks in
 
 | Repository/configuration change | Upgrade behavior |
 |---|---|
-| Add a new `qube_list` entry | Creates and provisions its missing `Z-*` and `A-*` qubes |
+| Add a new `qube_catalog` entry and select it | Creates and provisions its missing `Z-*` and `A-*` qubes |
 | Change a supported label, offline flag, firewall, policy, or generated dom0 file | Reapplies the declared setting |
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
 | Change an installer script for a component already completed | Skipped until its completion marker is deliberately removed |
 | Remove a component from a qube | Stops managing it; does not uninstall its existing software or data |
-| Remove a qube from `qube_list` | Stops managing/targeting it; does not delete the existing VM |
+| Remove a qube from `qube_catalog` | Makes it unavailable to future runs; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |
 
 These conservative rules avoid silently deleting qubes, software, or data.
@@ -167,7 +167,7 @@ rerun `--build-only`. For example, to rerun the `qr-camera` template installer:
 ```bash
 qvm-run -u root Z-qr-camera 'rm -f /rw/config/seqs/qr-camera.template.done'
 qvm-shutdown --wait Z-qr-camera
-~/s.sh --build-only
+~/s.sh --build-only --qubes qr-camera
 ```
 
 An app-qube marker uses `.app.done` instead of `.template.done`. Do not delete

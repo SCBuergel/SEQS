@@ -53,8 +53,8 @@ def state_arg(parsed, state_id, function, key):
 def test_pillar_slicing():
     case("pillar: dom0 gets the whole map, minions get only their slice")
     dom0 = render_pillar("dom0")
-    check("qubes" in dom0, "dom0 pillar should carry the full 'qubes' map")
-    check(len(dom0.get("qubes", {})) >= 10,
+    check("catalogue" in dom0, "dom0 pillar should carry the full catalogue")
+    check(len(dom0.get("catalogue", {})) >= 10,
           "dom0 pillar should list all configured qubes")
     check(dom0.get("config_errors") == [],
           "shipped config.sls must compile with no config_errors, got %r"
@@ -64,7 +64,7 @@ def test_pillar_slicing():
     check(kp.get("role") == "app", "A-keepass should be role=app")
     check(kp.get("spec", {}).get("offline") is True,
           "A-keepass spec should be offline")
-    check("qubes" not in kp,
+    check("catalogue" not in kp,
           "an app qube's pillar must NOT leak the full qube map")
     check("brave_extensions" in kp and "rabby" not in kp.get("brave_extensions", {}),
           "keepass must not receive Brave-extension IDs it never references")
@@ -113,11 +113,27 @@ def test_dom0_happy_path():
           "qr-camera app must be configured as a DisposableVM template")
 
 
+def test_dom0_runtime_selection():
+    case("dom0.sls: runtime selection narrows creation and targets")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="brave"))
+    check("seqs-clone-brave" in parsed, "selected brave should be created")
+    check("seqs-clone-signal" not in parsed, "unselected signal must not be created")
+    targets = state_arg(parsed, "seqs-targets", "file.managed", "contents")
+    check("Z-brave" in targets and "A-brave" in targets,
+          "targets should include the selected qube pair")
+    check("Z-signal" not in targets and "A-signal" not in targets,
+          "targets must exclude unselected catalogue entries")
+
+    _, bad = render_state("dom0", "dom0", Scenario(selection="not-in-catalogue"))
+    check("seqs-validation-failed" in bad,
+          "unknown runtime selections must fail pre-flight")
+
+
 def test_dom0_idempotent_rerun():
     case("dom0.sls: a fully-provisioned re-run is churn-free (no clone/tag states)")
     # Every qube already exists AND is tagged seqs-managed.
     dom0 = render_pillar("dom0")
-    names = list(dom0["qubes"].keys())
+    names = list(dom0["catalogue"].keys())
     existing = ["Z-" + n for n in names] + ["A-" + n for n in names]
     _, parsed = render_state(
         "dom0", "dom0",

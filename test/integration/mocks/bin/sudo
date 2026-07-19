@@ -14,4 +14,8 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+# The unprivileged test container cannot chown to root; production sudo can.
+if [ "${1:-}" = "chown" ]; then
+  exit 0
+fi
 exec "$@"

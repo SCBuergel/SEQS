@@ -23,6 +23,8 @@ new_sandbox() {
 	export SEQS_SALT_TREE="${SBX}/srv/salt/seqs"
 	export SEQS_PILLAR_TREE="${SBX}/srv/pillar/seqs"
 	export SEQS_TARGETS_FILE="${SBX}/var/lib/seqs/targets"
+	export SEQS_SELECTION_FILE="${SBX}/var/lib/seqs/selection"
+	export SEQS_RUN_MANIFEST="${SBX}/var/lib/seqs/last-run"
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
 	export SEQS_REPO_VM="personal"
 	export SEQS_REPO_ROOT="${REPO}"
@@ -41,7 +43,7 @@ run_setup() {  # runs setup-qubes.sh under a pty, capturing combined output
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
 echo "== scenario: fresh full workflow (fetch + stage + build) =="
 new_sandbox
-out="$(run_setup 2>&1)"; rc=$?
+out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
@@ -63,7 +65,7 @@ new_sandbox
 out="$(run_setup --stage-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "--stage-only should fail before fetch"
 grep -q "fetch stage is incomplete" <<<"$out" && ok || bad "expected fetch prerequisite error"
-out="$(run_setup --build-only 2>&1)"; rc=$?
+out="$(run_setup --build-only --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "--build-only should fail before staging"
 grep -q "stage is incomplete" <<<"$out" && ok || bad "expected stage prerequisite error"
 rm -rf "${SBX}"
@@ -76,7 +78,7 @@ mkdir -p "${evil}/salt"
 ln -s /etc/passwd "${evil}/salt/steal"   # symlink entry -> non-regular, must reject
 export SEQS_MOCK_TAR="${SBX}/evil.tar"
 tar -C "${evil}" -cf "${SEQS_MOCK_TAR}" salt
-out="$(run_setup 2>&1)"; rc=$?
+out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
 grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
 [ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
@@ -86,7 +88,7 @@ rm -rf "${SBX}" "${evil}"
 echo "== scenario: a live netvm on an offline qube halts provisioning =="
 new_sandbox
 export SEQS_MOCK_NETVM="sys-firewall"   # keepass 'offline' but netvm present
-out="$(run_setup 2>&1)"; rc=$?
+out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a netvm"
 grep -qi "air gap NOT in effect" <<<"$out" && ok || bad "expected an air-gap failure message"
 rm -rf "${SBX}"
@@ -94,8 +96,8 @@ rm -rf "${SBX}"
 # ── Scenario 5: identical re-fetch skips the review-gate prompt ────────────
 echo "== scenario: re-running recognizes an identical staged tree =="
 new_sandbox
-run_setup >/dev/null 2>&1            # first install (auto-confirmed via pty)
-out="$(run_setup 2>&1)"; rc=$?       # second run: tree identical
+run_setup --all >/dev/null 2>&1      # first install (auto-confirmed via pty)
+out="$(run_setup --all 2>&1)"; rc=$? # second run: tree identical
 [ "$rc" -eq 0 ] && ok || bad "identical re-run should succeed"
 grep -q "identical to the tree already staged" <<<"$out" && ok \
 	|| bad "expected the identical staged-tree message on re-run"
@@ -108,8 +110,19 @@ run_setup --fetch-only >/dev/null 2>&1 && ok || bad "--fetch-only failed"
 [ -f "${SEQS_FETCH_ROOT}/.seqs-complete" ] && ok || bad "fetch completion marker missing"
 run_setup --stage-only >/dev/null 2>&1 && ok || bad "--stage-only failed"
 [ -f "${SEQS_SALT_TREE}/.seqs-complete" ] && ok || bad "stage completion marker missing"
-run_setup --build-only >/dev/null 2>&1 && ok || bad "--build-only failed"
+run_setup --build-only --all >/dev/null 2>&1 && ok || bad "--build-only failed"
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "build did not create targets"
+out="$(run_setup --build-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "build selection is required" <<<"$out" && ok \
+	|| bad "build without --qubes/--all should be refused"
+run_setup --build-only --qubes signal,brave >/dev/null 2>&1 \
+	&& ok || bad "selected build failed"
+grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" \
+	&& grep -q '^app A-signal$' "${SEQS_TARGETS_FILE}" \
+	&& ! grep -q 'keepass' "${SEQS_TARGETS_FILE}" \
+	&& ok || bad "selected build targets should contain only brave and signal"
+[ -f "${SEQS_RUN_MANIFEST}" ] && grep -q '^selection=brave,signal$' "${SEQS_RUN_MANIFEST}" \
+	&& ok || bad "run manifest should record canonical selection"
 rm -rf "${SBX}"
 
 # ── Scenario 7: protected staged trees are inspected through sudo ──────────

@@ -19,11 +19,12 @@ data flow and controls. For the per-component trust analysis see
    `/var/lib/seqs/fetched` for review. `--stage-only` requires a completed fetch,
    shows the diff, and copies the reviewed Salt and pillar trees into `/srv`.
 
-3. **Build.** `--build-only` requires a completed stage and has no dependency
+3. **Build.** `--build-only` requires a completed stage, plus either
+   `--qubes NAME[,NAME...]` or explicit `--all`, and has no dependency
    on `REPO_VM`. It first applies dom0 (`qubesctl state.apply seqs.dom0`), which
-   validates the whole
-   configuration up front, installs the qrexec policies, clones templates and
-   creates app qubes — declaratively and idempotently. Pre-existing qubes NOT
+   validates the whole catalogue and the runtime selection up front, installs
+   the applicable qrexec policies, clones selected templates and creates
+   selected app qubes — declaratively and idempotently. Pre-existing qubes NOT
    created by SEQS are refused via the `seqs-managed` qvm-feature guard (with
    intent markers so an interrupted run can be resumed, not locked out).
    Air-gapped (`offline`) qubes are independently re-verified by the runner
@@ -45,6 +46,8 @@ The three locations represent different trust and execution states:
 | Repository qube | Network-fetched source; not present in dom0 yet |
 | `/var/lib/seqs/fetched` | Validated SEQS review copy; not active in Salt |
 | `/srv/salt/seqs` and `/srv/pillar/seqs` | Reviewed tree staged for `qubesctl` |
+| `/var/lib/seqs/selection` | Root-owned intent for the current build; not part of the staged tree |
+| `/var/lib/seqs/last-run` | Tree hash, plan hash, canonical selection, and result |
 
 Qubes Salt convention—not SEQS naming—defines `/srv/salt` as the state root
 and `/srv/pillar` as the pillar root. The runner uses `mkdir -p`, so it can
@@ -58,7 +61,8 @@ Salt see the data; staging alone cannot create qubes; only the build stage runs
 Re-running `setup-qubes.sh` converges: finished components are skipped via
 completion markers in `/rw/config/seqs/`, existing qubes are reconfigured rather
 than rebuilt, and qubes not created by SEQS are refused (no-clobber via the
-`seqs-managed` qvm-feature).
+`seqs-managed` qvm-feature). Catalogue entries omitted from a run are left
+untouched; omission is never interpreted as deletion.
 
 Convergence is deliberately non-destructive: removing configuration does not
 automatically uninstall components or delete qubes, and changed component

@@ -24,7 +24,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 Read top-to-bottom, in this order:
 
 1. **`setup-qubes.sh`** — the thin dom0 runner: source selection, terminal sanitization, validated fetch, staging and completion markers, Salt failure detection, policy takeover, and air-gap verification.
-2. **`salt/pillar/seqs/config.sls`** — ALL configuration: prefixes, base template, `browser_vm`, `qube_list` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and the per-minion slicing at the bottom (each qube receives only its own slice — verify the dom0/VM split).
+2. **`salt/pillar/seqs/config.sls`** — the reviewed catalogue: prefixes, base template, `browser_vm`, `qube_catalog` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and the per-minion slicing at the bottom (each qube receives only its own slice — verify the dom0/VM split).
 3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), all generated qrexec policy states (including QR containment when enabled), the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.
 5. **`install-scripts/lib/brave.sh`** — Brave install + keyring verification logic + `ensure_brave`. Also adds the apt-`preferences.d` pin that locks the Brave repo to brave-browser packages only.
@@ -34,7 +34,7 @@ Read top-to-bottom, in this order:
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
 
-For a first install, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only`.
+For a first install, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all`.
 
 The README warning is in earnest: you are running these scripts in dom0.
 

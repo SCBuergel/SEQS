@@ -97,10 +97,10 @@ configuration step into dom0. See [configuration.md](configuration.md) for the
 component catalogue, `offline`, `no_handoff`, DisposableVM templates, firewall
 rules, and extension settings.
 
-Each qube is an entry in `qube_list`, for example:
+Each available qube is an entry in `qube_catalog`, for example:
 
 ```jinja
-{%- set qube_list = [
+{%- set qube_catalog = [
   {'name': 'keepass', 'label': 'black', 'components': ['keepass'], 'offline': True},
   {'name': 'dev-full', 'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode']},
 ] %}
@@ -187,7 +187,7 @@ without `sudo`; root ownership prevents the dom0 user from changing them.
 Build without contacting any repo/download qube:
 
 ```bash
-~/s.sh --build-only
+~/s.sh --build-only --all
 ```
 
 Watch for:
@@ -198,7 +198,8 @@ Watch for:
 - component key/signature checks documented in `VERIFY-HUMAN.md`.
 
 Re-runs converge after a failure; fix the reported cause and rerun
-`--build-only`. Some applications require a one-time app-qube reboot.
+`--build-only` with the same explicit selection. Some applications require a
+one-time app-qube reboot.
 
 ## 9. Verify before use
 
