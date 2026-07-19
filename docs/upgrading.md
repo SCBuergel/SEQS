@@ -108,6 +108,14 @@ The repo qube can be shut down after `--fetch-only`. In dom0:
 ~/s.sh --build-only
 ```
 
+Before replacing anything, `--stage-only` displays a recursive diff between
+the reviewed fetched copy in `/var/lib/seqs/fetched` and the Salt tree currently
+active under `/srv`. This preview shows changes to Salt states, component
+scripts, and pillar configuration; it does not describe changes to installed
+qubes. No diff means the two trees are identical, while "is not yet staged" is
+expected for a tree being installed for the first time. A comparison or
+permission error aborts staging instead of being treated as a difference.
+
 These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
 
 1. validates configuration and applies dom0 policies/preferences;
