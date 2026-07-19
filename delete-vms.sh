@@ -3,7 +3,8 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Removes matching A-/Z- qubes; run with --help and use --dry-run first.
+# Removes matching A-/Z- qubes and their exact SEQS-managed browser deny;
+# run with --help and use --dry-run first.
 
 # Prefixes to check for each configured base name.
 PREFIXES=(A Z)
@@ -14,12 +15,17 @@ SHUTDOWN_TIMEOUT=30
 
 DRY_RUN=0
 
+# The override is for the test harness. A normal dom0 run uses the real policy.
+BROWSER_SUPPRESS_POLICY="${SEQS_BROWSER_SUPPRESS_POLICY:-/etc/qubes/policy.d/28-browser-suppress.policy}"
+
 usage() {
 	cat <<EOF
 Usage: $0 [--dry-run] <name> [<name> ...]
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
-any qube called A-<name> or Z-<name>.
+any qube called A-<name> or Z-<name>. After A-<name> is absent, also removes
+its exact deny from the SEQS-managed browser-suppression policy. Unmarked
+policy files are never changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -65,6 +71,55 @@ waitForShutdown() {
 	return 1
 }
 
+# browserRuleExists VM -- match only the strict rule shape SEQS generates.
+browserRuleExists() {
+	local vm="$1"
+	sudo awk -v vm="${vm}" '
+		NF == 5 && $1 == "qubes.OpenURL" && $2 == "*" &&
+		$3 == vm && $4 == "@anyvm" && $5 == "deny" { found=1 }
+		END { exit !found }
+	' "${BROWSER_SUPPRESS_POLICY}"
+}
+
+# removeBrowserSuppression BASE_NAME -- remove one exact stale deny after the
+# corresponding A-* qube is gone. Never modify a policy we cannot identify as
+# SEQS-managed. The same-directory temporary makes replacement atomic.
+removeBrowserSuppression() {
+	local vm="A-${1}" tmp
+
+	sudo test -e "${BROWSER_SUPPRESS_POLICY}" || return 0
+	browserRuleExists "${vm}" || return 0
+
+	if ! sudo grep -q 'Managed by SEQS' "${BROWSER_SUPPRESS_POLICY}"; then
+		echo "WARNING: stale browser deny for ${vm} remains in unmarked policy ${BROWSER_SUPPRESS_POLICY}; review it manually." >&2
+		return 0
+	fi
+
+	if [ "${DRY_RUN}" -eq 1 ]; then
+		echo "  (dry-run: would remove stale browser deny for ${vm} from ${BROWSER_SUPPRESS_POLICY})"
+		return 0
+	fi
+
+	tmp="$(sudo mktemp "${BROWSER_SUPPRESS_POLICY}.tmp.XXXXXX")" \
+		|| { echo "ERROR: could not create policy temporary" >&2; return 1; }
+	if ! sudo awk -v vm="${vm}" '
+		!(NF == 5 && $1 == "qubes.OpenURL" && $2 == "*" &&
+		  $3 == vm && $4 == "@anyvm" && $5 == "deny")
+	' "${BROWSER_SUPPRESS_POLICY}" | sudo tee "${tmp}" >/dev/null; then
+		sudo rm -f -- "${tmp}"
+		echo "ERROR: could not rewrite ${BROWSER_SUPPRESS_POLICY}" >&2
+		return 1
+	fi
+
+	# Preserve the managed file's metadata, including its security context when
+	# supported, before the atomic replacement.
+	sudo chown --reference="${BROWSER_SUPPRESS_POLICY}" "${tmp}"
+	sudo chmod --reference="${BROWSER_SUPPRESS_POLICY}" "${tmp}"
+	sudo chcon --reference="${BROWSER_SUPPRESS_POLICY}" "${tmp}" 2>/dev/null || true
+	sudo mv -f -- "${tmp}" "${BROWSER_SUPPRESS_POLICY}"
+	echo "removed stale browser deny for ${vm} from ${BROWSER_SUPPRESS_POLICY}"
+}
+
 for app in "${ARGS[@]}"; do
 	# Reject anything that isn't a safe identifier. $app is interpolated into
 	# qube names and passed straight to qvm-remove -f, so a value like '.*'
@@ -87,6 +142,7 @@ for app in "${ARGS[@]}"; do
 
 	if [ "${#found[@]}" -eq 0 ]; then
 		echo "  no qubes match"
+		removeBrowserSuppression "${app}"
 		continue
 	fi
 
@@ -95,6 +151,7 @@ for app in "${ARGS[@]}"; do
 
 	if [ "${DRY_RUN}" -eq 1 ]; then
 		echo "  (dry-run: not killing or removing)"
+		removeBrowserSuppression "${app}"
 		continue
 	fi
 
@@ -111,4 +168,10 @@ for app in "${ARGS[@]}"; do
 	for vm in "${found[@]}"; do
 		qvm-remove "${vm}" -f
 	done
+
+	# Policy cleanup is deliberately last: never remove protection while the
+	# corresponding app qube still exists because deletion failed.
+	if ! qvm-check "A-${app}" &>/dev/null; then
+		removeBrowserSuppression "${app}"
+	fi
 done

@@ -69,6 +69,11 @@ A qube that is still configured with `offline` or `no_handoff` remains denied
 even if named in the prune list. Remove that flag as well when intentionally
 re-enabling browser handoff.
 
+`delete-vms.sh <name>` removes the exact `A-<name>` browser deny immediately
+after the app qube is gone, without running a full build. It updates only a
+policy carrying the `Managed by SEQS` marker; an unmarked policy is left
+unchanged with a warning for manual review.
+
 ## Secure QR USB modes
 
 `webcam_usb_mode` is `disabled` by default. After completing the qualification
