@@ -127,8 +127,7 @@ Assume the disposable reported `disp1234`; replace it with the exact hostname.
 In dom0:
 
 ```bash
-qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
-chmod 700 ~/s.sh
+qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
 less ~/s.sh
 ```
 

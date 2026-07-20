@@ -37,8 +37,7 @@ configured TemplateVMs and AppVMs. The minimum command path is:
    Replace both `disp1234` occurrences with the disposable's name:
 
    ```bash
-   qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
-   chmod 700 ~/s.sh
+   qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
    ~/s.sh --repo-vm disp1234 --fetch-only
    ```
 

@@ -66,8 +66,7 @@ name. A fresh temporary DisposableVM is also suitable; keep it alive through
 `--fetch-only`. In dom0:
 
 ```bash
-qvm-run -p seqs-repo "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
-chmod 700 ~/s.sh
+qvm-run -p seqs-repo "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
 ```
 
 The `2>/dev/null` is a security boundary: untrusted source-qube stderr must not
