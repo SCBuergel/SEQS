@@ -249,6 +249,71 @@ def test_dom0_sequential_qr_rejects_weak_reset():
           "sequential + no-strict-reset must fail pre-flight")
 
 
+def test_dom0_named_disposable():
+    case("dom0.sls: a 'named_disposable' entry gets a launchable DispVM (D-*)")
+    # qr-display is a named_disposable; A-brave must exist so browser_vm
+    # validation passes when only qr-display is selected.
+    sc = Scenario(selection="qr-display",
+                  existing_qubes=["A-brave"], tagged_qubes=["A-brave"])
+    text, parsed = render_state("dom0", "dom0", sc)
+    check("seqs-validation-failed" not in parsed,
+          "selecting a named_disposable qube must pass validation")
+    for state in ("seqs-create-disposable-qr-display",
+                  "seqs-disposable-prefs-qr-display",
+                  "seqs-tag-disposable-qr-display"):
+        check(state in parsed, "named_disposable should render %s" % state)
+    create = state_arg(parsed, "seqs-create-disposable-qr-display",
+                       "cmd.run", "name")
+    check("qvm-create -C DispVM -t A-qr-display" in create
+          and create.rstrip().endswith("D-qr-display"),
+          "the disposable must be a DispVM derived from A-qr-display, named D-*")
+    prefs = state_arg(parsed, "seqs-disposable-prefs-qr-display",
+                      "cmd.run", "name")
+    check("netvm none" in prefs,
+          "the disposable of an offline dispvm template must have its netvm cleared")
+    # qr-camera is a dispvm_template but NOT a named_disposable -> no D- qube.
+    check("seqs-create-disposable-qr-camera" not in parsed,
+          "a dispvm_template without named_disposable must not get a named DispVM")
+    # The disposable is written to the targets file as its own kind + offline,
+    # so the runner air-gap-verifies it without trying to provision it.
+    targets = state_arg(parsed, "seqs-targets", "file.managed", "contents")
+    check("disposable D-qr-display offline" in targets,
+          "the named disposable must be listed for independent air-gap verification")
+    check("app D-qr-display" not in targets,
+          "the disposable must not be listed as an app (it is never provisioned)")
+    # No-clobber: a pre-existing untagged D-qr-display must be refused, and an
+    # interrupted-run intent marker must let it be adopted -- same as A-/Z-.
+    _, refused = render_state("dom0", "dom0", Scenario(
+        selection="qr-display", existing_qubes=["A-brave", "D-qr-display"],
+        tagged_qubes=["A-brave"]))
+    check("seqs-validation-failed" in refused,
+          "an untagged pre-existing D- qube must trip the no-clobber guard")
+    _, adopted = render_state("dom0", "dom0", Scenario(
+        selection="qr-display", existing_qubes=["A-brave", "D-qr-display"],
+        tagged_qubes=["A-brave"],
+        existing_files=["/var/lib/seqs/intents/D-qr-display"]))
+    check("seqs-validation-failed" not in adopted,
+          "a D- qube with an interrupted-run intent marker must be adopted")
+
+
+def test_dom0_named_disposable_rerun_churn_free():
+    case("dom0.sls: an already-built named disposable is churn-free on re-run")
+    dom0 = render_pillar("dom0")
+    names = list(dom0["catalogue"].keys())
+    existing = (["Z-" + n for n in names] + ["A-" + n for n in names]
+                + ["D-qr-display"])
+    _, parsed = render_state(
+        "dom0", "dom0",
+        Scenario(existing_qubes=existing, tagged_qubes=existing))
+    for state in ("seqs-create-disposable-qr-display",
+                  "seqs-intent-disposable-qr-display",
+                  "seqs-tag-disposable-qr-display"):
+        check(state not in parsed,
+              "re-run over a tagged disposable must not render %s" % state)
+    check("seqs-disposable-prefs-qr-display" in parsed,
+          "prefs stay (guarded by unless) so drift is still corrected")
+
+
 # ---------------------------------------------------------------------------
 # dom0.sls -- validation logic (feed hand-built bad pillars)
 # ---------------------------------------------------------------------------
@@ -304,6 +369,16 @@ def test_dom0_validation_catches_bad_config():
           "unsafe browser-suppression prune name must fail validation")
     check(_validation_fails(_bad_pillar(base_template="no-such-template")),
         "a missing base template must fail validation")
+    check(_validation_fails(_bad_pillar(
+        qubes={"x": {"label": "black", "components": ["brave"],
+                     "named_disposable": True}})),
+        "named_disposable without dispvm_template must fail validation")
+    check(_validation_fails(_bad_pillar(
+        prefix_disposable="",
+        qubes={"x": {"label": "black", "components": ["brave"],
+                     "offline": True, "dispvm_template": True,
+                     "named_disposable": True}})),
+        "named_disposable with no prefix_disposable configured must fail validation")
     # ...and a clean pillar must NOT trip validation (guards against a check
     # that fails everything).
     check(not _validation_fails(_bad_pillar()),

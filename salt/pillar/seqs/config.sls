@@ -5,6 +5,10 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 
 {%- set prefix_template = 'Z-' %}
 {%- set prefix_app = 'A-' %}
+{#- Prefix for named DisposableVMs created from a 'named_disposable' entry's
+    dispvm template, so the disposable is launchable from the Qubes menu
+    instead of only appearing under "Templates". #}
+{%- set prefix_disposable = 'D-' %}
 {#- Base template every new template VM clones from. #}
 {%- set base_template = 'debian-13-xfce' %}
 {#- Browser-link target; see docs/configuration.md. #}
@@ -36,7 +40,7 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
   {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp']},
   {'name': 'usb-data-transfer', 'label': 'red',    'components': ['adb']},
   {'name': 'keepass',           'label': 'black',  'components': ['keepass'], 'offline': True},
-  {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True},
+  {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True, 'named_disposable': True},
   {'name': 'qr-camera',         'label': 'red',    'components': ['qr-camera'], 'offline': True, 'dispvm_template': True},
   {'name': 'qr-staging',        'label': 'red',    'components': [], 'offline': True, 'preserve_incoming': True},
   {'name': 'dev-full',          'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
@@ -92,6 +96,7 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 seqs:
   prefix_template: '{{ prefix_template }}'
   prefix_app: '{{ prefix_app }}'
+  prefix_disposable: '{{ prefix_disposable }}'
   base_template: '{{ base_template }}'
   browser_vm: '{{ browser_vm }}'
   browser_desktop: '{{ browser_desktop }}'

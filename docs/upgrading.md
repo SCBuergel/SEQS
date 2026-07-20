@@ -223,10 +223,14 @@ with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
 Expected new managed qubes are:
 
 ```text
-Z-qr-display    A-qr-display
+Z-qr-display    A-qr-display    D-qr-display
 Z-qr-camera     A-qr-camera
 Z-qr-staging    A-qr-staging
 ```
+
+`D-qr-display` is a named disposable derived from the `A-qr-display` dispvm
+template so the display ceremony is launchable from the Qubes menu (a bare
+dispvm template only appears under "Templates").
 
 An active webcam mode also creates `sys-usb-webcam`; sequential mode creates
 `seqs-qr-scanner` and installs `/usr/local/sbin/seqs-qr-sequential`. Do not run

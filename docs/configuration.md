@@ -81,6 +81,12 @@ flags:
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
   must also set `offline: True` (enforced by pre-flight validation).
+- `'named_disposable': True` — also creates a named DisposableVM (`D-<name>`,
+  the `prefix_disposable`) from the `A-<name>` dispvm template, so the
+  disposable is launchable from the Qubes menu rather than only appearing under
+  "Templates". Requires `dispvm_template`; the shipped `qr-display` entry uses
+  it. The named disposable inherits the offline air gap and is reset on every
+  shutdown, so nothing is provisioned inside it.
 
 Duplicate names abort the pre-flight.
 

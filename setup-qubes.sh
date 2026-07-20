@@ -376,6 +376,7 @@ confirmPolicyTakeover() {
 readTargets() {
 	TEMPLATE_TARGETS=()
 	APP_TARGETS=()
+	DISPOSABLE_TARGETS=()
 	OFFLINE_TARGETS=()
 	[ -r "${TARGETS_FILE}" ] || die "${TARGETS_FILE} missing -- did the seqs.dom0 state run?"
 	local kind name flags flag
@@ -383,14 +384,18 @@ readTargets() {
 		case "${kind}" in ''|\#*) continue ;; esac
 		# Re-validated (root-written, but interpolated into qubesctl/qvm-* commands).
 		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe qube name in ${TARGETS_FILE}: '${name}'"
+		# 'disposable' entries (named DisposableVMs) are air-gap-verified like app
+		# qubes but never provisioned via seqs.qube -- they inherit everything
+		# from their dispvm template and reset on each shutdown.
 		case "${kind}" in
-			template) TEMPLATE_TARGETS+=("${name}") ;;
-			app)      APP_TARGETS+=("${name}") ;;
+			template)   TEMPLATE_TARGETS+=("${name}") ;;
+			app)        APP_TARGETS+=("${name}") ;;
+			disposable) DISPOSABLE_TARGETS+=("${name}") ;;
 			*) die "unknown entry kind in ${TARGETS_FILE}: '${kind}'" ;;
 		esac
 		for flag in ${flags}; do
 			case "${flag}" in
-				offline) [ "${kind}" = "app" ] && OFFLINE_TARGETS+=("${name}") ;;
+				offline) case "${kind}" in app|disposable) OFFLINE_TARGETS+=("${name}") ;; esac ;;
 				*) die "unknown flag in ${TARGETS_FILE}: '${flag}'" ;;
 			esac
 		done
@@ -440,6 +445,11 @@ buildQubes() {
 
 readTargets
 verifyAirgap
+if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
+	# Named disposables are created and air-gap-verified by the dom0 apply above;
+	# they inherit everything from their dispvm template and are never provisioned.
+	echo "    Named disposable(s) ready (not provisioned): ${DISPOSABLE_TARGETS[*]}"
+fi
 FAILED=0
 
 echo ""

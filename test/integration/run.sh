@@ -57,6 +57,12 @@ grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completio
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "targets file not written by dom0 apply"
 grep -q "app A-keepass offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 	|| bad "keepass should be listed offline in targets"
+# The named disposable is listed as its own kind + offline, and the runner's
+# air-gap pass names it alongside the offline app qubes.
+grep -q "disposable D-qr-display offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+	|| bad "the named disposable should be listed offline in targets"
+grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
+	|| bad "the named disposable should be independently air-gap verified"
 rm -rf "${SBX}"
 
 # ── Scenario 2: later stages refuse when prerequisites are absent ──────────
@@ -141,11 +147,11 @@ grep -q "identical to the tree already staged" <<<"$out" && ok \
 	|| bad "privileged preview should recognize the identical tree"
 rm -rf "${SBX}"
 
-# ── Scenario 8: delete-vms.sh removes only the named A-/Z- qubes ────────────
+# ── Scenario 8: delete-vms.sh removes only the named D-/A-/Z- qubes ─────────
 # delete-vms.sh is the destructive half of the tooling, so its guard rails get
 # a scenario of their own. The mock inventory (SEQS_MOCK_STATE) is stateful:
 # qvm-kill marks a qube halted, qvm-remove drops it, qvm-check reads it back.
-echo "== scenario: delete-vms.sh touches only the named A-/Z- qubes =="
+echo "== scenario: delete-vms.sh touches only the named D-/A-/Z- qubes =="
 new_sandbox
 export SEQS_MOCK_STATE="${SBX}/qubes.state"
 printf '%s\n' "A-keepass running" "Z-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
@@ -174,6 +180,23 @@ grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
 	"stale A-keepass browser deny should have been removed" || ok
 grep -q "A-wallet-ledger" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
 	|| bad "unrelated browser deny was removed"
+# A named_disposable qube adds a D- object; all three of D-/A-/Z- must go, and
+# the disposable (D-) must be removed before the A- dispvm template it derives
+# from so qvm-remove does not fail on a live dependency.
+printf '%s\n' "D-qr-display running" "A-qr-display halted" "Z-qr-display halted" \
+	"A-brave halted" > "${SEQS_MOCK_STATE}"
+out="$(bash "${REPO}/delete-vms.sh" qr-display 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "disposable delete run exited non-zero ($rc)"
+grep -q "^D-qr-display " "${SEQS_MOCK_STATE}" && bad "D-qr-display should have been removed" || ok
+grep -q "^A-qr-display " "${SEQS_MOCK_STATE}" && bad "A-qr-display should have been removed" || ok
+grep -q "^Z-qr-display " "${SEQS_MOCK_STATE}" && bad "Z-qr-display should have been removed" || ok
+grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
+# D- must be listed before A- in the removal order (dependency safety). The
+# indented "found:" lines are unique per qube, unlike the header that names all.
+d_line="$(grep -n '^  D-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
+a_line="$(grep -n '^  A-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
+[ -n "$d_line" ] && [ -n "$a_line" ] && [ "$d_line" -lt "$a_line" ] \
+	&& ok || bad "the disposable D-qr-display must be removed before its A- template"
 # An unmarked policy is outside SEQS ownership and must remain byte-for-byte.
 cat > "${SEQS_BROWSER_SUPPRESS_POLICY}" <<'EOF'
 qubes.OpenURL  *  A-ghost  @anyvm  deny

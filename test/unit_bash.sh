@@ -86,12 +86,17 @@ template Z-brave
 template Z-keepass
 app A-brave
 app A-keepass offline
+disposable D-qr-display offline
 EOF
 if readTargets 2>/dev/null; then
 	eq "templates count" "${#TEMPLATE_TARGETS[@]}" "2"
 	eq "apps count" "${#APP_TARGETS[@]}" "2"
-	eq "offline count" "${#OFFLINE_TARGETS[@]}" "1"
-	eq "offline is keepass" "${OFFLINE_TARGETS[0]}" "A-keepass"
+	# The named disposable is verified but not provisioned: it lands in its own
+	# list, is offline-checked, and never enters APP_TARGETS.
+	eq "disposable count" "${#DISPOSABLE_TARGETS[@]}" "1"
+	eq "disposable is D-qr-display" "${DISPOSABLE_TARGETS[0]}" "D-qr-display"
+	eq "offline count" "${#OFFLINE_TARGETS[@]}" "2"
+	eq "offline includes the disposable" "${OFFLINE_TARGETS[*]}" "A-keepass D-qr-display"
 else bad "readTargets failed on a valid file"; fi
 # Unsafe qube name must abort.
 printf 'template Z-brave\napp A-brave; rm -rf /\n' > "${TARGETS_FILE}"

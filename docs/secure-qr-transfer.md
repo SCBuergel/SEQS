@@ -123,11 +123,16 @@ Leaving the mode disabled and controller empty still installs the QR qubes but
 deliberately does not create or attach the webcam USB backend.
 
 The expected new persistent objects are `Z-qr-display`, `A-qr-display`,
-`Z-qr-camera`, `A-qr-camera`, `Z-qr-staging`, and `A-qr-staging`; the display
-and camera `A-*` qubes are templates from which fresh transfer disposables are
-launched. `A-qr-staging` is the offline persistent landing zone used by the
-sequential path. `sys-usb-webcam` is additionally created only when a verified
-controller BDF and active mode are configured.
+`D-qr-display`, `Z-qr-camera`, `A-qr-camera`, `Z-qr-staging`, and
+`A-qr-staging`; the display and camera `A-*` qubes are DisposableVM templates
+from which fresh transfer disposables are launched. `D-qr-display` is a named
+disposable derived from `A-qr-display`, so the display ceremony is launchable
+from the Qubes Application menu instead of only appearing under "Templates";
+each start is a fresh, offline disposable. The camera side has no equivalent
+named disposable — its disposables (`seqs-qr-scanner` / the USB backend) are
+created only by an active webcam mode. `A-qr-staging` is the offline persistent
+landing zone used by the sequential path. `sys-usb-webcam` is additionally
+created only when a verified controller BDF and active mode are configured.
 
 ## Detailed hardware identification
 
@@ -487,8 +492,9 @@ terminal, paper, or secret-bearing surface may be visible.
 
 Start a fresh display disposable from `A-qr-display`, enter its incoming
 directory, and display only the ciphertext full-screen. Either launch the
-terminal from the Qubes Application menu (**A-qr-display → Display QR
-(offline)**, which opens a terminal in a fresh disposable) or run:
+terminal from the Qubes Application menu (**D-qr-display → Display QR
+(offline)**, the named disposable, which opens a terminal in a fresh
+disposable) or run:
 
 ```bash
 qvm-run --dispvm=A-qr-display --service qubes.StartApp+qubes-run-terminal

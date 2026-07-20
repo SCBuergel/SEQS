@@ -3,11 +3,13 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Removes matching A-/Z- qubes and their exact SEQS-managed browser deny;
+# Removes matching D-/A-/Z- qubes and their exact SEQS-managed browser deny;
 # run with --help and use --dry-run first.
 
-# Prefixes to check for each configured base name.
-PREFIXES=(A Z)
+# Prefixes to check for each configured base name. Ordered by dependency so
+# removal succeeds: the named disposable (D-) before the dispvm template/app
+# qube (A-) it derives from, and A- before the template (Z-) it is based on.
+PREFIXES=(D A Z)
 
 # How long to wait, in seconds, for a killed qube to actually leave the
 # "running" state before we give up and try qvm-remove anyway.
@@ -23,9 +25,9 @@ usage() {
 Usage: $0 [--dry-run] <name> [<name> ...]
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
-any qube called A-<name> or Z-<name>. After A-<name> is absent, also removes
-its exact deny from the SEQS-managed browser-suppression policy. Unmarked
-policy files are never changed.
+any qube called D-<name>, A-<name>, or Z-<name>. After A-<name> is absent, also
+removes its exact deny from the SEQS-managed browser-suppression policy.
+Unmarked policy files are never changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0

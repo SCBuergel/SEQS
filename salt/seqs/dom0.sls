@@ -3,6 +3,7 @@
 {% set seqs = salt['pillar.get']('seqs', {}) %}
 {% set ptpl = seqs.get('prefix_template', '') %}
 {% set papp = seqs.get('prefix_app', '') %}
+{% set pdvm = seqs.get('prefix_disposable', '') %}
 {% set base_template = seqs.get('base_template', '') %}
 {% set browser_vm = seqs.get('browser_vm', '') %}
 {% set browser_suppress_prune = seqs.get('browser_suppress_prune', []) %}
@@ -171,6 +172,12 @@
 {%     if q.get('dispvm_template') and not q.get('offline') %}
 {%       do errors.append("qube '" ~ name ~ "' is a DisposableVM template for sensitive data but is not offline") %}
 {%     endif %}
+{%     if q.get('named_disposable') and not q.get('dispvm_template') %}
+{%       do errors.append("qube '" ~ name ~ "' sets 'named_disposable' but not 'dispvm_template' -- a named disposable can only derive from a dispvm template") %}
+{%     endif %}
+{%     if q.get('named_disposable') and (not pdvm or pdvm | regex_match(name_re) is none) %}
+{%       do errors.append("qube '" ~ name ~ "' requests a named disposable but prefix_disposable is missing or unsafe") %}
+{%     endif %}
 {%     if fw is not none %}
 {%       if fw is string or fw is not sequence %}
 {%         do errors.append("qube '" ~ name ~ "': 'firewall' must be a list of allowlist entries") %}
@@ -189,7 +196,9 @@
        Adopt qubes carrying seqs-managed or an interrupted-run intent
        marker; refuse unrelated same-named qubes before any state runs. #}
 {%     if name in qmap %}
-{%     for vmname in [ptpl ~ name, papp ~ name] %}
+{%     set adopt_names = [ptpl ~ name, papp ~ name] %}
+{%     if q.get('named_disposable') and pdvm %}{% set adopt_names = adopt_names + [pdvm ~ name] %}{% endif %}
+{%     for vmname in adopt_names %}
 {%       if salt['cmd.retcode']('qvm-check -q -- ' ~ vmname) == 0 %}
 {%         if salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim != '1'
               and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
@@ -365,10 +374,13 @@ seqs-policy-usb-keyboard:
 {% for name, q in qmap.items() %}
 {%   set tpl = ptpl ~ name %}
 {%   set app = papp ~ name %}
+{%   set dvm = pdvm ~ name %}
 {%   set tpl_exists = salt['cmd.retcode']('qvm-check -q -- ' ~ tpl) == 0 %}
 {%   set app_exists = salt['cmd.retcode']('qvm-check -q -- ' ~ app) == 0 %}
+{%   set dvm_exists = q.get('named_disposable') and salt['cmd.retcode']('qvm-check -q -- ' ~ dvm) == 0 %}
 {%   set tpl_tagged = tpl_exists and salt['cmd.shell']('qvm-features -- ' ~ tpl ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 {%   set app_tagged = app_exists and salt['cmd.shell']('qvm-features -- ' ~ app ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+{%   set dvm_tagged = dvm_exists and salt['cmd.shell']('qvm-features -- ' ~ dvm ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 
 {%   if not tpl_tagged %}
 seqs-intent-template-{{ name }}:
@@ -503,6 +515,59 @@ seqs-tag-app-{{ name }}:
       - qvm: seqs-app-{{ name }}
       - file: seqs-intent-app-{{ name }}
 {%   endif %}
+
+{%   if q.get('named_disposable') %}
+# ── Named DisposableVM ({{ dvm }}) so the offline dispvm template {{ app }} is
+# launchable from the Qubes menu; a bare dispvm template only appears under
+# "Templates". The disposable inherits its root and app-menu entries from
+# {{ app }} -> {{ tpl }} and is reset on every shutdown, so nothing is
+# provisioned inside it. Intent marker closes the same create->tag window as
+# the template/app qubes above.
+{%     if not dvm_tagged %}
+seqs-intent-disposable-{{ name }}:
+  file.managed:
+    - name: {{ intents_dir }}/{{ dvm }}
+    - makedirs: True
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: SEQS is creating this qube; removed once it is tagged seqs-managed.
+{%     endif %}
+
+{%     if not dvm_exists %}
+seqs-create-disposable-{{ name }}:
+  cmd.run:
+    - name: qvm-create -C DispVM -t {{ app }} -l {{ q.get('label') }} {{ dvm }}
+    - require:
+      - qvm: seqs-app-{{ name }}
+      - file: seqs-intent-disposable-{{ name }}
+{%     endif %}
+
+# Clear the NetVM (every named_disposable derives from an offline dispvm
+# template) and suppress the dispvm-launcher menu entries so this disposable
+# shows normal app launchers, not "start a disposable from me".
+seqs-disposable-prefs-{{ name }}:
+  cmd.run:
+    - name: |
+        set -e
+        qvm-prefs -- {{ dvm }} netvm none
+        qvm-features -- {{ dvm }} appmenus-dispvm ''
+    - unless: n="$(qvm-prefs -- {{ dvm }} netvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%     if not dvm_exists %}
+      - cmd: seqs-create-disposable-{{ name }}
+{%     endif %}
+
+{%     if not dvm_tagged %}
+seqs-tag-disposable-{{ name }}:
+  cmd.run:
+    - name: qvm-features -- {{ dvm }} seqs-managed 1 && rm -f {{ intents_dir }}/{{ dvm }}
+    - require:
+      - cmd: seqs-disposable-prefs-{{ name }}
+      - file: seqs-intent-disposable-{{ name }}
+{%     endif %}
+{%   endif %}
 {% endfor %}
 
 {% if webcam_mode in ['dedicated', 'sequential'] %}
@@ -628,12 +693,15 @@ seqs-targets:
     - makedirs: True
     - contents: |
         # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
-        # Format: <template|app> <qube-name> [offline]
+        # Format: <template|app|disposable> <qube-name> [offline]
         {%- for name in qmap %}
         template {{ ptpl }}{{ name }}
         {%- endfor %}
         {%- for name, q in qmap.items() %}
         app {{ papp }}{{ name }}{{ ' offline' if q.get('offline') else '' }}
+        {%- endfor %}
+        {%- for name, q in qmap.items() if q.get('named_disposable') %}
+        disposable {{ pdvm }}{{ name }}{{ ' offline' if q.get('offline') else '' }}
         {%- endfor %}
 
 {% endif %}

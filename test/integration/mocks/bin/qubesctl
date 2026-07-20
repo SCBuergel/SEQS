@@ -17,12 +17,16 @@ catalogue = seqs["catalogue"]
 selection = open(sys.argv[3]).read().splitlines()
 selected = catalogue if selection == ["@all"] else {n: catalogue[n] for n in selection}
 ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
+pdvm = seqs["prefix_disposable"]
 lines = ["# Managed by SEQS (mock).",
-         "# Format: <template|app> <qube-name> [offline]"]
+         "# Format: <template|app|disposable> <qube-name> [offline]"]
 for n in selected:
     lines.append("template %s%s" % (ptpl, n))
 for n, q in selected.items():
     lines.append("app %s%s%s" % (papp, n, " offline" if q.get("offline") else ""))
+for n, q in selected.items():
+    if q.get("named_disposable"):
+        lines.append("disposable %s%s%s" % (pdvm, n, " offline" if q.get("offline") else ""))
 os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 open(sys.argv[2], "w").write("\n".join(lines) + "\n")
 PY
