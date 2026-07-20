@@ -37,14 +37,15 @@ When running the helper in dom0, first copy it from the reviewed repository
 source and inspect it:
 
 ```bash
-qvm-run -p seqs-repo \
+qvm-run -p disp1234 \
   'cat /home/user/SEQS/delete-vms.sh' 2>/dev/null > ~/seqs-delete-vms.sh
 chmod 700 ~/seqs-delete-vms.sh
 ~/seqs-delete-vms.sh --dry-run keepass
 ~/seqs-delete-vms.sh keepass
 ```
 
-Replace `seqs-repo` and the repository path when using different names. Keep
+Replace `disp1234` with the disposable's name and adjust the repository path if
+needed. Keep
 `2>/dev/null`: source-qube stderr must not reach the dom0 terminal during this
 copy.
 
