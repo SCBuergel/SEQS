@@ -1,33 +1,50 @@
-# Configuring what SEQS builds
+# Selecting what SEQS builds
 
-The reviewed catalogue lives in **one file**: `salt/pillar/seqs/config.sls`
-(installed to `/srv/pillar/seqs/config.sls`). Edit it in the repo qube and
-re-run the fetch and stage steps, or edit the staged copy in dom0 and rerun with
-`--build-only`.
-
-For an already installed machine, follow [the upgrade procedure](upgrading.md).
-In particular, repository changes must be fetched into
-`/var/lib/seqs/fetched`, staged under `/srv`, and then built.
-
-The first-install guide covers the common case—editing `qube_catalog` and
-selecting entries at build time.
-This document covers the component catalogue and everything else.
-
-## Components
-
-Each qube in `qube_catalog` is built from a list of components. The catalogue
-describes what the reviewed tree can build; it does not select every entry for
-every run. Select an explicit subset in dom0:
+The reviewed catalogue lives in `salt/pillar/seqs/config.sls` and is installed
+unchanged under `/srv/pillar/seqs/config.sls`. Ordinary installation does not
+require editing it. Select existing catalogue entries with a mandatory dom0
+runner argument:
 
 ```bash
 ~/s.sh --build-only --qubes brave,signal,keepass
 ~/s.sh --build-only --all
 ```
 
+Do not edit the staged `/srv` copy to select qubes. Editing the repository file
+is an advanced operation for changing catalogue definitions or machine-wide
+settings; those changes must go through fetch, review, and stage again.
+
+For an already installed machine, follow [the upgrade procedure](upgrading.md).
+In particular, repository changes must be fetched into
+`/var/lib/seqs/fetched`, staged under `/srv`, and then built.
+
+The first-install guide covers the common selection-only case. This document
+also describes advanced fields for an intentionally maintained custom fork or
+machine-specific hardware configuration.
+
+## Components
+
+Each qube in `qube_catalog` is built from a list of components. The catalogue
+describes what the reviewed tree can build; it does not select every entry for
+every run.
+
 Staging always copies the complete reviewed tree. Consequently, changing only
 the runtime selection does not change the staged-tree hash. The runner prints a
 separate build-plan hash and records the canonical selection in
 `/var/lib/seqs/last-run`.
+
+The shipped catalogue currently exposes these base names:
+
+```text
+brave  element  telegram  signal  openoffice  xournalpp
+usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
+dev-full  wallet-ledger  wallet-trezor
+```
+
+Names are case-sensitive and must be passed without the generated `A-` or `Z-`
+prefix. On a new machine, include `brave` in the first selection because the
+default browser-handoff policy targets `A-brave`. Later partial builds may omit
+it once `A-brave` already exists.
 
 | Component | What it installs |
 |---|---|

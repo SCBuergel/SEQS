@@ -1,7 +1,7 @@
 # First SEQS installation
 
 This is the expanded walkthrough behind the README's minimal command path. It
-explains how to obtain, review, configure, fetch, and apply SEQS without using a
+explains how to obtain, review, select, fetch, and apply SEQS without using a
 daily qube as the bootstrap source.
 
 ## 1. Install and verify Qubes OS
@@ -76,28 +76,32 @@ Before copying anything into dom0:
 Passing tests detect structural and accidental failures; they do not establish
 that the code is benign.
 
-## 4. Configure the build
+## 4. Choose the build selection
 
-All software configuration is in:
+The reviewed checkout already contains the available definitions in:
 
 ```text
 salt/pillar/seqs/config.sls
 ```
 
-Edit it inside the disposable:
+Do **not** edit this file merely to choose what to install. Decide which
+catalogue base names you want, then pass them to the runner later in dom0:
 
 ```bash
-cd /home/user/SEQS
-vim salt/pillar/seqs/config.sls
+~/s.sh --build-only --qubes brave,signal,keepass
 ```
 
-If `vim` is unfamiliar, run `vimtutor` first or use the
-[Vim user manual](https://vimhelp.org/usr_01.txt.html#tutor). Do not move this
-configuration step into dom0. See [configuration.md](configuration.md) for the
-component catalogue, `offline`, `no_handoff`, DisposableVM templates, firewall
-rules, and extension settings.
+Each available qube is an entry in `qube_catalog`. Selection supplies base
+names only; it cannot alter reviewed labels, components, or security flags.
+Use `--all` only when you deliberately want the entire catalogue. See
+[configuration.md](configuration.md) for the available components and exact
+selection semantics.
 
-Each available qube is an entry in `qube_catalog`, for example:
+Editing `config.sls` remains necessary only for advanced customization of the
+definitions themselves—such as adding a new component combination, changing a
+base template, or configuring qualified secure-QR hardware. Such an edit
+changes the reviewed tree and must be reviewed, fetched, and staged normally.
+For example, catalogue definitions have this form:
 
 ```jinja
 {%- set qube_catalog = [
@@ -110,12 +114,11 @@ For security-sensitive hardware configuration such as QR transfer, complete
 the qualification steps in [secure-qr-transfer.md](secure-qr-transfer.md)
 before selecting a mode.
 
-Review the final local changes:
+For an unmodified ordinary install, confirm that the checkout remains clean:
 
 ```bash
-sed -n '1,230p' salt/pillar/seqs/config.sls
 git diff --check
-git diff
+git status --short                  # expected output: nothing
 ```
 
 ## 5. Copy only the runner into dom0
@@ -166,7 +169,7 @@ less /var/lib/seqs/fetched/salt/qube.sls
 ```
 
 Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md). Confirm the
-fetched bytes match the revision and machine configuration you approved. Then
+fetched bytes match the revision you approved. Then
 place the reviewed tree under `/srv`:
 
 ```bash
@@ -187,11 +190,12 @@ without `sudo`; root ownership prevents the dom0 user from changing them.
 Build without contacting any repo/download qube:
 
 ```bash
-~/s.sh --build-only --all
+~/s.sh --build-only --qubes brave,signal,keepass
 ```
 
 Watch for:
 
+- the staged-tree hash, build-plan hash, and requested names matching your intent;
 - policy-takeover prompts;
 - the independent air-gap verification;
 - failed Salt states or non-zero failure summaries; and

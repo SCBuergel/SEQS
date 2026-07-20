@@ -24,7 +24,7 @@ Three things must be true *before* SEQS does anything useful — none of them pr
 Read top-to-bottom, in this order:
 
 1. **`setup-qubes.sh`** — the thin dom0 runner: source selection, terminal sanitization, validated fetch, staging and completion markers, Salt failure detection, policy takeover, and air-gap verification.
-2. **`salt/pillar/seqs/config.sls`** — the reviewed catalogue: prefixes, base template, `browser_vm`, `qube_catalog` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and the per-minion slicing at the bottom (each qube receives only its own slice — verify the dom0/VM split).
+2. **`salt/pillar/seqs/config.sls`** — the reviewed catalogue: prefixes, base template, `browser_vm`, `qube_catalog` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and per-minion slicing. Ordinary selection must not require editing this file; verify that `setup-qubes.sh --qubes` supplies names separately and that each qube receives only its own pillar slice.
 3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), all generated qrexec policy states (including QR containment when enabled), the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.
 5. **`install-scripts/lib/brave.sh`** — Brave install + keyring verification logic + `ensure_brave`. Also adds the apt-`preferences.d` pin that locks the Brave repo to brave-browser packages only.
@@ -34,7 +34,7 @@ Read top-to-bottom, in this order:
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
 
-For a first install, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all`.
+For a first install, leave the reviewed repo tree unmodified, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
 
 The README warning is in earnest: you are running these scripts in dom0.
 
@@ -60,6 +60,11 @@ Each component's `template-vm.sh` header also documents the three sources it was
 When you run `setup-qubes.sh`:
 
 1. **Fetch and stage.** Fetch prints the transfer SHA256 for independent comparison and saves a validated tree under `/var/lib/seqs/fetched`. Review it before `--stage-only`; staging shows the diff that will be placed under `/srv`.
+
+   At build time, confirm `Staged tree SHA256`, `Build-plan SHA256`, and
+   `Requested qubes` match your intent. Reordering the same names must produce
+   the same canonical selection and plan hash; changing the selection must not
+   change the staged-tree hash.
 
 2. **The pre-flight validation** runs inside `qubesctl state.apply seqs.dom0` and checks everything before anything is changed: base template exists, `browser_vm` resolves, every component directory exists, extension IDs are well-formed, no duplicate qube names, cleanup paths are in-bounds, prefixes match the `.top` globs, and no same-named qube exists that SEQS didn't create. A failure shows as `seqs-validation-failed` with the reasons in its comment — *no* qubes are built before this passes.
 
@@ -112,7 +117,7 @@ After install:
 
 - **Key rotations**: when an upstream rotates its signing key, the install fails by design (fingerprint mismatch, or one of the `verify_detached_sig` "rejected: no VALIDSIG with primary-key fingerprint" / "rejected: no GOODSIG" lines from §4 step 4). Re-verify the new key against three independent sources (see TRUST.md for the pattern), then update the pin and the embedded key block in the component script. Don't bypass the check.
 - **`brave_extensions`** (in `salt/pillar/seqs/config.sls`): periodically prune. Remove abandoned/discontinued wallet extensions; review the maintained status of those that remain.
-- **Re-running `setup-qubes.sh`**: re-runs **converge** — SEQS-built qubes are reconfigured in place, finished components are skipped via their `/rw/config/seqs` markers (delete a marker to force one component to re-install), and qubes SEQS did not build are refused. Use `./delete-vms.sh <name>` only when you want to rebuild a qube from scratch (it matches `[A-Z]-<name>`, so it removes both `A-<name>` and `Z-<name>` in one go). The `OVERWRITE` prompt only fires for policy files SEQS does not own — if it fires on a re-run, something else wrote those files since; read the dump.
+- **Re-running `setup-qubes.sh`**: every build again requires `--qubes ...` or explicit `--all`; the previous selection is audit history, never an implicit default. Re-runs **converge** — selected SEQS-built qubes are reconfigured in place, finished components are skipped via their `/rw/config/seqs` markers, unselected managed qubes are untouched, and qubes SEQS did not build are refused. Use `./delete-vms.sh <name>` only when you want to rebuild a qube from scratch. The `OVERWRITE` prompt only fires for policy files SEQS does not own — if it fires on a re-run, read the dump.
 - **`base_template`** (in `config.sls`): when you upgrade to a newer Qubes / Debian template, change the value and re-run; note a changed base only affects templates cloned from then on — existing `Z-*` stay on the old base until deleted and rebuilt.
 - **Wallet-qube egress hardening (operator follow-up)**: by default `A-wallet-*` reach any internet host. If you know your RPC endpoints (and the block-explorer / `clients2.google.com` / etc. you actually depend on), apply a `qvm-firewall` default-deny + explicit allow-list to each wallet qube — see TRUST.md §4 "Wallet qube egress is unrestricted ⚠️". This is the single hardening with the biggest blast-radius reduction on a wallet-extension supply-chain compromise.
 

@@ -92,5 +92,5 @@ clones the base template and creates the app qube; the `seqs.qube` state then
 runs each component's `template-vm.sh` (system-wide install) in the template,
 installs any `menu.desktop` it carries, runs each `app-vm.sh` (per-app-qube
 setup) in the app qube, and wires up the browser-link policy and cleanup
-service. See [configuration.md](configuration.md) for how to edit and extend
-this.
+service. See [configuration.md](configuration.md) for ordinary runtime
+selection and for advanced catalogue extension.

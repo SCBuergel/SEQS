@@ -32,6 +32,42 @@ EOF
 
 **PASS:** every file reports `ok:`. **FAIL:** any `FAIL:`. (Full render verification needs salt's mocked functions — that belongs on a real Qubes box via `sudo qubesctl state.show_sls seqs.dom0`.)
 
+### 1a. Catalogue and runtime selection are separate
+
+Ordinary qube selection must be a required dom0-runner input, not a repository
+edit. Verify that the shipped catalogue is complete, staging remains
+selection-independent, and the runner refuses an implicit build selection:
+
+```sh
+grep -qF -- '--qubes)' setup-qubes.sh \
+  && grep -qF -- '--all)' setup-qubes.sh \
+  && grep -qF 'a build selection is required' setup-qubes.sh \
+  && grep -qF 'set qube_catalog = [' salt/pillar/seqs/config.sls \
+  && echo '  selection boundary: PASS' \
+  || echo '  selection boundary: FAIL'
+
+grep -qF 'runtime selection names unknown catalogue entry' salt/seqs/dom0.sls \
+  && grep -qF 'for name, q in qcatalog.items()' salt/seqs/dom0.sls \
+  && grep -qF 'for name, q in qmap.items()' salt/seqs/dom0.sls \
+  && echo '  catalogue/selected maps: PASS' \
+  || echo '  catalogue/selected maps: FAIL'
+
+grep -qF 'build without --qubes/--all should be refused' test/integration/run.sh \
+  && grep -qF 'selected build targets should contain only brave and signal' test/integration/run.sh \
+  && echo '  selection integration coverage: PASS' \
+  || echo '  selection integration coverage: FAIL'
+```
+
+Also inspect `README.md`, `docs/first-install.md`, and `VERIFY-HUMAN.md`:
+ordinary installation must leave the repo checkout unmodified and choose qubes
+with `s.sh --build-only --qubes ...` in dom0. Repo edits should be described
+only for advanced catalogue definitions or machine-specific hardware settings.
+
+**PASS:** all three automated lines report `PASS`, and the documented ordinary
+workflow contains no repo-qube edit step. **FAIL:** selection defaults to all,
+changes the staged tree, accepts unknown names, targets unselected entries, or
+the ordinary docs still instruct users to edit `config.sls`.
+
 ## 2. Component tree shape
 
 Every component directory must contain at least one of `template-vm.sh` / `app-vm.sh`; an isolated `menu.desktop` without a script is malformed.

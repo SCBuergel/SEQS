@@ -30,20 +30,18 @@ configured TemplateVMs and AppVMs. The minimum command path is:
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
    cd /home/user/SEQS
-   vim salt/pillar/seqs/config.sls
+   git status --short
    ```
 
-   In `config.sls`, normally you only need to edit `qube_catalog`: add or remove
-   qubes, choose each `label`, and select its `components`. Keep `offline: True`
-   for qubes that must have no network and leave `webcam_usb_mode` disabled
-   unless you follow the
-   [secure QR guide](docs/secure-qr-transfer.md). See the
-   [configuration guide](docs/configuration.md) for all fields and components.
+   Do not edit the checkout merely to choose which qubes to install. The
+   reviewed `qube_catalog` already describes everything available; the
+   mandatory `--qubes` argument in dom0 selects the desired entries. Edit
+   `config.sls` only for advanced catalogue or hardware-policy customization,
+   such as qualified secure-QR controller settings.
 
    Keep the disposable running. Review the checkout before trusting it; the
    [first-install guide](docs/first-install.md) explains the revision and code
-   checks. If `vim` is unfamiliar, use its built-in `vimtutor` or the
-   [Vim user manual](https://vimhelp.org/usr_01.txt.html#tutor).
+   checks.
 
 3. In dom0, replace both `disp1234` occurrences with the disposable's name:
 
@@ -80,7 +78,7 @@ reinstall Qubes.
 | Review what SEQS runs | [VERIFY-HUMAN.md](VERIFY-HUMAN.md) |
 | Understand trust and residual risk | [TRUST.md](TRUST.md) |
 | Understand the runner and dom0 data flow | [docs/architecture.md](docs/architecture.md) |
-| Select qubes, components, and flags | [docs/configuration.md](docs/configuration.md) |
+| Select available qubes or customize their definitions | [docs/configuration.md](docs/configuration.md) |
 | Upgrade an existing installation | [docs/upgrading.md](docs/upgrading.md) |
 | Delete or rebuild managed qubes | [docs/deleting-vms.md](docs/deleting-vms.md) |
 | Configure secure QR transfer | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |

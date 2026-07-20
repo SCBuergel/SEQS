@@ -1,8 +1,8 @@
 # Upgrading an existing SEQS installation
 
 Use this procedure when Qubes was already configured by SEQS and you want to
-apply a newer repository revision or change `salt/pillar/seqs/config.sls`—for
-example, to add newly introduced USB/QR qubes.
+apply a newer repository revision or intentionally change an advanced setting
+in `salt/pillar/seqs/config.sls`.
 
 An upgrade does **not** require reinstalling Qubes OS. The SEQS runner is
 convergent: it stages a newly reviewed Salt tree in dom0, creates missing
@@ -18,13 +18,13 @@ An installed system normally has three relevant copies:
 3. The root-owned tree currently staged in dom0 under `/srv/salt/seqs` and
    `/srv/pillar/seqs`.
 
-Update and configure the repository copy first. Always copy the new
+Update and review the repository copy first. Always copy the new
 `setup-qubes.sh` into dom0 as part of an upgrade: an old dom0 runner may not
 understand new state files, validation, or upgrade behavior. A subsequent stage
 replaces the `/srv` tree, so direct edits under `/srv` are temporary
 unless also made in the repository source of truth.
 
-## 1. Update and configure the repository qube
+## 1. Update and review the repository qube
 
 In the qube holding the repository:
 
@@ -36,9 +36,11 @@ git log --oneline --decorate --max-count=10
 ```
 
 Review and check out the intended, independently verified revision using your
-normal Git workflow. Do not blindly discard local changes: the checkout may
-contain your machine-specific `config.sls`. Merge the upstream changes with
-that configuration and inspect the final result:
+normal Git workflow. Qube selection is no longer a repository edit; choose the
+run's entries later with `--qubes`. A normal checkout should therefore remain
+clean. If you deliberately maintain machine-specific hardware settings or
+custom catalogue definitions, do not blindly discard them: merge and inspect
+those advanced changes explicitly.
 
 ```bash
 git diff
@@ -153,7 +155,8 @@ USB/QR setup has hardware and policy checks in
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
 | Change an installer script for a component already completed | Skipped until its completion marker is deliberately removed |
 | Remove a component from a qube | Stops managing it; does not uninstall its existing software or data |
-| Remove a qube from `qube_catalog` | Makes it unavailable to future runs; does not delete the existing VM |
+| Omit a catalogue entry from `--qubes` | Leaves its existing VMs untouched and does not target or recreate them |
+| Remove a qube from a custom `qube_catalog` | Makes it unavailable to future selections; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |
 
 These conservative rules avoid silently deleting qubes, software, or data.
@@ -215,7 +218,8 @@ power-off-based fallback:
 
 Then perform the normal upgrade steps above: copy the new runner, fetch with
 `--fetch-only`, review the fetched tree, stage with `--stage-only`, and build
-with `--build-only`.
+with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
+`qr-staging` in dedicated mode if it is not otherwise wanted).
 
 Expected new managed qubes are:
 
