@@ -70,9 +70,14 @@ When you run `setup-qubes.sh`:
 
 3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file (the QR containment policies when configured, `28-browser-suppress`, `29-browser`, or `30-user-input` under `/etc/qubes/policy.d/`) exists but was NOT written by SEQS (no `Managed by SEQS` header — e.g. hand-edited or from another tool), the runner prints its full contents and **blocks** on:
 
-   `Overwrite the file(s) above? type OVERWRITE to confirm (anything else aborts):`
+   `Overwrite the file(s) above? [y/N]`
 
-   Read the dump. If a hand-tightened rule (e.g. `qubes.InputKeyboard` pinned to a specific keyboard qube, or `qubes.OpenURL` using `ask` instead of `allow`) is about to be clobbered, type anything other than `OVERWRITE` to abort. (No state is applied before this gate; SEQS-written policies re-converge silently on re-runs, which is expected.)
+   Read the dump. Type `y` (or `Y`) only when replacement is intended; Enter
+   and every other response abort. If a hand-tightened rule (e.g.
+   `qubes.InputKeyboard` pinned to a specific keyboard qube, or `qubes.OpenURL`
+   using `ask` instead of `allow`) is about to be clobbered, accept the default
+   no. No state is applied before this gate; SEQS-written policies re-converge
+   silently on re-runs, which is expected.
 
 4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm on A-keepass.` — the runner refuses to provision anything if an `offline` qube still has a netvm.
 
@@ -117,7 +122,7 @@ After install:
 
 - **Key rotations**: when an upstream rotates its signing key, the install fails by design (fingerprint mismatch, or one of the `verify_detached_sig` "rejected: no VALIDSIG with primary-key fingerprint" / "rejected: no GOODSIG" lines from §4 step 4). Re-verify the new key against three independent sources (see TRUST.md for the pattern), then update the pin and the embedded key block in the component script. Don't bypass the check.
 - **`brave_extensions`** (in `salt/pillar/seqs/config.sls`): periodically prune. Remove abandoned/discontinued wallet extensions; review the maintained status of those that remain.
-- **Re-running `setup-qubes.sh`**: every build again requires `--qubes ...` or explicit `--all`; the previous selection is audit history, never an implicit default. Re-runs **converge** — selected SEQS-built qubes are reconfigured in place, finished components are skipped via their `/rw/config/seqs` markers, unselected managed qubes are untouched, and qubes SEQS did not build are refused. Use `./delete-vms.sh <name>` only when you want to rebuild a qube from scratch. The `OVERWRITE` prompt only fires for policy files SEQS does not own — if it fires on a re-run, read the dump.
+- **Re-running `setup-qubes.sh`**: every build again requires `--qubes ...` or explicit `--all`; the previous selection is audit history, never an implicit default. Re-runs **converge** — selected SEQS-built qubes are reconfigured in place, finished components are skipped via their `/rw/config/seqs` markers, unselected managed qubes are untouched, and qubes SEQS did not build are refused. Use `./delete-vms.sh <name>` only when you want to rebuild a qube from scratch. The policy-takeover `[y/N]` prompt only fires for policy files SEQS does not own — if it fires on a re-run, read the dump.
 - **`base_template`** (in `config.sls`): when you upgrade to a newer Qubes / Debian template, change the value and re-run; note a changed base only affects templates cloned from then on — existing `Z-*` stay on the old base until deleted and rebuilt.
 - **Wallet-qube egress hardening (operator follow-up)**: by default `A-wallet-*` reach any internet host. If you know your RPC endpoints (and the block-explorer / `clients2.google.com` / etc. you actually depend on), apply a `qvm-firewall` default-deny + explicit allow-list to each wallet qube — see TRUST.md §4 "Wallet qube egress is unrestricted ⚠️". This is the single hardening with the biggest blast-radius reduction on a wallet-extension supply-chain compromise.
 

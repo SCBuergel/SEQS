@@ -58,14 +58,18 @@ die() {
 	exit 1
 }
 
-# confirm PROMPT WORD -- require the operator to type WORD. Reads from /dev/tty
-# so a piped or empty stdin cannot be misread as approval; EOF/anything else aborts.
+# confirm PROMPT -- conventional default-no [y/N] confirmation. Only y/Y
+# proceeds. Reads from /dev/tty so piped stdin cannot be misread as approval;
+# Enter, EOF, and every other response abort.
 confirm() {
 	local answer
-	if ! read -rp "$1" answer </dev/tty; then
+	if ! read -rp "$1 [y/N] " answer </dev/tty; then
 		die "no terminal available to confirm -- aborting."
 	fi
-	[ "${answer}" = "$2" ] || die "not confirmed -- aborting."
+	case "${answer}" in
+		y|Y) return 0 ;;
+		*) die "not confirmed -- aborting." ;;
+	esac
 }
 
 # runQubesctl ARGS... -- qubesctl with sanitized output and reliable failure
@@ -318,7 +322,7 @@ stageSaltTree() {
 
 # seqs.dom0 owns the qrexec policy files in POLICY_FILES and converges them on
 # every apply. Files it wrote carry MANAGED_MARKER; a file WITHOUT the marker
-# is the operator's -- block, show it, and require a literal OVERWRITE before
+# is the operator's -- block, show it, and require explicit confirmation before
 # salt runs.
 confirmPolicyTakeover() {
 	# 30-user-input.policy is only written on Qubes 4.3 with sys-usb present
@@ -364,7 +368,7 @@ confirmPolicyTakeover() {
 		echo ""
 	} | sanitize >&2
 
-	confirm "Overwrite the file(s) above? type OVERWRITE to confirm (anything else aborts): " "OVERWRITE"
+	confirm "Overwrite the file(s) above?"
 }
 
 # ---- Phase 3 -- apply -------------------------------------------------------
@@ -526,11 +530,11 @@ QUBE_APPLY_OPTS=()
 showWorkflow
 
 if [ "${EXPLICIT_STAGE}" -eq 0 ]; then
-	confirm "Step 1/3 FETCH: transfer and validate repository data? type CONTINUE: " "CONTINUE"
+	confirm "Step 1/3 FETCH: transfer and validate repository data?"
 	fetchSaltTree
-	confirm "Step 2/3 STAGE: make the reviewed tree active in Qubes Salt under /srv? type CONTINUE: " "CONTINUE"
+	confirm "Step 2/3 STAGE: make the reviewed tree active in Qubes Salt under /srv?"
 	stageSaltTree
-	confirm "Step 3/3 BUILD: create and provision the configured qubes? type CONTINUE: " "CONTINUE"
+	confirm "Step 3/3 BUILD: create and provision the selected qubes?"
 	buildQubes
 elif [ "${RUN_FETCH}" -eq 1 ]; then
 	fetchSaltTree

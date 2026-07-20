@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Run a command under a pseudo-terminal, auto-answering SEQS confirm prompts.
 
-setup-qubes.sh's confirm() reads the go-ahead word from /dev/tty (deliberately,
-so a piped stdin can't be mistaken for approval). To drive it non-interactively
-the test harness needs a real controlling terminal -- that's what forkpty gives
-us. Whenever the child prints a prompt containing 'type CONTINUE' / 'type
-OVERWRITE' we type that word back; all child output is mirrored to our stdout so
-the test can assert on it. Exit status is propagated.
+setup-qubes.sh's confirm() reads a default-no [y/N] answer from /dev/tty
+(deliberately, so piped stdin cannot be mistaken for approval). To drive it
+non-interactively the test harness needs a real controlling terminal -- that is
+what forkpty gives us. Whenever the child prints the prompt, we type y; all
+child output is mirrored to stdout so the test can assert on it. Exit status is
+propagated.
 
 Usage: pty_run.py <cmd> [args...]
 """
@@ -14,7 +14,7 @@ import os
 import sys
 import select
 
-PROMPTS = {b"type CONTINUE": b"CONTINUE\n", b"type OVERWRITE": b"OVERWRITE\n"}
+PROMPTS = {b"[y/N]": b"y\n"}
 
 
 def main():

@@ -36,10 +36,10 @@ echo "== confirm() aborts when no terminal can be opened =="
 # approval), so run it under setsid -- a session with no controlling
 # terminal -- to make the tty open fail the same way everywhere. Without
 # that, an interactive run would sit here waiting for keyboard input.
-# The accept path (typing the word on a real pty) is exercised by the
+# The accept path (typing y on a real pty) is exercised by the
 # Layer 4 integration run via test/lib/pty_run.py.
 if command -v setsid >/dev/null 2>&1; then
-	if setsid bash -c 'SEQS_SOURCE_ONLY=1 source ./setup-qubes.sh && confirm "p" "CONTINUE"' \
+	if setsid bash -c 'SEQS_SOURCE_ONLY=1 source ./setup-qubes.sh && confirm "p"' \
 			</dev/null >/dev/null 2>&1; then
 		bad "confirm should abort when /dev/tty cannot be opened"
 	else ok; fi

@@ -257,7 +257,7 @@ Read each verifier script (no automated check; do it manually) and confirm the a
 - **`components/signal/template-vm.sh`**, **`vscode/template-vm.sh`**, **`docker/template-vm.sh`**, **`element/template-vm.sh`** — single embedded-key check; `exit 1` **before** `gpg --export "${*_KEY_FPR}" | sudo tee "${KEYRING}"` (a bad embedded key must not reach the apt keyring path).
 - **`setup-qubes.sh::fetchSaltTree`** — every tar entry is validated before extraction, and unmanaged fetched paths are refused before replacement.
 - **`setup-qubes.sh::stageSaltTree`** — requires a completed fetch, refuses unmanaged `/srv` trees before replacement, and stages the reviewed data root-owned and non-root-writable.
-- **`setup-qubes.sh::confirmPolicyTakeover`** — a policy file without the `Managed by SEQS` header blocks on a literal `OVERWRITE` (read from `/dev/tty`) **before** `qubesctl state.apply seqs.dom0` is invoked at all.
+- **`setup-qubes.sh::confirmPolicyTakeover`** — a policy file without the `Managed by SEQS` header blocks on a default-no `[y/N]` confirmation (read from `/dev/tty`; only `y`/`Y` proceeds) **before** `qubesctl state.apply seqs.dom0` is invoked at all.
 - **`salt/seqs/dom0.sls` pre-flight** — every validation failure funnels into the `seqs-validation-failed` state (`test.fail_without_changes` + `failhard: True`), and the entire creation/policy section is inside the `{% else %}` branch — nothing is changed on a validation failure.
 - **`setup-qubes.sh::verifyAirgap`** — refuses to start per-qube provisioning if any `offline` qube still has a netvm after the dom0 apply.
 

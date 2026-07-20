@@ -50,8 +50,9 @@ configured TemplateVMs and AppVMs. The minimum command path is:
    ```
 
 Running `~/s.sh --repo-vm disp1234 --all` without a stage flag performs fetch,
-stage, and a full-catalogue build in order, requiring `CONTINUE` before each
-stage. Every build requires either `--qubes NAME[,NAME...]` or explicit `--all`.
+stage, and a full-catalogue build in order, requiring `y` at each default-no
+`[y/N]` prompt. Every build requires either `--qubes NAME[,NAME...]` or explicit
+`--all`.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md).
