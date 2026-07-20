@@ -25,25 +25,16 @@ configured TemplateVMs and AppVMs. The minimum command path is:
 
 1. [Install and verify Qubes OS](docs/install-qubes.md), update it, and reboot.
 
-2. Start a fresh networked Debian DisposableVM. In its terminal:
+2. Start a fresh networked Debian DisposableVM and clone the reviewed source;
+   qube selection happens later in dom0:
 
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
    cd /home/user/SEQS
-   git status --short
    ```
 
-   Do not edit the checkout merely to choose which qubes to install. The
-   reviewed `qube_catalog` already describes everything available; the
-   mandatory `--qubes` argument in dom0 selects the desired entries. Edit
-   `config.sls` only for advanced catalogue or hardware-policy customization,
-   such as qualified secure-QR controller settings.
-
-   Keep the disposable running. Review the checkout before trusting it; the
-   [first-install guide](docs/first-install.md) explains the revision and code
-   checks.
-
-3. In dom0, replace both `disp1234` occurrences with the disposable's name:
+3. Copy the runner into dom0 and fetch the complete catalogue for review.
+   Replace both `disp1234` occurrences with the disposable's name:
 
    ```bash
    qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh
