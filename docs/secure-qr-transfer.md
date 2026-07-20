@@ -433,10 +433,20 @@ The following procedure copies a `master.key` while treating the webcam, its
 firmware, both visual disposables, the USB backend, and QR bytes as untrusted.
 The source and target key qubes and both dom0 installations are trusted.
 
-Use fresh paper for three labeled values: a one-time `PASSPHRASE`, `PLAINTEXT
-SHA256`, and `CIPHERTEXT SHA256`. The paper and any screen containing these
-values must never enter the webcam field of view. A USB backend exposed to the
-webcam must be shut down before entering any paper value.
+Use fresh paper and write down exactly the three labeled lines printed by the
+source commands below:
+
+```text
+PASSPHRASE: <26 letters and digits>
+PLAINTEXT SHA256: <64 hexadecimal characters>
+CIPHERTEXT SHA256: <64 hexadecimal characters>
+```
+
+`PASSPHRASE` is the one-time encryption key. The two `SHA256` values are hashes
+used to verify the encrypted and decrypted files; they are not keys and cannot
+decrypt anything. The paper and any screen containing these values must never
+enter the webcam field of view. A USB backend exposed to the webcam must be
+shut down before entering any paper value.
 
 ### Source machine
 
@@ -445,21 +455,35 @@ In the trusted source key qube:
 ```bash
 set -euo pipefail
 umask 077
-head -c 16 /dev/urandom | base32 | tr -d '=\n'; echo
-sha256sum -- master.key
+PASSPHRASE=$(head -c 16 /dev/urandom | base32 | tr -d '=\n')
+plaintext_sha256=$(sha256sum -- master.key); plaintext_sha256=${plaintext_sha256%% *}
+printf 'PASSPHRASE: %s\n' "$PASSPHRASE"
+printf 'PLAINTEXT SHA256: %s\n' "$plaintext_sha256"
+printf '%s\n' "$PASSPHRASE" | \
 gpg --no-symkey-cache --symmetric --armor --cipher-algo AES256 \
   --s2k-mode 3 --s2k-count 65011712 --compress-algo none \
+  --batch --pinentry-mode loopback --passphrase-fd 0 \
   --set-filename '' --output key.asc -- master.key
-sha256sum -- key.asc
+ciphertext_sha256=$(sha256sum -- key.asc); ciphertext_sha256=${ciphertext_sha256%% *}
+printf 'CIPHERTEXT SHA256: %s\n' "$ciphertext_sha256"
+unset PASSPHRASE plaintext_sha256 ciphertext_sha256
 qvm-copy key.asc
 rm -f -- key.asc
 ```
 
-Write the generated passphrase and both complete hashes on paper. Enter the
-passphrase twice at GPG's prompt. Clear the terminal and its scrollback, close
-it, and preferably shut down the source key qube before aiming the webcam.
-No notification, clipboard tool, terminal, paper, or secret-bearing surface
-may be visible.
+Copy all three complete, labeled output lines to the paper. The commands
+generate `PASSPHRASE`, retain it temporarily in a non-exported shell variable,
+and send it to GPG over standard input; there is no password prompt on the
+source machine. This explicit connection is necessary because merely printing
+a random value does not make GPG use it. The passphrase is not placed in GPG's
+command-line arguments, and the variable is unset immediately after the hashes
+are printed. On the target machine you must still type the paper-recorded
+`PASSPHRASE` at GPG's trusted prompt because the machines are intentionally not
+connected and the passphrase must not travel with the ciphertext.
+
+Clear the terminal and its scrollback, close it, and preferably shut down the
+source key qube before aiming the webcam. No notification, clipboard tool,
+terminal, paper, or secret-bearing surface may be visible.
 
 Start a fresh display disposable from `A-qr-display`, enter its incoming
 directory, and display only the ciphertext full-screen. Either launch the
