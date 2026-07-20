@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Display QR (offline)
+GenericName=Ciphertext QR renderer
+Comment=Open a terminal in a fresh disposable to render a ciphertext QR code with qrencode
+Exec=xfce4-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=Qubes;Utility;System;

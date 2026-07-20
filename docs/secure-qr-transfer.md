@@ -462,10 +462,17 @@ No notification, clipboard tool, terminal, paper, or secret-bearing surface
 may be visible.
 
 Start a fresh display disposable from `A-qr-display`, enter its incoming
-directory, and display only the ciphertext full-screen:
+directory, and display only the ciphertext full-screen. Either launch the
+terminal from the Qubes Application menu (**A-qr-display → Display QR
+(offline)**, which opens a terminal in a fresh disposable) or run:
 
 ```bash
 qvm-run --dispvm=A-qr-display --service qubes.StartApp+qubes-run-terminal
+```
+
+Then, inside the disposable's terminal:
+
+```bash
 cd ~/QubesIncoming/<source-key-qube>
 qrencode -l M -t ansiutf8 < key.asc
 ```
