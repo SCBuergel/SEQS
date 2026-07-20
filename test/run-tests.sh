@@ -10,6 +10,8 @@
 #   ./test/run-tests.sh render     run only the render tests
 #   ./test/run-tests.sh unit       run only the bash unit tests
 #   ./test/run-tests.sh integration run only the integration test
+#   ./test/run-tests.sh fast       run lint and render tests
+#   ./test/run-tests.sh help       show this command summary
 #
 # See test/README.md for what each layer covers and the (hardware-bound)
 # Layer 5 that this harness deliberately cannot run.
@@ -22,9 +24,36 @@ want="${1:-all}"
 rc=0
 declare -a RESULTS
 
+usage() {
+	cat <<'EOF'
+Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration]
+
+  all          run every Qubes-free layer (default)
+  fast         run the lint and render layers
+  lint         shell lint and Salt render smoke tests
+  render       detailed Salt and pillar render assertions
+  unit         bash helper unit tests
+  integration  end-to-end tests against mock Qubes commands
+EOF
+}
+
+case "${want}" in
+	all | fast | lint | render | unit | integration) ;;
+	help | -h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		printf 'ERROR: unknown test layer: %s\n\n' "${want}" >&2
+		usage >&2
+		exit 2
+		;;
+esac
+
 run_layer() {
 	local key="$1" label="$2"; shift 2
-	if [ "${want}" != "all" ] && [ "${want}" != "${key}" ]; then
+	if [ "${want}" != "all" ] && [ "${want}" != "${key}" ] \
+		&& ! { [ "${want}" = "fast" ] && { [ "${key}" = "lint" ] || [ "${key}" = "render" ]; }; }; then
 		return 0
 	fi
 	echo
