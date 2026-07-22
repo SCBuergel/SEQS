@@ -292,6 +292,43 @@ available to `qubesctl`; it still does not create or provision any qube.
 The staged `/srv/salt/seqs` and `/srv/pillar/seqs` trees are also readable
 without `sudo`; root ownership prevents the dom0 user from changing them.
 
+### Verify the staged tree
+
+Staging is a plain copy from `/var/lib/seqs/fetched` into `/srv`, so verifying it
+means confirming two things: the staged tree is exactly the fetched tree you
+already reviewed and hashed, and it is root-owned so nothing can alter it before
+the build reads it. In dom0:
+
+1. **Staged matches fetched.** Both use the same layout, so compare them directly.
+   Use `sudo` (the tree is root-owned, and `/srv` may not be traversable
+   otherwise); exclude the `.seqs-complete` marker that staging adds, exactly as
+   the runner's own preview does:
+
+   ```bash
+   sudo diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/salt   /srv/salt/seqs
+   sudo diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/pillar /srv/pillar/seqs
+   ```
+
+   No output means the staged files are byte-for-byte the fetched tree whose
+   `Content SHA256` you verified above — nothing was substituted between review
+   and staging. Re-running `~/s.sh --stage-only` performs the same comparison for
+   you: it reports `Fetched tree is identical to the tree already staged in /srv.`
+   and reprints the recorded `Content SHA256`.
+
+2. **Root-owned and not user-writable.** Confirm the dom0 user cannot modify the
+   staged tree before the build consumes it:
+
+   ```bash
+   ls -ld /srv/salt/seqs /srv/pillar/seqs
+   sudo find /srv/salt/seqs /srv/pillar/seqs \( ! -user root -o -perm /go+w \)
+   ```
+
+   Expect `root root` on both directories and no output from `find` — nothing is
+   owned by a non-root user, and nothing is group- or other-writable, so the
+   staged tree the build reads cannot be altered from the dom0 user account. SEQS
+   owns only these `seqs` subdirectories; the rest of `/srv/salt` and
+   `/srv/pillar` is left as Qubes shipped it.
+
 ## 8. Build the qubes
 
 Build without contacting any repo/download qube:
