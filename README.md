@@ -30,7 +30,6 @@ configured TemplateVMs and AppVMs. The minimum command path is:
 
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
-   cd /home/user/SEQS
    ```
 
 3. Copy the runner into dom0 and fetch the complete catalogue for review.
