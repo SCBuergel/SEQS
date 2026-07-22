@@ -211,8 +211,9 @@ What to look for in each:
 - **`pillar/config.sls`** — the reviewed catalogue: prefixes, `base_template`,
   `browser_vm`, and each `qube_catalog` entry's label, components, and
   `offline`/`no_handoff` flags. Confirm the labels and flags match the trust you
-  intend — e.g. `keepass` is marked `offline`, and the hardware-wallet qubes are
-  marked `no_handoff`.
+  intend — e.g. `keepass` is marked `offline` (no NetVM), and the hardware-wallet
+  qubes are marked `no_handoff`, which blocks them from handing web links off to
+  the networked browser qube (a qrexec exfiltration path a firewall cannot gate).
 - **`salt/dom0.sls`** — the privileged code: the pre-flight validation block, the
   generated qrexec policy, the no-clobber guard, and qube creation. Check that
   each policy grants only the narrow access it describes and that no pillar value
