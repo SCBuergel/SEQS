@@ -100,7 +100,9 @@ selection semantics.
 Editing `config.sls` remains necessary only for advanced customization of the
 definitions themselves—such as adding a new component combination, changing a
 base template, or configuring qualified secure-QR hardware. Such an edit
-changes the reviewed tree and must be reviewed, fetched, and staged normally.
+changes the reviewed *tree* — the directory of Salt state, pillar, and
+component-script files SEQS transfers and applies as a unit — and must be
+reviewed, fetched, and staged normally.
 For example, catalogue definitions have this form:
 
 ```jinja
@@ -159,17 +161,17 @@ No qubes are created and no Salt state is applied during this step.
 ## 7. Review and stage the fetched tree
 
 The validated fetched data is root-owned but readable by the normal dom0 user
-under `/var/lib/seqs/fetched`. This tree is what will be staged and run, so
-reviewing it here is the authoritative review.
+under `/var/lib/seqs/fetched`. This *tree* — the directory of Salt state,
+pillar, and component-script files under `/var/lib/seqs/fetched` — is what will
+be staged and run, so reviewing it here is the authoritative review.
 
 ### Understand the fetched layout
 
-The fetcher does not copy the repository verbatim. It transfers only `salt/` and
-`install-scripts/`, then remaps them into the layout Qubes Salt expects under
-`/srv`. This is always the **complete** catalogue and every component script —
-it is not narrowed by `--qubes`, which applies only to the later build — so a
-plain `diff` against a checkout will not line up and there is no `.git` here to
-run `git` against:
+The fetcher copies the repository completely but not verbatim. It transfers all
+of `salt/` and `install-scripts/` — always the full catalogue and every
+component script, never narrowed by `--qubes` (which selects only what the later
+build creates) — and then *remaps* those files into the layout Qubes Salt
+expects under `/srv`:
 
 | Fetched path | Comes from the repository's |
 |---|---|
@@ -177,8 +179,14 @@ run `git` against:
 | `/var/lib/seqs/fetched/salt/` | `salt/seqs/` |
 | `/var/lib/seqs/fetched/salt/files/lib`, `.../files/components` | `install-scripts/lib`, `install-scripts/components` |
 
-The `.seqs-managed` and `.seqs-complete` markers are added by SEQS and are not
-part of the repository.
+Because the contents are complete, every fetched file does correspond to a file
+in the checkout — so it is the *rearrangement* (folders remapped, and the
+component payload from `install-scripts/` overlaid under `salt/files/`), not any
+selection, that stops a single top-level `diff` from lining up; there is no
+`.git` here to run `git` against either. You do not have to reconcile the
+mapping by hand: the `Content SHA256` check below applies it for you. The
+`.seqs-managed` and `.seqs-complete` markers are added by SEQS and are not part
+of the repository.
 
 ### Read the fetched tree
 
