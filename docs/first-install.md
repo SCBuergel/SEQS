@@ -159,7 +159,27 @@ No qubes are created and no Salt state is applied during this step.
 ## 7. Review and stage the fetched tree
 
 The validated fetched data is root-owned but readable by the normal dom0 user
-under `/var/lib/seqs/fetched`. At minimum inspect:
+under `/var/lib/seqs/fetched`. This tree is what will be staged and run, so
+reviewing it here is the authoritative review.
+
+### Understand the fetched layout
+
+The fetcher does not copy the repository verbatim. It extracts a rearranged
+subset, so a plain `diff` against a checkout will not line up and there is no
+`.git` here to run `git` against:
+
+| Fetched path | Comes from the repository's |
+|---|---|
+| `/var/lib/seqs/fetched/pillar/` | `salt/pillar/seqs/` |
+| `/var/lib/seqs/fetched/salt/` | `salt/seqs/` |
+| `/var/lib/seqs/fetched/salt/files/lib`, `.../files/components` | `install-scripts/lib`, `install-scripts/components` |
+
+The `.seqs-managed` and `.seqs-complete` markers are added by SEQS and are not
+part of the repository.
+
+### Read the fetched tree
+
+At minimum inspect:
 
 ```bash
 less /var/lib/seqs/fetched/pillar/config.sls
@@ -167,9 +187,63 @@ less /var/lib/seqs/fetched/salt/dom0.sls
 less /var/lib/seqs/fetched/salt/qube.sls
 ```
 
-Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md). Confirm the
-fetched bytes match the revision you approved. Then
-place the reviewed tree under `/srv`:
+Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md), and read the
+component installers under `/var/lib/seqs/fetched/salt/files/components/` that
+correspond to the qubes you will build.
+
+### Tie the fetched tree to the revision you approved
+
+Reviewing the tree tells you what the code does; the two outputs you already
+collected let you anchor that review to a revision you can corroborate with
+others. Use both:
+
+1. **Corroborate the revision (from step 2).** The disposable printed
+   `Revision to verify: <40-hex>`. Compare that commit ID against an independent
+   trusted channel — a second device, network path, or a copy someone you trust
+   obtained separately — and, if the revision carries a verifiable signature,
+   verify it. This is the only step that speaks to whether the *source* is
+   trustworthy; HTTPS and a matching hash do not.
+
+2. **Confirm the fetched bytes are that revision, byte for byte.** On a second,
+   independently obtained checkout at the same commit (`git checkout <revision>`),
+   compute a content digest and compare it to the same digest over the fetched
+   tree in dom0. Because the layout differs, compare *contents*, not paths.
+
+   In dom0:
+
+   ```bash
+   cd /var/lib/seqs/fetched
+   find salt pillar -type f ! -name '.seqs-*' -exec sha256sum {} + \
+     | awk '{print $1}' | LC_ALL=C sort | sha256sum
+   ```
+
+   On the independent checkout:
+
+   ```bash
+   find salt/seqs salt/pillar/seqs install-scripts/lib install-scripts/components \
+     -type f -exec sha256sum {} + | awk '{print $1}' | LC_ALL=C sort | sha256sum
+   ```
+
+   Equal digests mean every fetched file's content is present in your approved
+   revision and nothing extra was added. The digest compares contents rather
+   than their locations; you have already reviewed the layout directly and the
+   fetcher rejected any unexpected path, so a content match is what remains to
+   confirm. To spot-check individual files instead, hash them across the mapping
+   above — e.g. `sha256sum /var/lib/seqs/fetched/salt/dom0.sls` in dom0 must
+   match `sha256sum salt/seqs/dom0.sls` in the checkout (the paths differ by
+   design; the hash column must be identical).
+
+The `Transfer SHA256` from step 6 is the hash of the tar stream the source qube
+produced. You can reproduce it *inside that qube while it is still running*
+(`tar -C /home/user/SEQS -cf - salt install-scripts | sha256sum`) to confirm
+dom0 received exactly the bytes it sent, but that only proves faithful transport
+from the same unauthenticated origin. Reproducing that tar hash on a second
+machine is unreliable because archive ordering and timestamps vary, so use the
+per-file content comparison above — not the tar hash — to check against an
+independent copy.
+
+Once the review passes and the digest matches, place the reviewed tree under
+`/srv`:
 
 ```bash
 ~/s.sh --stage-only
