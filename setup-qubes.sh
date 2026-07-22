@@ -182,7 +182,7 @@ fetchSaltTree() {
 	# never reach the dom0 terminal raw (docs/architecture.md#bootstrap-window).
 	if ! qvm-run -p "${REPO_VM}" "tar -C ${REPO_PATH} -cf - salt install-scripts" 2>/dev/null > "${tarball}"; then
 		rm -rf "${tarball}" "${stage}"
-		die "could not fetch salt/ + install-scripts/ from ${REPO_VM}:${REPO_PATH} -- does the repo exist there? (see REPO_VM at the top of this script)"
+		die "could not fetch salt/ + install-scripts/ from ${REPO_VM}:${REPO_PATH} -- does the repo exist there? (check the qube name passed to --repo-vm)"
 	fi
 
 	echo "    Transfer SHA256 (compare on a second machine at the same commit;"
