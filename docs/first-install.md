@@ -164,9 +164,12 @@ reviewing it here is the authoritative review.
 
 ### Understand the fetched layout
 
-The fetcher does not copy the repository verbatim. It extracts a rearranged
-subset, so a plain `diff` against a checkout will not line up and there is no
-`.git` here to run `git` against:
+The fetcher does not copy the repository verbatim. It transfers only `salt/` and
+`install-scripts/`, then remaps them into the layout Qubes Salt expects under
+`/srv`. This is always the **complete** catalogue and every component script —
+it is not narrowed by `--qubes`, which applies only to the later build — so a
+plain `diff` against a checkout will not line up and there is no `.git` here to
+run `git` against:
 
 | Fetched path | Comes from the repository's |
 |---|---|
