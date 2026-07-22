@@ -549,7 +549,13 @@ set -euo pipefail
 umask 077
 test ! -e master.key
 
-IFS= read -r -s -p 'CIPHERTEXT SHA256: ' expected; echo
+# Both SHA256 values are non-secret integrity check-values, not keys, and the
+# passphrase is read only at GPG's own trusted prompt further below. For a
+# copy-paste dry run, set SEQS_SHOW_HASH_INPUT=1 to echo the pasted hashes as
+# you type them; leave it unset in production to keep the current silent entry.
+hash_read=(-r); [[ -n "${SEQS_SHOW_HASH_INPUT:-}" ]] || hash_read+=(-s)
+
+IFS= read "${hash_read[@]}" -p 'CIPHERTEXT SHA256: ' expected; echo
 [[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]]
 actual=$(sha256sum -- key.asc); actual=${actual%% *}
 test "${actual,,}" = "${expected,,}" || { rm -f -- key.asc; exit 1; }
@@ -559,7 +565,7 @@ tmpdir=$(mktemp -d .master-key-import.XXXXXX)
 trap 'rm -rf -- "$tmpdir"' EXIT HUP INT QUIT TERM
 gpg --no-symkey-cache --decrypt --output "$tmpdir/master.key" -- key.asc
 
-IFS= read -r -s -p 'PLAINTEXT SHA256: ' expected; echo
+IFS= read "${hash_read[@]}" -p 'PLAINTEXT SHA256: ' expected; echo
 [[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]]
 actual=$(sha256sum -- "$tmpdir/master.key"); actual=${actual%% *}
 test "${actual,,}" = "${expected,,}"
@@ -578,6 +584,11 @@ sha256sum -- master.key
 Enter the paper passphrase only at GPG's trusted prompt. Any hash mismatch is a
 hard stop. The final mode must be `600`; compare the final displayed hash to the
 paper again.
+
+To rehearse this step with pasted values, run it once with
+`SEQS_SHOW_HASH_INPUT=1` so the two typed hashes are echoed. This only affects
+terminal echo of the non-secret integrity hashes; the passphrase is never read
+by this script, so leave the variable unset for a real transfer.
 
 Finally confirm all three disposables/backends are stopped, the webcam is
 unplugged, no `key.asc` remains, and destroy the complete paper record.
