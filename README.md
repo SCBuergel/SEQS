@@ -14,7 +14,10 @@ from one reviewed configuration.
 > trust has reviewed and published** — verifying that commit hash (step 2 below)
 > is the one security check you must not skip. Verifying the hash proves the
 > code is exactly that reviewed revision; it does not, by itself, prove the code
-> is safe — that judgment is what you delegate to the reviewer.
+> is safe — that judgment is what you delegate to the reviewer. Who that trusted
+> source is, and why you trust them, is **out of scope of this repository**:
+> nothing a repository says about its own trustworthiness can anchor it. If you
+> have no such source, you are the reviewer (see below).
 
 ## Install (for users)
 
@@ -36,6 +39,10 @@ verified hash is the whole integrity check.
    The printed hash **must** equal the one published by the source you trust
    (release announcement, maintainer channel, etc.). If it differs, stop. Git's
    content-addressing guarantees the working tree is exactly that commit.
+   The published hash must reach you through a channel **independent of this
+   repository and the page you cloned it from** — a hash read off the same
+   GitHub page you clone verifies nothing, because whoever controls that page
+   controls both values.
 
 3. Copy the runner into dom0 and install in one step. Replace both `disp1234`
    occurrences with the disposable's name, and pick the qubes you want:
@@ -58,8 +65,8 @@ checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use
 If you are the one **auditing SEQS and publishing an authoritative commit hash**
 for others (or you want to audit before trusting anyone else's), do not stop at
 the hash — read the code that will run as root in dom0:
-[VERIFY-HUMAN.md](VERIFY-HUMAN.md) is the structured review walkthrough,
-[VERIFY-LLM.md](VERIFY-LLM.md) the machine-runnable cross-check, and
+[VERIFY-HUMAN.md](VERIFY-HUMAN.md) is the structured review walkthrough
+(including the rules for using an LLM to assist the audit), and
 [TRUST.md](TRUST.md) explains what remains trusted. The
 [full first-install walkthrough](docs/first-install.md) covers the fetch → stage
 → build stages in detail and the separate `--fetch-only` / `--stage-only` /

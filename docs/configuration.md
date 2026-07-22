@@ -153,4 +153,4 @@ Then reference `<name>` in any qube spec. If the component needs Brave, it can
 for idempotent installation).
 
 After adding a component, also add it to the **Components** table above so the
-`VERIFY-LLM.md` §10 coherence check stays green.
+documentation stays coherent with the on-disk components.

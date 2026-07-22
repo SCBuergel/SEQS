@@ -13,19 +13,18 @@ The installer uses a thin dom0 runner, states under `salt/seqs/`, and configurat
 
 ## Re-verifying these claims yourself
 
-This file is the *claim*. Two companion documents help you check it before trusting the resulting qubes:
+This file is the *claim*. One companion document helps you check it before trusting the resulting qubes:
 
-- **[VERIFY-HUMAN.md](VERIFY-HUMAN.md)** — a hands-on walkthrough for the operator: what to read top-to-bottom in what order, cross-check tables for every pinned signing-key fingerprint (with the exact `curl | gpg --show-keys` one-liners), install-time watch points, and the honest residual-risk summary.
-- **[VERIFY-LLM.md](VERIFY-LLM.md)** — a machine-runnable verification protocol (bash + `curl` + `gpg` + `awk`): static syntax, embedded-key-fingerprint vs in-script pin parity, Brave's three-key set, **live upstream fingerprints** still matching the pins (catches upstream key rotation), `TRUST.md` ↔ code path coherence, pillar qube-spec validation, `brave_extensions` well-formedness, verifier abort-order audit (every abort happens strictly *before* the corresponding irreversible write), README ↔ components coherence, policy-ownership parity between the runner and the dom0 state, and the offline/air-gap logic. Each section ends with an explicit PASS/FAIL criterion and they aggregate into a single report.
+- **[VERIFY-HUMAN.md](VERIFY-HUMAN.md)** — a hands-on walkthrough for the operator: what to read top-to-bottom in what order, cross-check tables for every pinned signing-key fingerprint (with the exact `curl | gpg --show-keys` one-liners), install-time watch points, and the honest residual-risk summary. It also states the rules for using an LLM to assist the audit — chiefly that the instructions driving the LLM must originate outside the tree under audit. There is deliberately no in-repo machine-runnable verification protocol: a checklist shipped in the same commit as the code it checks can be rewritten alongside that code, so its PASS report would prove nothing to an auditor while looking like it does.
 
-The 📝 *Reviewed* trust level used throughout this document is **not** "the author eyeballed it" — it is "you, the operator, should run VERIFY-HUMAN.md (and ideally VERIFY-LLM.md) before extending dom0 trust to anything here."
+The 📝 *Reviewed* trust level used throughout this document is **not** "the author eyeballed it" — it is "you, the operator, should run VERIFY-HUMAN.md before extending dom0 trust to anything here."
 
 ## Trust levels
 
 | Level | Meaning |
 |-------|---------|
 | ✅ Verified | Integrity checked against a cryptographic pin or an independent reference. |
-| 📝 Reviewed | No automated check; trust rests on you having read the committed file. See VERIFY-HUMAN.md / VERIFY-LLM.md for how. |
+| 📝 Reviewed | No automated check; trust rests on you having read the committed file. See VERIFY-HUMAN.md for how. |
 | ⚠️ TOFU | Fetched over HTTPS; trust on first use — you trust TLS/CA + whoever answered, with no pin. Package-manager signatures apply *afterwards*. |
 | ❌ Unverified | HTTPS transport only; no signature or checksum. Compromise of the host, CDN, mirror, or DNS means code execution. |
 
@@ -54,10 +53,15 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ## 2. Bootstrap & installation
 
+### The published commit hash (the trust anchor)
+- **Trust assumption:** The commit hash you check out was published by a source that actually reviewed that revision.
+- **Established by:** ❌ Nothing in this repository — deliberately **out of scope**. The repo cannot designate its own trusted source: any in-repo statement of "trust hashes from X" would itself be covered by the hash, so a hostile revision could simply name a hostile source. The repo is not signed and publishes no authoritative announcement channel.
+- **Residual risk:** If the hash reaches you through the same place you clone from (the repository's hosting page, a search result), the anchor is circular — it proves only that the host served a self-consistent tree, and whoever controls the host controls both values. The source and the channel must be established outside this repository: a maintainer or auditor whose announcements you can authenticate through means you already trust. If no such source exists for you, you are the reviewer — see [VERIFY-HUMAN.md](VERIFY-HUMAN.md).
+
 ### The SEQS repository contents
 - **Trust assumption:** Every script here does what it claims and nothing else.
-- **Established by:** 📝 You. The README explicitly tells you to read every file first; **VERIFY-HUMAN.md** is the structured walkthrough for that read (what to look at, in what order, what to spot-check), and **VERIFY-LLM.md** is the machine-runnable cross-check (key fingerprints, abort-order audit, README↔components coherence, …). The repo is not signed.
-- **Residual risk:** Whoever can write to the repo (or the branch you pull) controls dom0 and every template. **Treat repo write-access as dom0-equivalent.** The VERIFY-* docs guard against in-flight tamper between code and what TRUST.md claims, but they do not establish that the repo URL you cloned from is the one you meant.
+- **Established by:** 📝 You. The README explicitly tells you to read every file first; **VERIFY-HUMAN.md** is the structured walkthrough for that read (what to look at, in what order, what to spot-check). The repo is not signed.
+- **Residual risk:** Whoever can write to the repo (or the branch you pull) controls dom0 and every template. **Treat repo write-access as dom0-equivalent.** VERIFY-HUMAN.md guards against drift between the code and what TRUST.md claims, but it does not establish that the repo URL you cloned from is the one you meant.
 
 ### `REPO_VM` — the qube hosting the repo
 - **Trust assumption:** The qube the repo is fetched from is not compromised.

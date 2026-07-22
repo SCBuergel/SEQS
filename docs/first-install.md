@@ -48,6 +48,17 @@ hash does **not** prove is that the code is *safe* — that judgment is the
 reviewer's (see [VERIFY-HUMAN.md](../VERIFY-HUMAN.md)); as a user you delegate it
 to whoever published the hash.
 
+**The trusted source itself is out of scope of this repository.** Nothing in
+this tree can tell you whom to trust: any in-repo designation of a trusted
+source would itself be covered by the commit hash, so a hostile revision could
+simply name a hostile source. Obtain the hash through a channel you already
+trust that is independent of this clone and of the page you cloned from — a
+maintainer or auditor whose announcements you can authenticate. Taking the hash
+from the repository's own hosting page makes the check circular: it then proves
+only that GitHub served you a self-consistent tree, not that anyone reviewed
+it. If no independent source exists for you, take the reviewer role yourself
+([VERIFY-HUMAN.md](../VERIFY-HUMAN.md)).
+
 An empty `git status --short` means there are no modified or untracked files
 immediately after checkout. Any output at this point needs investigation.
 

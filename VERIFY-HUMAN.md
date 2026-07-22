@@ -13,8 +13,9 @@ Companion to [TRUST.md](TRUST.md). This document walks you through verifying —
 
 ## 1. Trust assumptions you cannot verify from here
 
-Three things must be true *before* SEQS does anything useful — none of them provable from inside this repo:
+Four things must be true *before* SEQS does anything useful — none of them provable from inside this repo:
 
+- **The published commit hash.** The hash a user compares against must come from a source they trust, through a channel independent of this repository and its hosting — the repo cannot designate its own trusted source, since a hostile revision would name a hostile one. Establishing that source is out of scope of this repository. If you are working through this document, you are becoming that source: review the revision, then publish the hash you reviewed through a channel your users can authenticate.
 - **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
 - **`REPO_VM`.** This qube serves the Salt tree into dom0, where it eventually runs as root. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Independently verify the revision and review `/var/lib/seqs/fetched` before staging and building.
@@ -37,6 +38,23 @@ Read top-to-bottom, in this order:
 For a first install, leave the reviewed repo tree unmodified, run `--fetch-only`, review `/var/lib/seqs/fetched`, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
 
 The README warning is in earnest: you are running these scripts in dom0.
+
+### Using an LLM to assist the review
+
+If you use an LLM, task it with the same job this document gives you: read the
+entire tree adversarially and report what the code actually does, especially
+where that differs from what TRUST.md claims. Two rules keep the result
+meaningful:
+
+- **The instructions driving the LLM must originate outside the tree under
+  audit.** Never have it execute a checklist, script, or verification protocol
+  shipped inside the repository it is auditing — a hostile revision can rewrite
+  the code and its own verification instructions in the same commit. (That is
+  why this repository ships no machine-runnable verification protocol, and the
+  warning at the top of this document applies to this file too.)
+- **Treat its output as pointers for your own reading, not as a verdict.** An
+  all-clear from an LLM is not evidence you can publish a hash on; a finding it
+  raises is a place to start reading.
 
 ## 3. Cross-check the verified components' keys
 

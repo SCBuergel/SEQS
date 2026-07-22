@@ -19,7 +19,7 @@ are documented in `test/README.md`.
 1. Read `README.md` for the user workflow.
 2. Read the relevant document under `docs/` before changing behavior.
 3. For security or trust-boundary changes, read `TRUST.md` and the applicable
-   checks in `VERIFY-HUMAN.md` and `VERIFY-LLM.md`.
+   checks in `VERIFY-HUMAN.md`.
 4. Inspect `git status --short` and preserve unrelated user changes.
 
 Use `rg`/`rg --files` for discovery. Prefer small patches. Do not perform broad
@@ -79,8 +79,8 @@ modifying:
 - a runner helper: add/update a case in `test/unit_bash.sh`.
 - fetch/apply/delete orchestration: add/update `test/integration/run.sh`.
 - a component or catalogue entry: verify its rendered state and documentation.
-- trust or verification behavior: keep `TRUST.md`, `VERIFY-HUMAN.md`, and
-  `VERIFY-LLM.md` consistent with the actual implementation.
+- trust or verification behavior: keep `TRUST.md` and `VERIFY-HUMAN.md`
+  consistent with the actual implementation.
 
 Hardware-bound verification commands are documented in `test/README.md`; do
 not run provisioning or deletion commands merely to validate a repository edit.
