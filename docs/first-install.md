@@ -207,43 +207,35 @@ others. Use both:
    verify it. This is the only step that speaks to whether the *source* is
    trustworthy; HTTPS and a matching hash do not.
 
-2. **Confirm the fetched bytes are that revision, byte for byte.** On a second,
-   independently obtained checkout at the same commit (`git checkout <revision>`),
-   compute a content digest and compare it to the same digest over the fetched
-   tree in dom0. Because the layout differs, compare *contents*, not paths.
+2. **Confirm the fetched bytes are that revision.** `--fetch-only` prints a
+   `Content SHA256` and records it in `/var/lib/seqs/fetched/content-sha256`.
+   This is a layout-independent digest of the fetched file *contents at their
+   repository-relative paths*, so — unlike the dom0-local `Staged tree SHA256`
+   or the tar-stream `Transfer SHA256` — you can reproduce it from a plain
+   checkout with **one** command and no need to recreate any dom0 layout.
 
-   In dom0:
-
-   ```bash
-   cd /var/lib/seqs/fetched
-   find salt pillar -type f ! -name '.seqs-*' -exec sha256sum {} + \
-     | awk '{print $1}' | LC_ALL=C sort | sha256sum
-   ```
-
-   On the independent checkout:
+   On your independent checkout at the approved commit (`git checkout <revision>`):
 
    ```bash
    find salt/seqs salt/pillar/seqs install-scripts/lib install-scripts/components \
-     -type f -exec sha256sum {} + | awk '{print $1}' | LC_ALL=C sort | sha256sum
+     -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
    ```
 
-   Equal digests mean every fetched file's content is present in your approved
-   revision and nothing extra was added. The digest compares contents rather
-   than their locations; you have already reviewed the layout directly and the
-   fetcher rejected any unexpected path, so a content match is what remains to
-   confirm. To spot-check individual files instead, hash them across the mapping
-   above — e.g. `sha256sum /var/lib/seqs/fetched/salt/dom0.sls` in dom0 must
-   match `sha256sum salt/seqs/dom0.sls` in the checkout (the paths differ by
-   design; the hash column must be identical).
+   If that value equals the `Content SHA256` the runner printed, the fetched
+   files are exactly the contents — and repository paths — of the revision you
+   approved. Because the digest is keyed by path, it catches a changed *or*
+   moved file; combined with your direct review and the fetcher's rejection of
+   any unexpected path, a match settles this step. To recheck the recorded value
+   later, `cat /var/lib/seqs/fetched/content-sha256`; `--stage-only` reprints it
+   too.
 
-The `Transfer SHA256` from step 6 is the hash of the tar stream the source qube
-produced. You can reproduce it *inside that qube while it is still running*
-(`tar -C /home/user/SEQS -cf - salt install-scripts | sha256sum`) to confirm
-dom0 received exactly the bytes it sent, but that only proves faithful transport
-from the same unauthenticated origin. Reproducing that tar hash on a second
-machine is unreliable because archive ordering and timestamps vary, so use the
-per-file content comparison above — not the tar hash — to check against an
-independent copy.
+The `Transfer SHA256` from step 6 is a different, weaker artifact: the hash of
+the tar stream the source qube produced. You can reproduce it *inside that qube
+while it is still running* (`tar -C /home/user/SEQS -cf - salt install-scripts |
+sha256sum`) to confirm dom0 received exactly the bytes it sent, but that only
+proves faithful transport from the same unauthenticated origin, and it is not
+reproducible on a second machine because archive ordering and timestamps vary.
+Prefer the `Content SHA256` above for independent verification.
 
 Once the review passes and the digest matches, place the reviewed tree under
 `/srv`:

@@ -131,6 +131,30 @@ grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" \
 	&& ok || bad "run manifest should record canonical selection"
 rm -rf "${SBX}"
 
+# ── Scenario 6b: fetch prints a content digest a user can reproduce ────────
+# The whole point of Content SHA256 is independent verification, so the value
+# the runner emits must equal what a plain checkout produces with the exact
+# command documented in docs/first-install.md step 7.
+echo "== scenario: fetch emits a reproducible Content SHA256 =="
+new_sandbox
+expected="$( cd "${REPO}" && find salt/seqs salt/pillar/seqs install-scripts/lib \
+	install-scripts/components -type f -print0 | LC_ALL=C sort -z \
+	| xargs -0 sha256sum | sha256sum | awk '{print $1}' )"
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "--fetch-only failed"
+grep -q "Content SHA256" <<<"$out" && ok || bad "fetch did not print Content SHA256"
+grep -qF "${expected}" <<<"$out" && ok \
+	|| bad "printed Content SHA256 is not reproducible from the checkout"
+[ "$(cat "${SEQS_FETCH_ROOT}/content-sha256" 2>/dev/null)" = "${expected}" ] && ok \
+	|| bad "recorded content-sha256 file does not match the reproducible digest"
+out="$(run_setup --stage-only 2>&1)"
+grep -qF "${expected}" <<<"$out" && ok || bad "--stage-only should reprint the content digest"
+# The recorded digest lives at the fetch-root top level, so it must not leak
+# into the staged /srv tree or perturb the staged-tree hash.
+[ ! -e "${SEQS_SALT_TREE}/content-sha256" ] && [ ! -e "${SEQS_PILLAR_TREE}/content-sha256" ] \
+	&& ok || bad "content-sha256 must not be staged into /srv"
+rm -rf "${SBX}"
+
 # ── Scenario 7: protected staged trees are inspected through sudo ──────────
 echo "== scenario: staged-tree guard and preview use privileged reads =="
 new_sandbox

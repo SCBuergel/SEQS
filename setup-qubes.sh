@@ -137,6 +137,19 @@ treeHash() {
 	rm -f "${listing}"
 }
 
+# Portable content digest of the fetched catalogue. Unlike treeHash (which bakes
+# in the absolute /srv paths and .seqs-managed markers for dom0-local run-to-run
+# consistency), this hashes only file CONTENTS at their repository-relative
+# paths, so it is reproducible from a plain checkout at the approved revision
+# with no dom0 layout to recreate. $1 is a directory containing the extracted
+# salt/ and install-scripts/ trees. Keep the algorithm identical to the command
+# documented for users in docs/first-install.md step 7.
+contentDigest() {  # $1 = root containing salt/ and install-scripts/
+	( cd "$1" && find salt/seqs salt/pillar/seqs install-scripts/lib install-scripts/components \
+		-type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum ) \
+		| sha256sum | awk '{print $1}'
+}
+
 writeBuildIntent() {
 	local selected tree_hash plan_hash selection_text
 	selected=$(printf '%s\n' "${SELECTED_NAMES[@]}")
@@ -221,6 +234,12 @@ fetchSaltTree() {
 	[ -d "${stage}/install-scripts/components" ] || die "fetched tree is missing install-scripts/components/"
 	[ -d "${stage}/install-scripts/lib" ] || die "fetched tree is missing install-scripts/lib/"
 
+	# Portable content digest of what was fetched, taken from the still-original
+	# repository layout before rearrangement, so a user can reproduce it from a
+	# plain checkout at the approved revision (see docs/first-install.md step 7).
+	local content_hash
+	content_hash="$(contentDigest "${stage}")" || die "could not hash fetched content"
+
 	# Assemble the exact layout that will land in /srv, so it can be diffed
 	# against what is already installed there before anything is replaced.
 	local newsalt="${stage}/_install-salt" newpillar="${stage}/_install-pillar"
@@ -248,6 +267,8 @@ fetchSaltTree() {
 	sudo cp -r "${newsalt}/." "${FETCH_SALT_TREE}/" || die "could not save fetched salt tree"
 	sudo cp -r "${newpillar}/." "${FETCH_PILLAR_TREE}/" || die "could not save fetched pillar tree"
 	sudo touch "${FETCH_ROOT}/.seqs-complete" || die "could not mark fetch complete"
+	printf '%s\n' "${content_hash}" | sudo tee "${FETCH_ROOT}/content-sha256" >/dev/null \
+		|| die "could not record content digest"
 	sudo chown -R root:root "${FETCH_ROOT}"
 	sudo chmod a+rx "$(dirname "${FETCH_ROOT}")" "${FETCH_ROOT}"
 	sudo chmod -R a+rX,go-w "${FETCH_ROOT}"
@@ -255,6 +276,10 @@ fetchSaltTree() {
 	rm -rf "${tarball}" "${stage}"
 	echo "    Fetch complete. No Salt state was staged or applied."
 	echo "    Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
+	echo "    Content SHA256 (reproduce from a trusted checkout at the approved"
+	echo "    revision -- see docs/first-install.md step 7; independent of dom0"
+	echo "    paths, so it verifies the fetched files are exactly that revision):"
+	echo "    ${content_hash}"
 }
 
 # ---- Stage 2 -- stage the reviewed tree in /srv ------------------------------
@@ -264,6 +289,12 @@ stageSaltTree() {
 		&& [ -f "${FETCH_SALT_TREE}/.seqs-managed" ] \
 		&& [ -f "${FETCH_PILLAR_TREE}/.seqs-managed" ] \
 		|| die "fetch stage is incomplete -- run --fetch-only first"
+
+	if [ -f "${FETCH_ROOT}/content-sha256" ]; then
+		echo "    Fetched content SHA256 (recorded at fetch; verify it against a"
+		echo "    trusted checkout before staging -- docs/first-install.md step 7):"
+		echo "    $(cat "${FETCH_ROOT}/content-sha256")"
+	fi
 
 	local d diffout one rc i
 	for d in "${SALT_TREE}" "${PILLAR_TREE}"; do

@@ -59,7 +59,7 @@ Each component's `template-vm.sh` header also documents the three sources it was
 
 When you run `setup-qubes.sh`:
 
-1. **Fetch and stage.** Fetch prints the transfer SHA256 for independent comparison and saves a validated tree under `/var/lib/seqs/fetched`. Review it before `--stage-only`; staging shows the diff that will be placed under `/srv`.
+1. **Fetch and stage.** Fetch prints a `Content SHA256` — a layout-independent digest you can reproduce from a plain checkout at the approved revision (one command; see `docs/first-install.md` step 7) — plus the tar-stream `Transfer SHA256`, and saves a validated tree under `/var/lib/seqs/fetched`. Use `Content SHA256` for independent verification; the transfer hash only confirms faithful transport from the same source qube. Review the tree before `--stage-only`; staging reprints the recorded `Content SHA256` and shows the diff that will be placed under `/srv`.
 
    At build time, confirm `Staged tree SHA256`, `Build-plan SHA256`, and
    `Requested qubes` match your intent. Reordering the same names must produce
