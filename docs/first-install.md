@@ -190,17 +190,47 @@ of the repository.
 
 ### Read the fetched tree
 
-At minimum inspect:
+These are [Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html)
+files (`.sls`) that run as root in dom0. If Salt is unfamiliar, first skim how
+[states](https://docs.saltproject.io/en/latest/topics/states/index.html) declare
+the target configuration, how
+[pillar](https://docs.saltproject.io/en/latest/topics/pillar/index.html) supplies
+per-qube data, and how
+[Jinja](https://docs.saltproject.io/en/latest/topics/jinja/index.html) templates
+render them — the `{%- ... %}` and `{{ ... }}` markup you will see. At minimum
+inspect:
 
 ```bash
-less /var/lib/seqs/fetched/pillar/config.sls
-less /var/lib/seqs/fetched/salt/dom0.sls
-less /var/lib/seqs/fetched/salt/qube.sls
+less /var/lib/seqs/fetched/pillar/config.sls   # catalogue and all input data
+less /var/lib/seqs/fetched/salt/dom0.sls        # dom0: validation, policy, qube creation
+less /var/lib/seqs/fetched/salt/qube.sls        # provisioning inside each qube
 ```
 
-Use the fuller file order in [VERIFY-HUMAN.md](../VERIFY-HUMAN.md), and read the
-component installers under `/var/lib/seqs/fetched/salt/files/components/` that
-correspond to the qubes you will build.
+What to look for in each:
+
+- **`pillar/config.sls`** — the reviewed catalogue: prefixes, `base_template`,
+  `browser_vm`, and each `qube_catalog` entry's label, components, and
+  `offline`/`no_handoff` flags. Confirm the labels and flags match the trust you
+  intend — e.g. `keepass` is marked `offline`, and the hardware-wallet qubes are
+  marked `no_handoff`.
+- **`salt/dom0.sls`** — the privileged code: the pre-flight validation block, the
+  generated qrexec policy, the no-clobber guard, and qube creation. Check that
+  each policy grants only the narrow access it describes and that no pillar value
+  reaches a shell command unquoted.
+- **`salt/qube.sls`** — what is installed inside each template and app qube. Then
+  read the matching component installers under
+  `/var/lib/seqs/fetched/salt/files/components/<name>/` for the qubes you will
+  build — pay special attention to any download, added repository, or signing key,
+  and confirm each is pinned and honestly described in [TRUST.md](../TRUST.md).
+
+Watch for: a NetVM or OpenURL handoff on a qube meant to be `offline`; a download
+with no pinned version or verified signature; a qrexec policy broader than the
+feature needs; and untrusted strings interpolated into a shell or Salt command.
+
+For the fuller file-by-file order and rationale, use
+[VERIFY-HUMAN.md](../VERIFY-HUMAN.md) §2; for how the pieces fit together, read
+[architecture.md](architecture.md); for what each catalogue option means, read
+[configuration.md](configuration.md).
 
 ### Tie the fetched tree to the revision you approved
 
