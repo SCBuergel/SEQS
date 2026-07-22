@@ -1,8 +1,13 @@
 # First SEQS installation
 
-This is the expanded walkthrough behind the README's minimal command path. It
-explains how to obtain, review, select, fetch, and apply SEQS without using a
-daily qube as the bootstrap source.
+This is the expanded walkthrough behind the README's install path. A user
+verifies one commit hash (§2) and runs a single command
+(`~/s.sh --repo-vm disp1234 --qubes …`) that fetches, stages, and builds in one
+confirmed run. This document breaks that command into its underlying **fetch →
+stage → build** phases and the separate `--fetch-only` / `--stage-only` /
+`--build-only` commands, so a **reviewer** can pause between phases, inspect
+every intermediate tree, and — before trusting or publishing a commit — read the
+code that will run as root in dom0.
 
 ## 1. Install and verify Qubes OS
 
@@ -27,21 +32,28 @@ Inside the disposable:
 ```bash
 git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
 cd /home/user/SEQS
+git checkout <COMMIT>               # the commit your trusted source published
 git status --short                  # expected output: nothing (clean checkout)
-printf 'Revision to verify: '; git rev-parse HEAD
-printf 'Use as REPO_VM in dom0: '; hostname
+git rev-parse HEAD                  # must equal the published commit hash
+hostname                            # the disposable's name, used as --repo-vm in dom0
 ```
 
-An empty `git status --short` means there are no modified or untracked files
-immediately after cloning. Any output at this point needs investigation.
+**This hash comparison is the trust anchor of the whole install.** A git commit
+hash is a Merkle hash over the entire repository — every file's bytes and path,
+including `setup-qubes.sh` itself — so confirming `git rev-parse HEAD` equals the
+value your trusted source published proves the working tree is exactly that
+reviewed revision. Git's content-addressing rejects any tampered object under
+that hash, so a hostile network or mirror cannot substitute content. What the
+hash does **not** prove is that the code is *safe* — that judgment is the
+reviewer's (see [VERIFY-HUMAN.md](../VERIFY-HUMAN.md)); as a user you delegate it
+to whoever published the hash.
 
-The complete revision identifies the exact source snapshot. Compare it through
-an independent trusted channel or with a separately obtained known-good
-checkout. It identifies bytes; it does not prove they are safe or author-approved.
+An empty `git status --short` means there are no modified or untracked files
+immediately after checkout. Any output at this point needs investigation.
 
 The hostname is the running disposable's Qubes name, normally `dispNNNN`. It is
-used as `REPO_VM` in dom0 later. Keep this disposable alive through the
-`--fetch-only` step; closing it earlier destroys its checkout.
+used as `REPO_VM` in dom0 later. Keep this disposable alive through the install
+(or the `--fetch-only` step); closing it earlier destroys its checkout.
 
 For ongoing maintenance, repeat this disposable workflow or use a dedicated,
 minimal repo qube. Always pass the source qube explicitly with `--repo-vm`.
@@ -147,10 +159,11 @@ Still in dom0, while the disposable remains running:
 ~/s.sh --repo-vm disp1234 --fetch-only
 ```
 
-The runner validates every archive entry, displays the transfer hash, and
-saves the result under `/var/lib/seqs/fetched`. The hash supports
-comparison with an independent trusted copy; a hash produced only from the
-download qube does not prove that qube is honest.
+The runner validates every archive entry and saves the result under
+`/var/lib/seqs/fetched`. It also prints a `Transfer SHA256` of the tar stream —
+a diagnostic for logs, not a trust check: the integrity anchor is the git commit
+you already verified in §2, and everything fetched here derives from that
+verified checkout in the disposable.
 
 After `--fetch-only` succeeds, shut down the download disposable. Dom0 no
 longer needs it.
@@ -179,14 +192,12 @@ expects under `/srv`:
 | `/var/lib/seqs/fetched/salt/` | `salt/seqs/` |
 | `/var/lib/seqs/fetched/salt/files/lib`, `.../files/components` | `install-scripts/lib`, `install-scripts/components` |
 
-Because the contents are complete, every fetched file does correspond to a file
-in the checkout — so it is the *rearrangement* (folders remapped, and the
-component payload from `install-scripts/` overlaid under `salt/files/`), not any
-selection, that stops a single top-level `diff` from lining up; there is no
-`.git` here to run `git` against either. You do not have to reconcile the
-mapping by hand: the `Content SHA256` check below applies it for you. The
-`.seqs-managed` and `.seqs-complete` markers are added by SEQS and are not part
-of the repository.
+Because the contents are complete, every fetched file corresponds to a file in
+the checkout — so it is the *rearrangement* (folders remapped, and the component
+payload from `install-scripts/` overlaid under `salt/files/`), not any selection,
+that stops a single top-level `diff` from lining up; there is no `.git` here to
+run `git` against either. The `.seqs-managed` and `.seqs-complete` markers are
+added by SEQS and are not part of the repository.
 
 ### Read the fetched tree
 
@@ -233,51 +244,24 @@ For the fuller file-by-file order and rationale, use
 [architecture.md](architecture.md); for what each catalogue option means, read
 [configuration.md](configuration.md).
 
-### Tie the fetched tree to the revision you approved
+### How the fetched tree ties back to the verified commit
 
-Reviewing the tree tells you what the code does; the two outputs you already
-collected let you anchor that review to a revision you can corroborate with
-others. Use both:
+There is no separate hash to check in dom0, by design. Your integrity anchor is
+the git commit you verified in §2: because a commit hash covers the entire
+repository, and git's content-addressing guaranteed the disposable's working
+tree is exactly that commit, everything dom0 now holds derives from it — both
+the runner you copied with `cat` and the `salt/` + `install-scripts/` trees
+fetched here. The fetched tree has no `.git`, and a commit hash cannot be
+recomputed from a `.git`-less tree, so dom0 does not (and need not) re-derive it.
 
-1. **Corroborate the revision (from step 2).** The disposable printed
-   `Revision to verify: <40-hex>`. Compare that commit ID against an independent
-   trusted channel — a second device, network path, or a copy someone you trust
-   obtained separately — and, if the revision carries a verifiable signature,
-   verify it. This is the only step that speaks to whether the *source* is
-   trustworthy; HTTPS and a matching hash do not.
+The one residual this leaves is the disposable itself: dom0 receives what the
+disposable *sent*, and a disposable compromised after checkout could alter files
+in transit. If that is in your threat model, do not rely on the transfer — review
+the fetched tree directly (previous section), which is the tree that will run.
+The `Transfer SHA256` from §6 only confirms dom0 received the bytes the
+disposable sent; it says nothing about whether that qube was honest.
 
-2. **Confirm the fetched bytes are that revision.** `--fetch-only` prints a
-   `Content SHA256` and records it in `/var/lib/seqs/fetched/content-sha256`.
-   This is a layout-independent digest of the fetched file *contents at their
-   repository-relative paths*, so — unlike the dom0-local `Staged tree SHA256`
-   or the tar-stream `Transfer SHA256` — you can reproduce it from a plain
-   checkout with **one** command and no need to recreate any dom0 layout.
-
-   On your independent checkout at the approved commit (`git checkout <revision>`):
-
-   ```bash
-   find salt/seqs salt/pillar/seqs install-scripts/lib install-scripts/components \
-     -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
-   ```
-
-   If that value equals the `Content SHA256` the runner printed, the fetched
-   files are exactly the contents — and repository paths — of the revision you
-   approved. Because the digest is keyed by path, it catches a changed *or*
-   moved file; combined with your direct review and the fetcher's rejection of
-   any unexpected path, a match settles this step. To recheck the recorded value
-   later, `cat /var/lib/seqs/fetched/content-sha256`; `--stage-only` reprints it
-   too.
-
-The `Transfer SHA256` from step 6 is a different, weaker artifact: the hash of
-the tar stream the source qube produced. You can reproduce it *inside that qube
-while it is still running* (`tar -C /home/user/SEQS -cf - salt install-scripts |
-sha256sum`) to confirm dom0 received exactly the bytes it sent, but that only
-proves faithful transport from the same unauthenticated origin, and it is not
-reproducible on a second machine because archive ordering and timestamps vary.
-Prefer the `Content SHA256` above for independent verification.
-
-Once the review passes and the digest matches, place the reviewed tree under
-`/srv`:
+When your review is satisfied, place the reviewed tree under `/srv`:
 
 ```bash
 ~/s.sh --stage-only
@@ -296,8 +280,8 @@ without `sudo`; root ownership prevents the dom0 user from changing them.
 
 Staging is a plain copy from `/var/lib/seqs/fetched` into `/srv`, so verifying it
 means confirming two things: the staged tree is exactly the fetched tree you
-already reviewed and hashed, and it is root-owned so nothing can alter it before
-the build reads it. In dom0:
+already reviewed, and it is root-owned so nothing can alter it before the build
+reads it. In dom0:
 
 1. **Staged matches fetched.** Both use the same layout, so compare them directly.
    Use `sudo` (the tree is root-owned, and `/srv` may not be traversable
@@ -309,11 +293,10 @@ the build reads it. In dom0:
    sudo diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/pillar /srv/pillar/seqs
    ```
 
-   No output means the staged files are byte-for-byte the fetched tree whose
-   `Content SHA256` you verified above — nothing was substituted between review
-   and staging. Re-running `~/s.sh --stage-only` performs the same comparison for
-   you: it reports `Fetched tree is identical to the tree already staged in /srv.`
-   and reprints the recorded `Content SHA256`.
+   No output means the staged files are byte-for-byte the fetched tree you
+   reviewed — nothing was substituted between review and staging. Re-running
+   `~/s.sh --stage-only` performs the same comparison for you: it reports
+   `Fetched tree is identical to the tree already staged in /srv.`
 
 2. **Root-owned and not user-writable.** Confirm the dom0 user cannot modify the
    staged tree before the build consumes it:

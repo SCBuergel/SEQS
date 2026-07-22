@@ -131,28 +131,19 @@ grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" \
 	&& ok || bad "run manifest should record canonical selection"
 rm -rf "${SBX}"
 
-# ── Scenario 6b: fetch prints a content digest a user can reproduce ────────
-# The whole point of Content SHA256 is independent verification, so the value
-# the runner emits must equal what a plain checkout produces with the exact
-# command documented in docs/first-install.md step 7.
-echo "== scenario: fetch emits a reproducible Content SHA256 =="
+# ── Scenario 6b: the single-step install runs fetch+stage+build in one go ──
+# The default (no explicit-stage flag) install is one confirmed command; verify
+# it fetches, stages, and builds without needing the separate sub-commands.
+echo "== scenario: single-step install (one command, one confirmation) =="
 new_sandbox
-expected="$( cd "${REPO}" && find salt/seqs salt/pillar/seqs install-scripts/lib \
-	install-scripts/components -type f -print0 | LC_ALL=C sort -z \
-	| xargs -0 sha256sum | sha256sum | awk '{print $1}' )"
-out="$(run_setup --fetch-only 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] && ok || bad "--fetch-only failed"
-grep -q "Content SHA256" <<<"$out" && ok || bad "fetch did not print Content SHA256"
-grep -qF "${expected}" <<<"$out" && ok \
-	|| bad "printed Content SHA256 is not reproducible from the checkout"
-[ "$(cat "${SEQS_FETCH_ROOT}/content-sha256" 2>/dev/null)" = "${expected}" ] && ok \
-	|| bad "recorded content-sha256 file does not match the reproducible digest"
-out="$(run_setup --stage-only 2>&1)"
-grep -qF "${expected}" <<<"$out" && ok || bad "--stage-only should reprint the content digest"
-# The recorded digest lives at the fetch-root top level, so it must not leak
-# into the staged /srv tree or perturb the staged-tree hash.
-[ ! -e "${SEQS_SALT_TREE}/content-sha256" ] && [ ! -e "${SEQS_PILLAR_TREE}/content-sha256" ] \
-	&& ok || bad "content-sha256 must not be staged into /srv"
+out="$(run_setup --qubes brave 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "single-step install exited non-zero ($rc)"
+grep -q "SEQS setup complete" <<<"$out" && ok || bad "single-step install did not complete"
+[ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "single-step install did not stage /srv"
+grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+	|| bad "single-step install did not build the selected qube"
+# One combined confirmation, not the old three-phase prompt.
+! grep -q "Step 1/3" <<<"$out" && ok || bad "install should not show the old 3-step prompts"
 rm -rf "${SBX}"
 
 # ── Scenario 7: protected staged trees are inspected through sudo ──────────

@@ -13,7 +13,9 @@ data flow and controls. For the per-component trust analysis see
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
    This is the **only** VM→dom0 data flow in the whole system. The transfer
-   SHA256 is printed for out-of-band comparison.
+   SHA256 is printed as a diagnostic; integrity is anchored by the git commit
+   hash the operator verifies in the disposable, which covers the whole
+   repository (including `setup-qubes.sh`).
 
 2. **Stage.** `--fetch-only` saves validated data under
    `/var/lib/seqs/fetched` for review. `--stage-only` requires a completed fetch,

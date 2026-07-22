@@ -9,55 +9,61 @@ and data out of the same qube while making the resulting layout reproducible
 from one reviewed configuration.
 
 > **Warning:** SEQS installs [Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html)
-> code that runs as root in dom0. A malicious checkout can compromise the
-> whole machine. Before proceeding, use
-> [VERIFY-HUMAN.md](VERIFY-HUMAN.md) to review what will run and
-> [TRUST.md](TRUST.md) to understand what remains trusted. Those repository
-> documents are guidance, not independent proof.
+> code that runs as root in dom0. A malicious checkout can compromise the whole
+> machine. Your safety rests on installing a **git commit that a source you
+> trust has reviewed and published** — verifying that commit hash (step 2 below)
+> is the one security check you must not skip. Verifying the hash proves the
+> code is exactly that reviewed revision; it does not, by itself, prove the code
+> is safe — that judgment is what you delegate to the reviewer.
 
-## Minimal first install
+## Install (for users)
 
-For explanations and verification details, follow
-[docs/first-install.md](docs/first-install.md). SEQS first **fetches** and
-validates the repository into a review-only area in dom0, then **stages** the
-reviewed Salt files where Qubes can use them, and finally **builds** the
-configured TemplateVMs and AppVMs. The minimum command path is:
+You install by pinning a specific SEQS commit, confirming its hash matches what
+a trusted source published, and running a single command in dom0. The commit
+hash covers the entire repository — including `setup-qubes.sh` itself — so one
+verified hash is the whole integrity check.
 
 1. [Install and verify Qubes OS](docs/install-qubes.md), update it, and reboot.
 
-2. Start a fresh networked Debian DisposableVM and clone the reviewed source;
-   qube selection happens later in dom0:
+2. Start a fresh networked Debian DisposableVM, clone SEQS, check out the commit
+   your trusted source published, and confirm the hash matches:
 
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
+   cd /home/user/SEQS && git checkout <COMMIT> && git rev-parse HEAD
    ```
 
-3. Copy the runner into dom0 and fetch the complete catalogue for review.
-   Replace both `disp1234` occurrences with the disposable's name:
+   The printed hash **must** equal the one published by the source you trust
+   (release announcement, maintainer channel, etc.). If it differs, stop. Git's
+   content-addressing guarantees the working tree is exactly that commit.
+
+3. Copy the runner into dom0 and install in one step. Replace both `disp1234`
+   occurrences with the disposable's name, and pick the qubes you want:
 
    ```bash
    qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
-   ~/s.sh --repo-vm disp1234 --fetch-only
+   ~/s.sh --repo-vm disp1234 --qubes brave,signal,keepass
    ```
 
-4. Follow the [fetched-tree review instructions](docs/first-install.md#7-review-and-stage-the-fetched-tree),
-   then stage and build it. The disposable can be shut down after fetching:
-
-   ```bash
-   ~/s.sh --stage-only
-   ~/s.sh --build-only --qubes brave,signal,keepass
-   ```
-
-Running `~/s.sh --repo-vm disp1234 --all` without a stage flag performs fetch,
-stage, and a full-catalogue build in order, requiring `y` at each default-no
-`[y/N]` prompt. Every build requires either `--qubes NAME[,NAME...]` or explicit
-`--all`.
+   This one command fetches, stages, and builds after a single confirmation; the
+   disposable can be shut down once it finishes. Use `--all` instead of `--qubes`
+   for the entire catalogue — every install requires one or the other.
 
 Do not put secrets into the resulting qubes until completing the post-install
-checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md).
+checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use
+[docs/upgrading.md](docs/upgrading.md); do not reinstall Qubes.
 
-Already installed SEQS? Use [docs/upgrading.md](docs/upgrading.md); do not
-reinstall Qubes.
+## Reviewers
+
+If you are the one **auditing SEQS and publishing an authoritative commit hash**
+for others (or you want to audit before trusting anyone else's), do not stop at
+the hash — read the code that will run as root in dom0:
+[VERIFY-HUMAN.md](VERIFY-HUMAN.md) is the structured review walkthrough,
+[VERIFY-LLM.md](VERIFY-LLM.md) the machine-runnable cross-check, and
+[TRUST.md](TRUST.md) explains what remains trusted. The
+[full first-install walkthrough](docs/first-install.md) covers the fetch → stage
+→ build stages in detail and the separate `--fetch-only` / `--stage-only` /
+`--build-only` commands for pausing between them.
 
 ## Documentation
 
