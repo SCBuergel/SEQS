@@ -131,7 +131,8 @@ After install:
 - `qvm-ls` shows the expected templates (`Z-*`) and app qubes (`A-*`). Pay attention to labels (they encode the trust taxonomy in `config.sls`): `A-keepass` should be `black`, `A-wallet-ledger`/`A-wallet-trezor` `gray`, `A-dev-full` `orange`, browsers/chat `red`/`green`, etc.
 - `qvm-prefs A-keepass netvm` should print nothing / `None` (the offline qube) — the runner already verified this before provisioning, but check it yourself.
 - If using WireGuard, `qvm-prefs A-wireguard provides_network` should print
-  `True`; after importing the configuration, `sudo wg show` inside
+  `True`; `/usr/bin/seqs-wireguard-import` and `~/WireGuard` should exist in
+  `A-wireguard`; after importing the configuration, `sudo wg show` inside
   `A-wireguard` should report a recent handshake. Attach a test qube, confirm
   its public IP is the VPN's, then run `sudo wg-quick down wg0` and confirm the
   test qube loses both IP and DNS connectivity (fail closed) before bringing

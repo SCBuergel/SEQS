@@ -105,11 +105,15 @@ deliberately unconfigured until you supply a secret configuration inside that
 qube; the WireGuard private key never enters the repository or dom0.
 
 Copy a provider `.conf` file to `A-wireguard` with Qubes' normal
-**Copy to Other AppVM** action (or `qvm-copy-to-vm A-wireguard FILE`). In an
-`A-wireguard` terminal, import the received file:
+**Copy to Other AppVM** action (or `qvm-copy-to-vm A-wireguard FILE`). Qubes
+creates `~/QubesIncoming/SOURCE_QUBE` when the copy arrives; SEQS intentionally
+removes `QubesIncoming` at boot and shutdown, so it need not exist beforehand.
+Move the received file into the persistent, pre-created `~/WireGuard` drop
+directory and import it:
 
 ```bash
-seqs-wireguard-import ~/QubesIncoming/SOURCE_QUBE/provider.conf
+mv ~/QubesIncoming/SOURCE_QUBE/provider.conf ~/WireGuard/
+seqs-wireguard-import ~/WireGuard/provider.conf
 ```
 
 The importer requires a full-tunnel IPv4 configuration, stores it root-only at

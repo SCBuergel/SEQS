@@ -176,6 +176,27 @@ An app-qube marker uses `.app.done` instead of `.template.done`. Do not delete
 all markers casually: that may rerun network downloads, package installation,
 or per-qube initialization that was designed as a one-time action.
 
+#### Repairing an existing WireGuard qube without the importer
+
+Early versions of the WireGuard component installed its importer under the
+template's `/usr/local`, which Qubes hides behind the AppVM-private
+`/rw/usrlocal` bind mount. After fetching, reviewing, and staging a revision
+containing the corrected component, deliberately rerun both WireGuard roles:
+
+```bash
+qvm-run -u root A-wireguard \
+  'rm -f /rw/config/seqs/wireguard.app.done'
+qvm-shutdown --wait A-wireguard
+qvm-run -u root Z-wireguard \
+  'rm -f /rw/config/seqs/wireguard.template.done'
+qvm-shutdown --wait Z-wireguard
+~/s.sh --build-only --qubes wireguard
+```
+
+Afterward, `A-wireguard` should contain both
+`/usr/bin/seqs-wireguard-import` and the persistent `~/WireGuard` drop
+directory.
+
 ### Removing or rebuilding managed qubes
 
 Removing an entry from configuration is intentionally non-destructive. If you

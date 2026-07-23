@@ -40,7 +40,7 @@ fi
 sudo install -d -m 0700 /rw/config/seqs-wireguard
 sudo install -m 0600 -o root -g root "$source_file" /rw/config/seqs-wireguard/wg0.conf
 
-if sudo /usr/local/sbin/seqs-wireguard start; then
+if sudo /usr/sbin/seqs-wireguard start; then
 	echo "WireGuard configuration installed and tunnel started."
 else
 	echo "ERROR: configuration was saved, but the tunnel did not start." >&2

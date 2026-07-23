@@ -469,6 +469,15 @@ def test_qube_wireguard_component():
           "WireGuard app hooks should render")
     check("seqs-default-browser" not in app,
           "the network provider's no_handoff flag should suppress browser handoff")
+    installer = os.path.join(
+        sr.REPO_ROOT, "install-scripts", "components", "wireguard",
+        "template-vm.sh")
+    with open(installer, encoding="utf-8") as f:
+        installer_text = f.read()
+    check("/usr/bin/seqs-wireguard-import" in installer_text,
+          "WireGuard importer must be installed in template-inherited /usr")
+    check("/usr/local" not in installer_text,
+          "WireGuard importer must not be hidden by AppVM-private /usr/local")
 
 
 def test_qube_browser_itself_no_selfhandoff():
