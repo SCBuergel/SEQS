@@ -142,7 +142,10 @@ After install:
   `10.139.1.1` and `10.139.1.2`; inside `A-wireguard`,
   `sudo nft list chain ip qubes dnat-dns` should translate those addresses to
   the DNS selected by the WireGuard configuration. Import and boot output
-  should contain no `resolvconf` warning.
+  should contain no `resolvconf` warning. Inside `A-wireguard`,
+  `sudo nft list chain ip qubes seqs-wireguard-dns-output` should show the
+  equivalent output-hook translations, and both `getent hosts example.com`
+  there and in the test client should succeed.
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `gray`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - `qvm-features A-keepass seqs-managed` prints `1` for every SEQS-built qube (the no-clobber marker), and `/var/lib/seqs/intents/` in dom0 is empty after a clean run.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.

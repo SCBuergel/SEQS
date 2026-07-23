@@ -57,8 +57,17 @@ done
 rules=$'add table ip qubes\n'
 rules+=$'add chain ip qubes dnat-dns\n'
 rules+=$'delete chain ip qubes dnat-dns\n'
+rules+=$'add chain ip qubes seqs-wireguard-dns-output\n'
+rules+=$'delete chain ip qubes seqs-wireguard-dns-output\n'
 rules+=$'table ip qubes {\nchain dnat-dns {\n'
 rules+=$'type nat hook prerouting priority dstnat; policy accept;\n'
+for i in "${!qubes_dns[@]}"; do
+	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
+	rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'
+	rules+="ip daddr ${qubes_dns[$i]} tcp dport 53 dnat to ${destination}"$'\n'
+done
+rules+=$'}\nchain seqs-wireguard-dns-output {\n'
+rules+=$'type nat hook output priority dstnat; policy accept;\n'
 for i in "${!qubes_dns[@]}"; do
 	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
 	rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'

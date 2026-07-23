@@ -501,6 +501,10 @@ def test_qube_wireguard_component():
           "DNS updater must atomically replace Qubes' native dnat-dns chain")
     check("/qubes-netvm-primary-dns" in dns_text,
           "DNS updater must obtain client resolver addresses from QubesDB")
+    check("type nat hook output priority dstnat" in dns_text,
+          "DNS updater must translate provider-qube-local resolver requests")
+    check("seqs-wireguard-dns-output" in dns_text,
+          "provider-qube DNS output must use its own narrowly scoped chain")
 
 
 def test_qube_browser_itself_no_selfhandoff():
