@@ -12,10 +12,11 @@ from one reviewed configuration.
 > code that runs as root in dom0. A malicious checkout can compromise the whole
 > machine. Your safety rests on installing a **git commit that a source you
 > trust has reviewed and published** — verifying that commit hash (step 2 below)
-> is the one security check you must not skip. Verifying the hash proves the
-> code is exactly that reviewed revision; it does not, by itself, prove the code
-> is safe — that judgment is what you delegate to the reviewer. Who that trusted
-> source is, and why you trust them, is **out of scope of this repository**:
+> is the one security check you must not skip. Verifying the hash authenticates
+> the reviewed Git object; the commit-bound export below prevents local
+> working-tree drift from entering the install. It does not, by itself, prove
+> the code is safe — that judgment is what you delegate to the reviewer. Who
+> that trusted source is, and why you trust them, is **out of scope of this repository**:
 > nothing a repository says about its own trustworthiness can anchor it. If you
 > have no such source, you are the reviewer (see below).
 
@@ -38,7 +39,9 @@ verified hash is the whole integrity check.
 
    The printed hash **must** equal the one published by the source you trust
    (release announcement, maintainer channel, etc.). If it differs, stop. Git's
-   content-addressing guarantees the working tree is exactly that commit.
+   content-addressing authenticates the committed object. A clean
+   `git status --short` separately confirms that the checkout has no local
+   modifications or untracked files.
    The published hash must reach you through a channel **independent of this
    repository and the page you cloned it from** — a hash read off the same
    GitHub page you clone verifies nothing, because whoever controls that page
@@ -48,13 +51,16 @@ verified hash is the whole integrity check.
    occurrences with the disposable's name, and pick the qubes you want:
 
    ```bash
-   qvm-run -p disp1234 "cat /home/user/SEQS/setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
-   ~/s.sh --repo-vm disp1234 --qubes brave,signal,keepass
+   qvm-run -p disp1234 "git -C /home/user/SEQS show <COMMIT>:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+   ~/s.sh --commit <COMMIT> --repo-vm disp1234 --qubes brave,signal,keepass
    ```
 
-   This one command fetches, stages, and builds after a single confirmation; the
-   disposable can be shut down once it finishes. Use `--all` instead of `--qubes`
-   for the entire catalogue — every install requires one or the other.
+   Use the same full commit ID in both commands. The runner asks Git in the
+   disposable to archive `salt/` and `install-scripts/` from that commit object,
+   never from the live working tree. This one command fetches, stages, and
+   builds after a single confirmation; the disposable can be shut down once it
+   finishes. Use `--all` instead of `--qubes` for the entire catalogue — every
+   install requires one or the other.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use

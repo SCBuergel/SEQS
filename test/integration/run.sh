@@ -28,6 +28,8 @@ new_sandbox() {
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
 	export SEQS_REPO_VM="personal"
 	export SEQS_REPO_ROOT="${REPO}"
+	export SEQS_EXPECTED_COMMIT
+	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
 	unset SEQS_MOCK_SUDO_LOG
@@ -36,8 +38,18 @@ new_sandbox() {
 }
 REPO_ORIG_PATH="${PATH}"
 
-run_setup() {  # runs setup-qubes.sh under a pty, capturing combined output
-	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" "$@"
+run_setup() {  # supplies the reviewed commit to workflows that include FETCH
+	local arg
+	for arg in "$@"; do
+		case "${arg}" in
+			--stage-only|--build-only)
+				python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" "$@"
+				return
+				;;
+		esac
+	done
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+		--commit "${SEQS_EXPECTED_COMMIT}" "$@"
 }
 
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
@@ -46,12 +58,16 @@ new_sandbox
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
+grep -q "Fetching salt tree from commit ${SEQS_EXPECTED_COMMIT}" <<<"$out" \
+	&& ok || bad "expected the reviewed commit to be shown"
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
 # The tree really landed in the sandbox /srv, root markers and all.
 [ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "dom0.sls not installed into sandbox /srv"
 [ -f "${SEQS_SALT_TREE}/.seqs-managed" ] && ok || bad "missing .seqs-managed marker"
+[ "$(cat "${SEQS_FETCH_ROOT}/source-commit" 2>/dev/null)" = "${SEQS_EXPECTED_COMMIT}" ] \
+	&& ok || bad "fetched source commit was not recorded"
 [ -f "${SEQS_SALT_TREE}/files/components/brave/template-vm.sh" ] && ok \
 	|| bad "component payload not staged into files/"
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "targets file not written by dom0 apply"
@@ -63,6 +79,23 @@ grep -q "disposable D-qr-display offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && 
 	|| bad "the named disposable should be listed offline in targets"
 grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 	|| bad "the named disposable should be independently air-gap verified"
+rm -rf "${SBX}"
+
+# ── Scenario 1b: fetch requires a full reviewed commit ID ─────────────────
+echo "== scenario: fetch requires and validates the reviewed commit ID =="
+new_sandbox
+out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetch requires --commit" <<<"$out" && ok \
+	|| bad "fetch without --commit should be refused"
+out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--commit 'HEAD;touch /tmp/unsafe' --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "full 40- or 64-hex" <<<"$out" && ok \
+	|| bad "unsafe or abbreviated commit IDs should be refused"
+out="$(SEQS_REPO_PATH='/home/user/SEQS;touch_unsafe' \
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "unsafe repository path" <<<"$out" && ok \
+	|| bad "a shell-active repository path should be refused"
 rm -rf "${SBX}"
 
 # ── Scenario 2: later stages refuse when prerequisites are absent ──────────

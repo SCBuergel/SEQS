@@ -114,8 +114,9 @@ not equivalent to permanent hardware separation.
 ## Adding this to an existing SEQS installation
 
 Follow the general [upgrade procedure](upgrading.md): update and configure the
-repository source of truth, copy the current runner into dom0, fetch with
-`--fetch-only`, review the fetched tree, stage with `--stage-only`, and build
+repository source of truth, copy the runner from the reviewed commit into dom0,
+fetch that same ID with `--commit <COMMIT> --fetch-only`, review the fetched
+tree, stage with `--stage-only`, and build
 with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
 `qr-staging` outside sequential mode).
 Configure and verify the controller described above **before** applying.

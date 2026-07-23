@@ -8,14 +8,18 @@ data flow and controls. For the per-component trust analysis see
 
 ## What the runner does, in order
 
-1. **Fetch (once).** A single `tar` transfer of `salt/` + `install-scripts/`
-   from `REPO_VM` into dom0. Every archive entry is validated before extraction
+1. **Fetch (once).** The runner requires the full reviewed Git object ID as
+   `--commit`. In `REPO_VM`, it verifies that object resolves to a commit and
+   runs `git archive` for that commit's `salt/` + `install-scripts/` paths,
+   never the live working tree. Every archive entry is validated before
+   extraction
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
    This is the **only** VM→dom0 data flow in the whole system. The transfer
    SHA256 is printed as a diagnostic; integrity is anchored by the git commit
    hash the operator verifies in the disposable, which covers the whole
-   repository (including `setup-qubes.sh`).
+   repository. The bootstrap command likewise obtains `setup-qubes.sh` with
+   `git show <COMMIT>:setup-qubes.sh`.
 
 2. **Stage.** `--fetch-only` saves validated data under
    `/var/lib/seqs/fetched` for review. `--stage-only` requires a completed fetch,
@@ -74,16 +78,22 @@ behavior by change type.
 
 ## Bootstrap window
 
-The dom0 one-liner that copies `setup-qubes.sh` out of the repo qube appends
+The dom0 one-liner that copies the committed `setup-qubes.sh` object out of the
+repo qube appends
 `2>/dev/null` to the `qvm-run` step deliberately. The fetch happens **before**
 `setup-qubes.sh` exists in dom0 (and therefore before its `sanitize()` terminal
 filter is available), so any bytes the source qube writes to stderr would land
 directly on the dom0 terminal. A compromised repo qube could otherwise emit
 ANSI / CSI / OSC sequences (window-title smuggling, OSC 52 clipboard write,
-repaint of earlier lines) during the `cat`. Dropping stderr closes that
-bootstrap window; if the `cat` fails, `s.sh` ends up empty/partial and `./s.sh`
-fails loudly on its own. The runner reuses the same defense on its own fetch and
-routes every later display path through `sanitize()`.
+repaint of earlier lines) during `git show`. Dropping stderr closes that
+bootstrap window; if the export fails, `s.sh` ends up empty/partial and
+`./s.sh` fails loudly on its own. The runner reuses the same defense on its own
+fetch and routes every later display path through `sanitize()`.
+
+Neither operation makes Git or `REPO_VM` independently verifiable by dom0.
+A compromised source qube can lie about what `git show` or `git archive`
+returned. Commit-object export prevents accidental or local working-tree drift;
+the source qube remains an explicit trust assumption.
 
 ## Composition model
 

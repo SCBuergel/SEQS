@@ -65,18 +65,18 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### `REPO_VM` — the qube hosting the repo
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
-- **Established by:** 📝 Your choice of qube; it is contacted exactly once by the fetch stage. Stage-only and build-only runs never contact it.
-- **Residual risk:** The fetched tree eventually becomes root-executed Salt code in dom0, so a compromised `REPO_VM` compromises dom0 unless review catches the malicious bytes. A disposable limits persistence and cross-contamination but does not authenticate the download.
+- **Established by:** 📝 Your choice of qube; it is contacted exactly once by the fetch stage. Stage-only and build-only runs never contact it. Fetch requires the independently reviewed full commit ID and asks Git in this qube to archive that commit object rather than the live working tree.
+- **Residual risk:** Commit-object export prevents modified or untracked working-tree files from being included accidentally; dom0 does not independently run Git or reconstruct the object graph. A compromised `REPO_VM` can lie about `git show` or `git archive`, and the fetched tree eventually becomes root-executed Salt code in dom0, so source-qube compromise still compromises dom0 unless review catches the malicious bytes. A disposable limits persistence and cross-contamination but does not authenticate the download.
 - **Guidance for the operator:** The README's first-install path uses a fresh networked DisposableVM, passes its name with `--repo-vm`, keeps it alive only through `--fetch-only`, and then destroys it. Do **not** use a daily `personal` qube. For ongoing maintenance, either repeat the disposable workflow or use a dedicated, minimal, network-light repo qube.
 
-### The dom0 "cat hack" bootstrap copy
-- **Trust assumption:** `qvm-run -p REPO_VM cat setup-qubes.sh` returns the genuine runner.
-- **Established by:** ❌ Nothing — a raw byte copy with no integrity check, used **only** to bootstrap `setup-qubes.sh` itself. This is the documented Qubes way to move a file into dom0, and is exactly why review must happen *before* running anything.
-- **Residual risk:** No tamper detection between `REPO_VM` and dom0 for this one file; mitigated only by manual review and by `REPO_VM` being trusted. The documented bootstrap command appends `2>/dev/null` to `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter doesn't yet exist at this stage, so stderr would otherwise reach the terminal raw.
+### The dom0 bootstrap copy
+- **Trust assumption:** `qvm-run -p REPO_VM git show COMMIT:setup-qubes.sh` returns the runner from the reviewed commit.
+- **Established by:** 📝 The documented command names the same full commit ID the operator independently verified; it does not read the live working tree.
+- **Residual risk:** Dom0 does not independently verify Git objects, so a compromised `REPO_VM` can still return different bytes. This is mitigated only by manual review and by `REPO_VM` being trusted. The documented bootstrap command appends `2>/dev/null` to `qvm-run` so a compromised `REPO_VM` cannot emit ANSI / CSI / OSC sequences to dom0's terminal during the fetch — the runner's `sanitize()` filter does not yet exist at this stage, so stderr would otherwise reach the terminal raw.
 
 ### Fetch, review, and staging
 - **Trust assumption:** The tree staged under `/srv` is the fetched tree you reviewed.
-- **Established by:** 📝 Fetch validates one tar stream and saves it under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the `/srv` diff, and copies it root-owned. Build requires the stage completion markers.
+- **Established by:** 📝 Fetch requires `--commit`, exports `salt/` and `install-scripts/` from that Git commit object rather than the live working tree, validates one tar stream, records the requested ID in `/var/lib/seqs/fetched/source-commit`, and saves the tree under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the `/srv` diff, and copies it root-owned. Build requires the stage completion markers.
 - **Residual risk:** These boundaries help only if the operator reviews the fetched data before staging and building it.
 
 ### `setup-qubes.sh` (thin dom0 runner)
