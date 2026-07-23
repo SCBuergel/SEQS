@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ ${1-} == start && $# -eq 1 ]]; then
+	exec /rw/config/seqs-wireguard/boot.sh
+fi
+
+usage() {
+	echo "Usage: seqs-wireguard-import PATH-TO-WIREGUARD.conf" >&2
+	exit 2
+}
+
+[[ $# -eq 1 ]] || usage
+source_file=$1
+[[ -f "$source_file" && ! -L "$source_file" ]] || {
+	echo "ERROR: configuration must be a regular, non-symlink file" >&2
+	exit 1
+}
+
+# Validate the needed shape without ever echoing secret values.
+grep -Eq '^[[:space:]]*\[Interface\][[:space:]]*$' "$source_file" &&
+	grep -Eq '^[[:space:]]*\[Peer\][[:space:]]*$' "$source_file" &&
+	grep -Eq '^[[:space:]]*PrivateKey[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*Address[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*DNS[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*PublicKey[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*Endpoint[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=.*0\.0\.0\.0/0' "$source_file" || {
+	echo "ERROR: file is not a complete full-tunnel WireGuard configuration" >&2
+	exit 1
+}
+
+# wg-quick executes hook values as root. Provider exports do not need them, so
+# refuse a file that could turn import into arbitrary command execution.
+if grep -Eiq '^[[:space:]]*(PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "$source_file"; then
+	echo "ERROR: executable wg-quick hook directives are not accepted" >&2
+	exit 1
+fi
+
+sudo install -d -m 0700 /rw/config/seqs-wireguard
+sudo install -m 0600 -o root -g root "$source_file" /rw/config/seqs-wireguard/wg0.conf
+
+if sudo /usr/local/sbin/seqs-wireguard start; then
+	echo "WireGuard configuration installed and tunnel started."
+else
+	echo "ERROR: configuration was saved, but the tunnel did not start." >&2
+	echo "Downstream qubes remain fail-closed; inspect: sudo journalctl -b" >&2
+	exit 1
+fi

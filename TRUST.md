@@ -201,6 +201,20 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
 
 ## 4. Runtime & inter-qube wiring
 
+### WireGuard NetVM
+- **Trust assumption:** Debian's `wireguard-tools` and `resolvconf` packages,
+  Qubes networking/firewall services, the selected VPN provider, and the
+  operator-supplied WireGuard configuration behave as expected.
+- **Established by:** ✅ Software is installed from the configured,
+  Debian-signed apt repositories. The provider configuration is supplied
+  directly inside `A-wireguard`; SEQS does not download or authenticate it.
+- **Residual risk:** The VPN provider sees tunnel metadata and egress traffic,
+  while the upstream network sees the VPN endpoint. The local forwarding
+  killswitch protects client qubes, but `A-wireguard` itself retains upstream
+  access in order to establish the tunnel. A malicious configuration or
+  compromised VPN qube can alter routing; use a separate downstream firewall
+  qube where defense against VPN-qube compromise is required.
+
 ### Browser-link policy (`qubes.OpenURL` → `A-brave`)
 - **Component:** the `seqs.dom0` state (`salt/seqs/dom0.sls`) writes `/etc/qubes/policy.d/29-browser.policy` (the catch-all `@anyvm → A-brave allow`) AND `/etc/qubes/policy.d/28-browser-suppress.policy` (deny rules for every qube spec carrying `offline` or `no_handoff`). The 28- file is evaluated before the 29- file (qrexec first-match-wins), so the deny fires before the catch-all allow for opted-out qubes. Both are root-owned `file.managed` states carrying a `Managed by SEQS` header; a pre-existing policy file *without* that header is never silently overwritten — the runner's `confirmPolicyTakeover` blocks on a default-no `[y/N]` confirmation before any state runs, and only `y`/`Y` proceeds. The link-handoff handler (`/usr/share/applications/open-links-in-browser-qube.desktop`) is installed once per template by the `seqs.qube` state (so it exists, but inert, in every qube), while the per-qube xdg default that actually activates it (`xdg-settings set default-web-browser`) is skipped for `offline`/`no_handoff` qubes — so for those qubes the handler is never the default *and* the dom0 deny blocks the handoff regardless.
 - **Trust assumption:** `A-brave` can safely handle arbitrary, possibly hostile URLs handed to it by any qube that *is* allowed to drive the handoff.

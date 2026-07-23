@@ -36,7 +36,7 @@ separate build-plan hash and records the canonical selection in
 The shipped catalogue currently exposes these base names:
 
 ```text
-brave  element  telegram  signal  openoffice  xournalpp
+brave  element  telegram  signal  wireguard  openoffice  xournalpp
 usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
 dev-full  wallet-ledger  wallet-trezor
 ```
@@ -65,6 +65,7 @@ it once `A-brave` already exists.
 | `telegram`     | Telegram via snap (`telegram-desktop`) |
 | `trezor`       | Trezor udev rules |
 | `vscode`       | Visual Studio Code |
+| `wireguard`    | WireGuard tools and persistent, fail-closed NetVM hooks (Debian apt) |
 | `xournalpp`    | Xournal++ (Debian package) |
 
 ## `qube_catalog` flags
@@ -87,6 +88,45 @@ flags:
   "Templates". Requires `dispvm_template`; the shipped `qr-display` entry uses
   it. The named disposable inherits the offline air gap and is reset on every
   shutdown, so nothing is provisioned inside it.
+- `'network_provider': True` — enables `provides_network` and the
+  `qubes-firewall` service on the app qube, allowing other qubes to select it
+  as their NetVM. It cannot be combined with `offline` or `dispvm_template`.
+
+## WireGuard NetVM
+
+Select `wireguard` like any other optional catalogue entry:
+
+```bash
+~/s.sh --build-only --qubes wireguard
+```
+
+The result is `A-wireguard`, an AppVM that provides networking. Its tunnel is
+deliberately unconfigured until you supply a secret configuration inside that
+qube; the WireGuard private key never enters the repository or dom0.
+
+Copy a provider `.conf` file to `A-wireguard` with Qubes' normal
+**Copy to Other AppVM** action (or `qvm-copy-to-vm A-wireguard FILE`). In an
+`A-wireguard` terminal, import the received file:
+
+```bash
+seqs-wireguard-import ~/QubesIncoming/SOURCE_QUBE/provider.conf
+```
+
+The importer requires a full-tunnel IPv4 configuration, stores it root-only at
+`/rw/config/seqs-wireguard/wg0.conf`, starts it immediately, and brings it up
+again at boot. It accepts ordinary provider files containing comments,
+multiple addresses/DNS servers, and IPv6 alongside IPv4, like Proton VPN
+exports.
+For safety, executable wg-quick `PreUp`, `PostUp`, `PreDown`, and `PostDown`
+directives are rejected.
+
+After `sudo wg show` reports a handshake, select `A-wireguard` as the Networking
+NetVM in any client qube's settings. A persistent Qubes firewall hook drops
+forwarded traffic headed to `eth0`, so client qubes fail closed rather than
+falling back to the upstream connection when `wg0` is down. Client DNS requests
+are redirected to the first IPv4 `DNS` server in the imported configuration.
+The VPN qube itself can still contact its upstream network so it can establish
+the tunnel.
 
 Duplicate names abort the pre-flight.
 

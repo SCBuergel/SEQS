@@ -25,7 +25,7 @@ Four things must be true *before* SEQS does anything useful — none of them pro
 Read top-to-bottom, in this order:
 
 1. **`setup-qubes.sh`** — the thin dom0 runner: source selection, terminal sanitization, validated fetch, staging and completion markers, Salt failure detection, policy takeover, and air-gap verification.
-2. **`salt/pillar/seqs/config.sls`** — the reviewed catalogue: prefixes, base template, `browser_vm`, `qube_catalog` (names, labels, components, `offline`/`no_handoff` flags), `brave_extensions`, `cleanup_dirs`, and per-minion slicing. Ordinary selection must not require editing this file; verify that `setup-qubes.sh --qubes` supplies names separately and that each qube receives only its own pillar slice.
+2. **`salt/pillar/seqs/config.sls`** — the reviewed catalogue: prefixes, base template, `browser_vm`, `qube_catalog` (names, labels, components, `offline`/`no_handoff`/`network_provider` flags), `brave_extensions`, `cleanup_dirs`, and per-minion slicing. Ordinary selection must not require editing this file; verify that `setup-qubes.sh --qubes` supplies names separately and that each qube receives only its own pillar slice.
 3. **`salt/seqs/dom0.sls`** — the pre-flight validation block (everything is checked before anything is changed), all generated qrexec policy states (including QR containment when enabled), the no-clobber guard (`seqs-managed` feature + intent markers), qube creation, and the targets file.
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.
 5. **`install-scripts/lib/brave.sh`** — Brave install + keyring verification logic + `ensure_brave`. Also adds the apt-`preferences.d` pin that locks the Brave repo to brave-browser packages only.
@@ -130,6 +130,12 @@ After install:
 
 - `qvm-ls` shows the expected templates (`Z-*`) and app qubes (`A-*`). Pay attention to labels (they encode the trust taxonomy in `config.sls`): `A-keepass` should be `black`, `A-wallet-ledger`/`A-wallet-trezor` `gray`, `A-dev-full` `orange`, browsers/chat `red`/`green`, etc.
 - `qvm-prefs A-keepass netvm` should print nothing / `None` (the offline qube) — the runner already verified this before provisioning, but check it yourself.
+- If using WireGuard, `qvm-prefs A-wireguard provides_network` should print
+  `True`; after importing the configuration, `sudo wg show` inside
+  `A-wireguard` should report a recent handshake. Attach a test qube, confirm
+  its public IP is the VPN's, then run `sudo wg-quick down wg0` and confirm the
+  test qube loses both IP and DNS connectivity (fail closed) before bringing
+  the tunnel back with `sudo /rw/config/seqs-wireguard/boot.sh`.
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `gray`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - `qvm-features A-keepass seqs-managed` prints `1` for every SEQS-built qube (the no-clobber marker), and `/var/lib/seqs/intents/` in dom0 is empty after a clean run.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.

@@ -175,6 +175,12 @@
 {%     if q.get('named_disposable') and not q.get('dispvm_template') %}
 {%       do errors.append("qube '" ~ name ~ "' sets 'named_disposable' but not 'dispvm_template' -- a named disposable can only derive from a dispvm template") %}
 {%     endif %}
+{%     if q.get('network_provider') and q.get('offline') %}
+{%       do errors.append("qube '" ~ name ~ "' sets both 'network_provider' and 'offline' -- a network provider requires an upstream NetVM") %}
+{%     endif %}
+{%     if q.get('network_provider') and q.get('dispvm_template') %}
+{%       do errors.append("qube '" ~ name ~ "' sets both 'network_provider' and 'dispvm_template' -- persistent network-provider configuration requires an AppVM") %}
+{%     endif %}
 {%     if q.get('named_disposable') and (not pdvm or pdvm | regex_match(name_re) is none) %}
 {%       do errors.append("qube '" ~ name ~ "' requests a named disposable but prefix_disposable is missing or unsafe") %}
 {%     endif %}
@@ -439,6 +445,9 @@ seqs-app-{{ name }}:
 {%   if q.get('dispvm_template') %}
       - template_for_dispvms: True
 {%   endif %}
+{%   if q.get('network_provider') %}
+      - provides_network: True
+{%   endif %}
 {%   if (not app_tagged) or (not tpl_exists) %}
     - require:
 {%     if not app_tagged %}
@@ -455,6 +464,17 @@ seqs-offline-{{ name }}:
   cmd.run:
     - name: qvm-prefs -- {{ app }} netvm none
     - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+
+{%   if q.get('network_provider') %}
+# Network providers must run Qubes' firewall service so downstream firewall
+# policy is enforced and /rw/config/qubes-firewall-user-script is applied.
+seqs-network-provider-{{ name }}:
+  cmd.run:
+    - name: qvm-service --enable {{ app }} qubes-firewall
+    - unless: test "$(qvm-service -- {{ app }} qubes-firewall 2>/dev/null)" = "1"
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}

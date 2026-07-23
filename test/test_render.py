@@ -383,6 +383,14 @@ def test_dom0_validation_catches_bad_config():
     # that fails everything).
     check(not _validation_fails(_bad_pillar()),
           "a well-formed minimal pillar must PASS validation")
+    check(_validation_fails(_bad_pillar(
+        qubes={"x": {"label": "purple", "components": ["wireguard"],
+                     "network_provider": True, "offline": True}})),
+        "network_provider + offline is contradictory and must fail validation")
+    check(_validation_fails(_bad_pillar(
+        qubes={"x": {"label": "purple", "components": ["wireguard"],
+                     "network_provider": True, "dispvm_template": True}})),
+        "a persistent network provider must not be a disposable template")
 
 
 def test_dom0_firewall_states():
@@ -399,6 +407,19 @@ def test_dom0_firewall_states():
     txt, _ = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
     check("rpc.example.com" in txt and "dstports=443" in txt,
           "firewall rule should translate host:port into a qvm-firewall accept")
+
+
+def test_dom0_network_provider():
+    case("dom0.sls: a network provider exposes networking and enables firewall")
+    pillar = _bad_pillar(qubes={
+        "wireguard": {"label": "purple", "components": ["wireguard"],
+                      "network_provider": True, "no_handoff": True}})
+    sc = Scenario(existing_qubes=["A-brave"])
+    txt, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    check("provides_network" in txt,
+          "network-provider qvm prefs should expose networking")
+    check("seqs-network-provider-wireguard" in parsed,
+          "network provider should enable the Qubes firewall service")
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +457,18 @@ def test_qube_app_sets_browser_default():
     _, parsed = render_state("qube", "A-element")
     check("seqs-default-browser" in parsed,
           "a normal networked app qube should default its browser to the handoff")
+
+
+def test_qube_wireguard_component():
+    case("qube.sls: WireGuard component renders for template and app")
+    _, template = render_state("qube", "Z-wireguard")
+    _, app = render_state("qube", "A-wireguard")
+    check("seqs-install-wireguard" in template,
+          "WireGuard template installer should render")
+    check("seqs-install-wireguard" in app,
+          "WireGuard app hooks should render")
+    check("seqs-default-browser" not in app,
+          "the network provider's no_handoff flag should suppress browser handoff")
 
 
 def test_qube_browser_itself_no_selfhandoff():
