@@ -127,10 +127,12 @@ directives are rejected.
 After `sudo wg show` reports a handshake, select `A-wireguard` as the Networking
 NetVM in any client qube's settings. A persistent Qubes firewall hook drops
 forwarded traffic headed to `eth0`, so client qubes fail closed rather than
-falling back to the upstream connection when `wg0` is down. Client DNS requests
-are redirected to the first IPv4 `DNS` server in the imported configuration.
-The VPN qube itself can still contact its upstream network so it can establish
-the tunnel.
+falling back to the upstream connection when `wg0` is down. Client qubes retain
+their normal Qubes-generated `/etc/resolv.conf` with `10.139.1.1` and
+`10.139.1.2`: after `wg-quick` selects the provider DNS, the WireGuard boot hook
+runs Qubes' own `qubes-setup-dnat-to-ns` helper to refresh the native
+`dnat-dns` translation. The VPN qube itself can still contact its upstream
+network so it can establish the tunnel.
 
 Duplicate names abort the pre-flight.
 

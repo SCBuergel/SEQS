@@ -197,6 +197,20 @@ Afterward, `A-wireguard` should contain both
 `/usr/bin/seqs-wireguard-import` and the persistent `~/WireGuard` drop
 directory.
 
+If upgrading a WireGuard qube that already has the importer but whose client
+qubes cannot resolve through Qubes' `10.139.1.1`/`.2` addresses, rerun only the
+app role to install the corrected DNS boot hook:
+
+```bash
+qvm-run -u root A-wireguard \
+  'rm -f /rw/config/seqs/wireguard.app.done'
+qvm-shutdown --wait A-wireguard
+~/s.sh --build-only --qubes wireguard
+```
+
+Do not replace `/etc/resolv.conf` in client qubes. It is supposed to retain the
+two Qubes synthetic resolver addresses.
+
 ### Removing or rebuilding managed qubes
 
 Removing an entry from configuration is intentionally non-destructive. If you

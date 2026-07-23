@@ -478,6 +478,20 @@ def test_qube_wireguard_component():
           "WireGuard importer must be installed in template-inherited /usr")
     check("/usr/local" not in installer_text,
           "WireGuard importer must not be hidden by AppVM-private /usr/local")
+    boot_script = os.path.join(
+        sr.REPO_ROOT, "install-scripts", "components", "wireguard",
+        "wireguard-boot.sh")
+    with open(boot_script, encoding="utf-8") as f:
+        boot_text = f.read()
+    check("qubes-setup-dnat-to-ns" in boot_text,
+          "WireGuard boot must refresh Qubes' native DNS DNAT chain")
+    firewall_script = os.path.join(
+        sr.REPO_ROOT, "install-scripts", "components", "wireguard",
+        "wireguard-firewall.sh")
+    with open(firewall_script, encoding="utf-8") as f:
+        firewall_text = f.read()
+    check("seqs-dns" not in firewall_text,
+          "WireGuard must not create a competing custom DNS NAT chain")
 
 
 def test_qube_browser_itself_no_selfhandoff():
