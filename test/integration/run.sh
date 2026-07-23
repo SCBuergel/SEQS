@@ -26,7 +26,6 @@ new_sandbox() {
 	export SEQS_SELECTION_FILE="${SBX}/var/lib/seqs/selection"
 	export SEQS_RUN_MANIFEST="${SBX}/var/lib/seqs/last-run"
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
-	export SEQS_REPO_VM="personal"
 	export SEQS_REPO_ROOT="${REPO}"
 	export SEQS_EXPECTED_COMMIT
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
@@ -49,7 +48,7 @@ run_setup() {  # supplies the reviewed commit to workflows that include FETCH
 		esac
 	done
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-		--commit "${SEQS_EXPECTED_COMMIT}" "$@"
+		--commit "${SEQS_EXPECTED_COMMIT}" --repo-vm test-repo "$@"
 }
 
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
@@ -82,18 +81,27 @@ grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 rm -rf "${SBX}"
 
 # ── Scenario 1b: fetch requires a full reviewed commit ID ─────────────────
-echo "== scenario: fetch requires and validates the reviewed commit ID =="
+echo "== scenario: fetch requires an explicit source and reviewed commit ID =="
 new_sandbox
 out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetch requires --repo-vm" <<<"$out" && ok \
+	|| bad "fetch without --repo-vm should be refused"
+out="$(SEQS_REPO_VM=personal \
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetch requires --repo-vm" <<<"$out" && ok \
+	|| bad "SEQS_REPO_VM must not restore an implicit source qube"
+out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "fetch requires --commit" <<<"$out" && ok \
 	|| bad "fetch without --commit should be refused"
 out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--commit 'HEAD;touch /tmp/unsafe' --fetch-only 2>&1)"; rc=$?
+	--repo-vm test-repo --commit 'HEAD;touch /tmp/unsafe' --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "full 40- or 64-hex" <<<"$out" && ok \
 	|| bad "unsafe or abbreviated commit IDs should be refused"
 out="$(SEQS_REPO_PATH='/home/user/SEQS;touch_unsafe' \
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
+	--repo-vm test-repo --commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "unsafe repository path" <<<"$out" && ok \
 	|| bad "a shell-active repository path should be refused"
 rm -rf "${SBX}"

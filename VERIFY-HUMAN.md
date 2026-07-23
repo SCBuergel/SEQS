@@ -35,7 +35,7 @@ Read top-to-bottom, in this order:
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
 
-For a first install, leave the reviewed repo tree unmodified, run `--commit <COMMIT> --fetch-only`, review `/var/lib/seqs/fetched`, confirm `source-commit` contains that ID, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
+For a first install, leave the reviewed repo tree unmodified, run `--repo-vm <VM> --commit <COMMIT> --fetch-only`, review `/var/lib/seqs/fetched`, confirm `source-commit` contains that ID, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
 
 The README warning is in earnest: you are running these scripts in dom0.
 

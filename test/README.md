@@ -88,7 +88,7 @@ Nothing above proves that software actually installs *inside* a qube — that
 needs a real Salt run. Two options, in ascending fidelity:
 
 1. **Render/compile on a Qubes dom0 without provisioning.** Fetch the tree
-   (`./setup-qubes.sh --commit <COMMIT> --fetch-only`, then `--stage-only`) and dry-run the states:
+   (`./setup-qubes.sh --repo-vm <VM> --commit <COMMIT> --fetch-only`, then `--stage-only`) and dry-run the states:
    ```
    sudo qubesctl --skip-dom0 --targets=Z-brave state.show seqs.qube   # render only
    sudo qubesctl state.apply seqs.dom0 test=True                      # no changes
@@ -97,7 +97,7 @@ needs a real Salt run. Two options, in ascending fidelity:
    anything — a real-Salt superset of Layer 1.
 
 2. **A throwaway Qubes VM.** Install Qubes in a nested VM (or a spare machine),
-   set `REPO_VM` to a scratch qube holding the repo, and run the full flow. Use
+   pass a scratch qube holding the repo with `--repo-vm`, and run the full flow. Use
    a cut-down `qube_catalog` (one networked qube + `keepass`) for a fast smoke, and
    `delete-vms.sh` to reset between runs. This is the closest to production and
    the only thing that catches component install scripts breaking against a real

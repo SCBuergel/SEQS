@@ -12,8 +12,8 @@ managed qubes, and reapplies supported settings to existing managed qubes.
 
 An installed system normally has three relevant copies:
 
-1. The repository checkout in `REPO_VM`, such as
-   `personal:/home/user/SEQS`. This should be the long-term source of truth.
+1. The repository checkout in an explicitly selected `REPO_VM`, such as
+   `seqs-repo:/home/user/SEQS`. This should be the long-term source of truth.
 2. A small runner copied into dom0 as `s.sh`.
 3. The root-owned tree currently staged in dom0 under `/srv/salt/seqs` and
    `/srv/pillar/seqs`.
@@ -257,7 +257,8 @@ power-off-based fallback:
 ```
 
 Then perform the normal upgrade steps above: copy the new runner from the
-reviewed commit, fetch the same ID with `--commit <COMMIT> --fetch-only`,
+reviewed commit, fetch the same ID with
+`--repo-vm <VM> --commit <COMMIT> --fetch-only`,
 review the fetched tree, stage with `--stage-only`, and build
 with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
 `qr-staging` in dedicated mode if it is not otherwise wanted).

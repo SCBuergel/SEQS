@@ -3,22 +3,22 @@
 # SEQS dom0 runner; see docs/architecture.md and docs/configuration.md.
 #
 # Usage:
-#   ./setup-qubes.sh --commit HASH --all
+#   ./setup-qubes.sh --repo-vm VM --commit HASH --all
 #                                   fetch, stage, and build the full catalogue
-#   ./setup-qubes.sh --commit HASH --fetch-only
+#   ./setup-qubes.sh --repo-vm VM --commit HASH --fetch-only
 #                                   fetch and validate into /var/lib/seqs/fetched
 #   ./setup-qubes.sh --stage-only   copy the fetched tree into /srv
 #   ./setup-qubes.sh --build-only --qubes brave,signal
 #   ./setup-qubes.sh --build-only --all
-#   ./setup-qubes.sh --commit HASH  bind fetched files to the reviewed commit
-#   ./setup-qubes.sh --repo-vm VM   fetch from the named repository qube
+#   --commit HASH                   bind fetched files to the reviewed commit
+#   --repo-vm VM                    required explicit repository qube for fetch
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
 
 # ---- Config -- usually set once when first installing SEQS. -----------------
-# REPO_VM/REPO_PATH identify the fetch source. Use --repo-vm as in README §2.
-REPO_VM="${SEQS_REPO_VM:-personal}"
+# The fetch source qube has no default: every fetch must name it explicitly.
+REPO_VM=""
 REPO_PATH="${SEQS_REPO_PATH:-/home/user/SEQS}"
 
 # Filesystem roots. The SEQS_* overrides let the test harness run in a scratch
@@ -514,6 +514,7 @@ VERBOSE="${SEQS_VERBOSE:-0}"
 SELECT_ALL=0
 SELECT_QUBES=""
 EXPECTED_COMMIT=""
+REPO_VM_SET=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--fetch-only) RUN_FETCH=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
@@ -535,7 +536,9 @@ while [ "$#" -gt 0 ]; do
 			;;
 		--repo-vm)
 			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
+			[ "${REPO_VM_SET}" -eq 0 ] || die "--repo-vm may be specified only once"
 			REPO_VM="$2"
+			REPO_VM_SET=1
 			shift
 			;;
 		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --commit HASH, --repo-vm VM, --verbose)" ;;
@@ -551,14 +554,19 @@ if [ "${RUN_BUILD}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 elif [ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ]; then
 	die "--qubes/--all applies only to a build or the full fetch-stage-build workflow"
 fi
-[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe repo qube name: '${REPO_VM}'"
 if [ "${RUN_FETCH}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
+	[ "${REPO_VM_SET}" -eq 1 ] \
+		|| die "fetch requires --repo-vm with the explicit repository qube name"
+	[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		|| die "unsafe repo qube name: '${REPO_VM}'"
 	[[ "${EXPECTED_COMMIT}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] \
 		|| die "fetch requires --commit with the full 40- or 64-hex Git commit ID reviewed by your trusted source"
 	[[ "${REPO_PATH}" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "${REPO_PATH}" != *..* ]] \
 		|| die "unsafe repository path: '${REPO_PATH}'"
 elif [ -n "${EXPECTED_COMMIT}" ]; then
 	die "--commit applies only to --fetch-only or the full fetch-stage-build workflow"
+elif [ "${REPO_VM_SET}" -eq 1 ]; then
+	die "--repo-vm applies only to --fetch-only or the full fetch-stage-build workflow"
 fi
 
 QUBE_APPLY_OPTS=()
