@@ -4,6 +4,13 @@
 name=""; for a in "$@"; do case "$a" in -*|--) ;; *) name="$a" ;; esac; done
 [ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
 grep -q "^${name} " "${SEQS_MOCK_STATE}" || exit 1
+# Match Qubes' refusal to remove a NetVM that still has consumers.
+if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ] \
+	&& awk -v target="${name}" '$2 == target { found=1 } END { exit !found }' \
+		"${SEQS_MOCK_NETVM_STATE}"; then
+	echo "mock qvm-remove: ${name} is still in use as a netvm" >&2
+	exit 1
+fi
 tmp="${SEQS_MOCK_STATE}.tmp"
 grep -v "^${name} " "${SEQS_MOCK_STATE}" > "${tmp}"
 mv "${tmp}" "${SEQS_MOCK_STATE}"

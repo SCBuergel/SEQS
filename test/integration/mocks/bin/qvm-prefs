@@ -1,4 +1,29 @@
 #!/usr/bin/env bash
-# Mock qvm-prefs -- VM netvm : echo the air-gap state. Default empty (= no
-# netvm), so verifyAirgap passes; set SEQS_MOCK_NETVM to simulate a live netvm.
-echo "${SEQS_MOCK_NETVM:-}"
+# Mock qvm-prefs -- VM netvm [VALUE]. SEQS_MOCK_NETVM_STATE stores one
+# "<vm> <netvm>" pair per line and supports mutation; the legacy scalar is used
+# by setup-qubes air-gap scenarios when no state file is configured.
+args=()
+for arg in "$@"; do
+	case "${arg}" in --) ;; *) args+=("${arg}") ;; esac
+done
+vm="${args[0]:-}"
+property="${args[1]:-}"
+value="${args[2]:-}"
+
+if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ]; then
+	if [ "${#args[@]}" -ge 3 ]; then
+		tmp="${SEQS_MOCK_NETVM_STATE}.tmp"
+		awk -v vm="${vm}" -v value="${value}" '
+			$1 == vm { print vm, value; found=1; next }
+			{ print }
+			END { if (!found) print vm, value }
+		' "${SEQS_MOCK_NETVM_STATE}" > "${tmp}"
+		mv "${tmp}" "${SEQS_MOCK_NETVM_STATE}"
+		exit 0
+	fi
+	awk -v vm="${vm}" '$1 == vm { print $2; found=1 } END { exit !found }' \
+		"${SEQS_MOCK_NETVM_STATE}"
+	exit $?
+fi
+
+[ "${property}" = "netvm" ] && echo "${SEQS_MOCK_NETVM:-}"

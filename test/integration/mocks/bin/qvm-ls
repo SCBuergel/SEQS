@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Mock qvm-ls --raw-list from the stateful inventory.
+[ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
+cut -d' ' -f1 "${SEQS_MOCK_STATE}"

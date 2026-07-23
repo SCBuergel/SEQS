@@ -63,12 +63,16 @@ For each supplied base name, the helper:
 1. Rejects unsafe names instead of treating arguments as patterns or options.
 2. Looks for exactly `D-<name>`, `A-<name>`, and `Z-<name>`; unrelated qubes are
    ignored. (`D-<name>` exists only for a `named_disposable` entry.)
-3. Calls `qvm-kill` for matches, then waits up to 30 seconds for them to stop.
-4. Calls `qvm-remove -f` for each match in dependency order — the disposable
+3. Finds qubes whose `netvm` property points to a match and sets that property
+   to `none`. This preserves the dependent qubes and their data while
+   disconnecting their network; Qubes otherwise refuses to remove a NetVM that
+   is in use. Dry-run lists every dependency it would disconnect.
+4. Calls `qvm-kill` for matches, then waits up to 30 seconds for them to stop.
+5. Calls `qvm-remove -f` for each match in dependency order — the disposable
    (`D-`) before the `A-` template it derives from, and `A-` before its `Z-`
    template — permanently removing the qube and its volumes. A removal failure
    stops the script.
-5. Only after `A-<name>` is absent, removes its exact rule from
+6. Only after `A-<name>` is absent, removes its exact rule from
    `/etc/qubes/policy.d/28-browser-suppress.policy`:
 
    ```text

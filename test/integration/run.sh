@@ -195,6 +195,28 @@ grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
 	"stale A-keepass browser deny should have been removed" || ok
 grep -q "A-wallet-ledger" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
 	|| bad "unrelated browser deny was removed"
+# A network provider cannot be removed until consumers are detached. Preserve
+# the consumer but set its netvm to none, including when it is still running.
+printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
+	> "${SEQS_MOCK_STATE}"
+export SEQS_MOCK_NETVM_STATE="${SBX}/netvms.state"
+printf '%s\n' "A-wireguard sys-firewall" "Z-wireguard none" \
+	"A-anon A-wireguard" > "${SEQS_MOCK_NETVM_STATE}"
+before="$(cat "${SEQS_MOCK_NETVM_STATE}")"
+out="$(bash "${REPO}/delete-vms.sh" --dry-run wireguard 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "netvm dependency dry-run exited non-zero ($rc)"
+grep -q "A-anon -> A-wireguard" <<<"$out" && ok \
+	|| bad "dry-run should report the netvm consumer"
+[ "$(cat "${SEQS_MOCK_NETVM_STATE}")" = "$before" ] && ok \
+	|| bad "dry-run must not disconnect a netvm consumer"
+out="$(bash "${REPO}/delete-vms.sh" wireguard 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "network-provider delete run exited non-zero ($rc)"
+grep -q "^A-wireguard " "${SEQS_MOCK_STATE}" && bad "A-wireguard should have been removed" || ok
+grep -q "^Z-wireguard " "${SEQS_MOCK_STATE}" && bad "Z-wireguard should have been removed" || ok
+grep -qxF "A-anon running" "${SEQS_MOCK_STATE}" && ok || bad "netvm consumer must be preserved"
+grep -qxF "A-anon none" "${SEQS_MOCK_NETVM_STATE}" && ok \
+	|| bad "netvm consumer should be disconnected before provider removal"
+unset SEQS_MOCK_NETVM_STATE
 # A named_disposable qube adds a D- object; all three of D-/A-/Z- must go, and
 # the disposable (D-) must be removed before the A- dispvm template it derives
 # from so qvm-remove does not fail on a live dependency.
