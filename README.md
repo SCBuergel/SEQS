@@ -82,6 +82,7 @@ the hash — read the code that will run as root in dom0:
 | Understand trust and residual risk | [TRUST.md](TRUST.md) |
 | Understand the runner and dom0 data flow | [docs/architecture.md](docs/architecture.md) |
 | Select available qubes or customize their definitions | [docs/configuration.md](docs/configuration.md) |
+| Configure and use the WireGuard NetVM | [docs/wireguard.md](docs/wireguard.md) |
 | Upgrade an existing installation | [docs/upgrading.md](docs/upgrading.md) |
 | Delete or rebuild managed qubes | [docs/deleting-vms.md](docs/deleting-vms.md) |
 | Configure secure QR transfer | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |
