@@ -134,13 +134,15 @@ After install:
   `True`; `/usr/bin/seqs-wireguard-import` and `~/WireGuard` should exist in
   `A-wireguard`; after importing the configuration, `sudo wg show` inside
   `A-wireguard` should report a recent handshake. Attach a test qube, confirm
-  its public IP is the VPN's, then run `sudo wg-quick down wg0` and confirm the
-  test qube loses both IP and DNS connectivity (fail closed) before bringing
-  the tunnel back with `sudo /rw/config/seqs-wireguard/boot.sh`.
+  its public IP is the VPN's, then run
+  `sudo wg-quick down /run/seqs-wireguard/wg0.conf` and confirm the test qube
+  loses both IP and DNS connectivity (fail closed) before bringing the tunnel
+  back with `sudo /rw/config/seqs-wireguard/boot.sh`.
   The test qube's `/etc/resolv.conf` should remain Qubes-managed with
   `10.139.1.1` and `10.139.1.2`; inside `A-wireguard`,
   `sudo nft list chain ip qubes dnat-dns` should translate those addresses to
-  the DNS selected by the WireGuard configuration.
+  the DNS selected by the WireGuard configuration. Import and boot output
+  should contain no `resolvconf` warning.
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `gray`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - `qvm-features A-keepass seqs-managed` prints `1` for every SEQS-built qube (the no-clobber marker), and `/var/lib/seqs/intents/` in dom0 is empty after a clean run.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.

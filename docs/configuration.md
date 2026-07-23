@@ -129,10 +129,12 @@ NetVM in any client qube's settings. A persistent Qubes firewall hook drops
 forwarded traffic headed to `eth0`, so client qubes fail closed rather than
 falling back to the upstream connection when `wg0` is down. Client qubes retain
 their normal Qubes-generated `/etc/resolv.conf` with `10.139.1.1` and
-`10.139.1.2`: after `wg-quick` selects the provider DNS, the WireGuard boot hook
-runs Qubes' own `qubes-setup-dnat-to-ns` helper to refresh the native
-`dnat-dns` translation. The VPN qube itself can still contact its upstream
-network so it can establish the tunnel.
+`10.139.1.2`. Because Qubes owns `/etc/resolv.conf`, the boot hook removes
+`DNS=` only from the temporary configuration passed to `wg-quick`, reads the
+provider DNS from the unchanged persistent configuration, and atomically
+updates Qubes' native `dnat-dns` chain. The firewall hook reasserts that mapping
+whenever Qubes rebuilds its rules. The VPN qube itself can still contact its
+upstream network so it can establish the tunnel.
 
 Duplicate names abort the pre-flight.
 

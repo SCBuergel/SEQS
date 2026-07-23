@@ -202,7 +202,7 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
 ## 4. Runtime & inter-qube wiring
 
 ### WireGuard NetVM
-- **Trust assumption:** Debian's `wireguard-tools` and `resolvconf` packages,
+- **Trust assumption:** Debian's `wireguard-tools` package,
   Qubes networking/firewall services, the selected VPN provider, and the
   operator-supplied WireGuard configuration behave as expected.
 - **Established by:** ✅ Software is installed from the configured,

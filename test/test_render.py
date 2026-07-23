@@ -483,15 +483,24 @@ def test_qube_wireguard_component():
         "wireguard-boot.sh")
     with open(boot_script, encoding="utf-8") as f:
         boot_text = f.read()
-    check("qubes-setup-dnat-to-ns" in boot_text,
-          "WireGuard boot must refresh Qubes' native DNS DNAT chain")
+    check("sed " in boot_text and "dns.sh" in boot_text,
+          "WireGuard boot must omit DNS from wg-quick and update Qubes DNS")
     firewall_script = os.path.join(
         sr.REPO_ROOT, "install-scripts", "components", "wireguard",
         "wireguard-firewall.sh")
     with open(firewall_script, encoding="utf-8") as f:
         firewall_text = f.read()
-    check("seqs-dns" not in firewall_text,
-          "WireGuard must not create a competing custom DNS NAT chain")
+    check("dns.sh" in firewall_text and "seqs-dns" not in firewall_text,
+          "firewall refresh must reassert Qubes dnat-dns, not a custom chain")
+    dns_script = os.path.join(
+        sr.REPO_ROOT, "install-scripts", "components", "wireguard",
+        "wireguard-dns.sh")
+    with open(dns_script, encoding="utf-8") as f:
+        dns_text = f.read()
+    check("delete chain ip qubes dnat-dns" in dns_text,
+          "DNS updater must atomically replace Qubes' native dnat-dns chain")
+    check("/qubes-netvm-primary-dns" in dns_text,
+          "DNS updater must obtain client resolver addresses from QubesDB")
 
 
 def test_qube_browser_itself_no_selfhandoff():

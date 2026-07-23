@@ -6,6 +6,7 @@ install -d -m 0700 "${HOME}/WireGuard"
 sudo install -d -m 0700 /rw/config/seqs-wireguard
 sudo install -m 0755 "${ASSET_DIR}/wireguard-boot.sh" /rw/config/seqs-wireguard/boot.sh
 sudo install -m 0755 "${ASSET_DIR}/wireguard-firewall.sh" /rw/config/seqs-wireguard/firewall.sh
+sudo install -m 0755 "${ASSET_DIR}/wireguard-dns.sh" /rw/config/seqs-wireguard/dns.sh
 sudo touch /rw/config/rc.local /rw/config/qubes-firewall-user-script
 sudo chmod 0755 /rw/config/rc.local /rw/config/qubes-firewall-user-script
 

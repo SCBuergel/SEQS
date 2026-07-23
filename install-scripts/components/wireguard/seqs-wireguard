@@ -23,6 +23,7 @@ grep -Eq '^[[:space:]]*\[Interface\][[:space:]]*$' "$source_file" &&
 	grep -Eq '^[[:space:]]*PrivateKey[[:space:]]*=' "$source_file" &&
 	grep -Eq '^[[:space:]]*Address[[:space:]]*=' "$source_file" &&
 	grep -Eq '^[[:space:]]*DNS[[:space:]]*=' "$source_file" &&
+	grep -Eq '^[[:space:]]*DNS[[:space:]]*=.*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "$source_file" &&
 	grep -Eq '^[[:space:]]*PublicKey[[:space:]]*=' "$source_file" &&
 	grep -Eq '^[[:space:]]*Endpoint[[:space:]]*=' "$source_file" &&
 	grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=.*0\.0\.0\.0/0' "$source_file" || {

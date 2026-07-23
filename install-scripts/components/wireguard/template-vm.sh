@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-echo "Installing WireGuard and its DNS helper..."
+echo "Installing WireGuard..."
 sudo apt-get update
-sudo apt-get install -y wireguard-tools resolvconf
+sudo apt-get install -y wireguard-tools
 
 ASSET_DIR="$(dirname "$0")"
 # The local hierarchy is an AppVM-private bind mount in Qubes and would hide
