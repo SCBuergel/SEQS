@@ -54,7 +54,7 @@ it once `A-brave` already exists.
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
-| `gnosisvpn`    | GnosisVPN NetVM prerequisites and dynamic Qubes DNS/fail-closed hooks; not GnosisVPN itself |
+| `gnosisvpn`    | Pinned, signed GnosisVPN snapshot for `rotsee` plus dynamic Qubes DNS/fail-closed hooks |
 | `keepass`      | KeePassXC AppImage (GPG-verified) |
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |
@@ -104,10 +104,10 @@ and firewall behavior.
 ## GnosisVPN NetVM preparation
 
 The optional `gnosisvpn` entry builds `A-gnosisvpn`, installs Debian's
-`wireguard-tools` and `openresolv`, and configures dynamic Qubes-aware DNS and
-fail-closed forwarding hooks. It deliberately does not install the GnosisVPN
-binary. See [Preparing the GnosisVPN NetVM](gnosisvpn.md) for the manual test
-workflow, persistence caveat, and verification commands.
+`wireguard-tools` and `openresolv`, installs the pinned GnosisVPN snapshot for
+the `rotsee` network, and configures dynamic Qubes-aware DNS and fail-closed
+forwarding hooks. See [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped
+download path, verification, and runtime checks.
 
 Duplicate names abort the pre-flight.
 

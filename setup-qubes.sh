@@ -30,6 +30,9 @@ RUN_MANIFEST="${SEQS_RUN_MANIFEST:-/var/lib/seqs/last-run}"
 FETCH_ROOT="${SEQS_FETCH_ROOT:-/var/lib/seqs/fetched}"
 FETCH_SALT_TREE="${FETCH_ROOT}/salt"
 FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
+GNOSIS_UPDATE_POLICY="${SEQS_GNOSIS_UPDATE_POLICY:-/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy}"
+GNOSIS_UPDATE_PROXY="seqs-gnosisvpn-update-proxy"
+GNOSIS_PROXY_CREATED=0
 
 # Policy files owned by seqs.dom0. A file WITHOUT the marker was written by the
 # operator or another tool -- never overwrite without confirmation.
@@ -459,6 +462,108 @@ shutdownAll() {
 	done
 }
 
+hasTarget() {
+	local wanted=$1 target
+	for target in "${TEMPLATE_TARGETS[@]}"; do
+		[ "${target}" = "${wanted}" ] && return 0
+	done
+	return 1
+}
+
+prepareGnosisPrerequisites() {
+	hasTarget Z-gnosisvpn || return 0
+	echo "==> Preparing GnosisVPN dependencies through the default UpdateVM"
+	if ! qvm-run -p -u root Z-gnosisvpn \
+		"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg openresolv wireguard-tools libc6 systemd iptables logrotate wireguard ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0t64 libayatana-appindicator3-1 libglib2.0-bin" \
+		2>&1 | sanitize; then
+		die "could not install GnosisVPN prerequisites through the default updates proxy"
+	fi
+	qvm-shutdown --wait Z-gnosisvpn \
+		|| die "could not commit GnosisVPN prerequisite installation"
+}
+
+cleanupGnosisUpdateProxy() {
+	if sudo test -f "${GNOSIS_UPDATE_POLICY}" \
+		&& sudo grep -q "${MANAGED_MARKER}" "${GNOSIS_UPDATE_POLICY}"; then
+		sudo rm -f "${GNOSIS_UPDATE_POLICY}" || true
+	fi
+	if qvm-check -q -- "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 \
+		&& { [ "${GNOSIS_PROXY_CREATED}" -eq 1 ] \
+			|| [ "$(qvm-features "${GNOSIS_UPDATE_PROXY}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; }; then
+		qvm-kill "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 || true
+		qvm-remove -f "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 || true
+	fi
+	GNOSIS_PROXY_CREATED=0
+}
+
+verifyGnosisUpdateProxyRemoved() {
+	sudo test ! -e "${GNOSIS_UPDATE_POLICY}" \
+		|| die "temporary GnosisVPN updates policy was not removed"
+	! qvm-check -q -- "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 \
+		|| die "temporary GnosisVPN updates proxy was not removed"
+}
+
+setupGnosisUpdateProxy() {
+	local updatevm proxy_template proxy_netvm value
+	hasTarget Z-gnosisvpn || return 0
+
+	if sudo test -e "${GNOSIS_UPDATE_POLICY}" \
+		&& ! sudo grep -q "${MANAGED_MARKER}" "${GNOSIS_UPDATE_POLICY}"; then
+		die "${GNOSIS_UPDATE_POLICY} exists but is not managed by SEQS"
+	fi
+	if qvm-check -q -- "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 \
+		&& [ "$(qvm-features "${GNOSIS_UPDATE_PROXY}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" != "1" ]; then
+		die "${GNOSIS_UPDATE_PROXY} exists but is not marked as the SEQS temporary proxy"
+	fi
+	cleanupGnosisUpdateProxy
+
+	updatevm="$(qubes-prefs updatevm 2>/dev/null)" \
+		|| die "could not determine the default Qubes UpdateVM"
+	[[ "${updatevm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
+	proxy_template="$(qvm-prefs -- "${updatevm}" template 2>/dev/null)" \
+		|| die "could not determine the template of UpdateVM ${updatevm}"
+	proxy_netvm="$(qvm-prefs -- "${updatevm}" netvm 2>/dev/null)" \
+		|| die "could not determine the NetVM of UpdateVM ${updatevm}"
+	for value in "${proxy_template}" "${proxy_netvm}"; do
+		[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+			|| die "unsafe or empty temporary proxy dependency: '${value}'"
+	done
+
+	echo "==> Creating domain-restricted temporary GnosisVPN updates proxy"
+	qvm-create --class AppVM --template "${proxy_template}" --label gray \
+		"${GNOSIS_UPDATE_PROXY}" || die "could not create temporary GnosisVPN updates proxy"
+	GNOSIS_PROXY_CREATED=1
+	qvm-features "${GNOSIS_UPDATE_PROXY}" seqs-gnosisvpn-temporary-proxy 1 \
+		|| die "could not mark temporary GnosisVPN updates proxy"
+	qvm-prefs -- "${GNOSIS_UPDATE_PROXY}" netvm "${proxy_netvm}" \
+		|| die "could not set temporary proxy NetVM"
+	qvm-service --enable "${GNOSIS_UPDATE_PROXY}" qubes-updates-proxy \
+		|| die "could not enable temporary updates proxy service"
+	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" reset \
+		|| die "could not reset temporary proxy firewall"
+	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" del --rule-no 0 \
+		|| die "could not remove temporary proxy's default allow rule"
+	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add accept specialtarget=dns \
+		|| die "could not allow temporary proxy DNS"
+	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add accept \
+		dsthost=download.gnosisvpn.io proto=tcp dstports=443 \
+		|| die "could not allow the GnosisVPN download host"
+	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add drop \
+		|| die "could not install temporary proxy default deny"
+
+	sudo mkdir -p "${GNOSIS_UPDATE_POLICY%/*}" \
+		|| die "could not create qrexec policy directory"
+	{
+		printf '# %s\n' "${MANAGED_MARKER}"
+		printf 'qubes.UpdatesProxy * Z-gnosisvpn @default allow target=%s\n' "${GNOSIS_UPDATE_PROXY}"
+		printf 'qubes.UpdatesProxy * Z-gnosisvpn @anyvm deny\n'
+	} | sudo tee "${GNOSIS_UPDATE_POLICY}" >/dev/null \
+		|| die "could not install temporary GnosisVPN updates policy"
+	sudo chmod 0644 "${GNOSIS_UPDATE_POLICY}" \
+		|| die "could not protect temporary GnosisVPN updates policy"
+}
+
 buildQubes() {
 	[ -f "${SALT_TREE}/.seqs-complete" ] && [ -f "${PILLAR_TREE}/.seqs-complete" ] \
 		|| die "stage is incomplete -- run --stage-only first"
@@ -480,6 +585,12 @@ fi
 FAILED=0
 
 echo ""
+	prepareGnosisPrerequisites
+	if hasTarget Z-gnosisvpn; then
+		trap cleanupGnosisUpdateProxy EXIT
+		trap 'cleanupGnosisUpdateProxy; trap - EXIT; exit 130' INT TERM
+	fi
+	setupGnosisUpdateProxy
 	echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
 	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${TEMPLATE_TARGETS[@]}")" state.apply seqs.qube; then
@@ -488,6 +599,9 @@ echo ""
 	echo "         Re-run to converge -- finished components are skipped." >&2
 	FAILED=1
 	fi
+	cleanupGnosisUpdateProxy
+	verifyGnosisUpdateProxyRemoved
+	trap - EXIT INT TERM
 
 # Commit template root volumes before any app qube snapshots them.
 shutdownAll "${TEMPLATE_TARGETS[@]}"

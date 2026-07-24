@@ -5,6 +5,9 @@
 # Emit the requested result. SEQS_MOCK_TAR overrides the archive payload so a
 # scenario can feed a hostile archive.
 case "$*" in
+  *"Z-gnosisvpn"*"apt-get update"*"openresolv"*)
+    exit 0
+    ;;
   *"rev-parse --verify HEAD^{commit}"*)
     printf '%s\n' "${SEQS_MOCK_RESOLVED_COMMIT:-${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}}"
     exit 0

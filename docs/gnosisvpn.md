@@ -1,9 +1,7 @@
-# Preparing a GnosisVPN NetVM
+# Using the GnosisVPN NetVM
 
-SEQS can build `A-gnosisvpn`, a network-provider AppVM prepared for a later
-manual GnosisVPN installation. The component installs only Debian prerequisites
-and Qubes integration. It does not download, authenticate, or install
-GnosisVPN.
+SEQS builds `A-gnosisvpn`, a network-provider AppVM with a pinned GnosisVPN
+snapshot for the `rotsee` network and Qubes-aware DNS/fail-closed integration.
 
 ## Build the prepared qube
 
@@ -16,12 +14,30 @@ After fetching, reviewing, and staging this revision, run in dom0:
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
 
-The template already contains both prerequisites:
+The template contains:
 
 - `wireguard-tools`, including `wg` and `wg-quick`;
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
+- GnosisVPN `2026.07.24+build.141419` for `amd64`, configured with
+  `GNOSISVPN_NETWORK=rotsee`.
 
-Do not install `openresolv` again. GnosisVPN itself is intentionally absent.
+Do not install `openresolv` or GnosisVPN manually.
+
+Before provisioning `Z-gnosisvpn`, the runner installs Debian dependencies
+through the ordinary configured UpdateVM. It then creates a temporary AppVM
+named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and applies
+a default-deny firewall allowing only DNS and TCP 443 to
+`download.gnosisvpn.io`. A temporary exact-source qrexec rule directs only
+`Z-gnosisvpn` to that proxy.
+
+The template downloads the pinned `.deb` and detached signature through
+`127.0.0.1:8082`, checks the embedded signing-key fingerprint
+`9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, verifies the detached signature,
+and checks SHA-256
+`77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b`
+before installation. After template provisioning—even on failure—the runner
+removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
+policy then applies again.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
 test below. To use a separately named AppVM instead, create it from
@@ -38,19 +54,10 @@ The last command installs the persistent AppVM firewall hook from inherited
 template assets. Do not skip it: manually creating an AppVM does not run the
 SEQS app role that prepared `A-gnosisvpn`.
 
-## Manual GnosisVPN test
+## Test GnosisVPN
 
-For an initial same-session test, start `A-gnosisvpn` and manually install and
-run GnosisVPN there according to the independently reviewed vendor procedure.
-Do not attach sensitive client qubes yet.
-
-An ordinary AppVM's root filesystem is reset from its template at shutdown.
-Consequently, a package manually installed under `/usr` or `/etc` inside
-`A-gnosisvpn` is suitable only for the current test session and will normally
-disappear when the AppVM shuts down. SEQS does not work around that property.
-Once the test is satisfactory, a later reviewed component should install the
-GnosisVPN package in `Z-gnosisvpn`; alternatively, use a deliberately created
-StandaloneVM if persistent manual system-package installation is required.
+Start `A-gnosisvpn` and launch the installed GnosisVPN application. Do not
+attach sensitive client qubes until completing the checks below.
 
 Do not replace or relink `/etc/resolv.conf`. It should remain Qubes-managed:
 
@@ -126,9 +133,12 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
 
 ## Caveats
 
-- This repository does not verify or install GnosisVPN yet. A manual download
-  extends trust to the vendor, its distribution channel, and the exact
-  procedure used.
+- The snapshot is version- and hash-pinned and its detached signature is
+  checked against an embedded key, but the key was sourced from the GnosisVPN
+  project. Review the fingerprint through an independent channel.
+- The package's post-install behavior may configure its own APT repository.
+  Once the temporary policy is removed, later package updates use the normal
+  Qubes UpdateVM and are not restricted by the temporary domain-only proxy.
 - The DNS helper expects the interface and openresolv entry to be named
   `wg0_gnosisvpn`. A future GnosisVPN release that renames either requires a
   reviewed component update.

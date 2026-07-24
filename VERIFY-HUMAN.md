@@ -146,10 +146,12 @@ After install:
   `sudo nft list chain ip qubes seqs-wireguard-dns-output` should show the
   equivalent output-hook translations, and both `getent hosts example.com`
   there and in the test client should succeed.
-- If preparing GnosisVPN, `qvm-prefs A-gnosisvpn provides_network` should
-  print `True`; `openresolv` and `wireguard-tools` should be installed, but no
-  GnosisVPN binary should have been downloaded by SEQS. After a manually
-  reviewed same-session GnosisVPN install and connection,
+- If using GnosisVPN, `qvm-prefs A-gnosisvpn provides_network` should print
+  `True`; `openresolv`, `wireguard-tools`, and the pinned GnosisVPN package
+  should be installed in `Z-gnosisvpn`. Confirm
+  `/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy` and
+  `seqs-gnosisvpn-update-proxy` no longer exist after provisioning. After a
+  GnosisVPN connection,
   `/run/resolvconf/interfaces/wg0_gnosisvpn` should exist,
   `/etc/resolv.conf` should remain Qubes-managed, and
   `sudo nft list table ip seqs_gnosisvpn_dns` should show provider-DNS

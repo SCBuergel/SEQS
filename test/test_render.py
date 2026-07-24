@@ -508,7 +508,7 @@ def test_qube_wireguard_component():
 
 
 def test_qube_gnosisvpn_component():
-    case("qube.sls: GnosisVPN preparation renders without installing VPN")
+    case("qube.sls: pinned GnosisVPN component and Qubes hooks render")
     _, template = render_state("qube", "Z-gnosisvpn")
     _, app = render_state("qube", "A-gnosisvpn")
     check("seqs-install-gnosisvpn" in template,
@@ -523,11 +523,25 @@ def test_qube_gnosisvpn_component():
     with open(os.path.join(component_dir, "template-vm.sh"),
               encoding="utf-8") as f:
         installer_text = f.read()
-    check("openresolv wireguard-tools" in installer_text,
-          "GnosisVPN template must include wg-quick and resolvconf prerequisites")
-    check("download" not in installer_text.lower() and
-          "gnosisvpn_" not in installer_text,
-          "GnosisVPN preparation must not download or install the VPN binary")
+    with open(os.path.join(sr.REPO_ROOT, "setup-qubes.sh"),
+              encoding="utf-8") as f:
+        runner_text = f.read()
+    check("openresolv wireguard-tools" in runner_text,
+          "GnosisVPN preflight must include wg-quick and resolvconf prerequisites")
+    check("download.gnosisvpn.io proto=tcp dstports=443" in runner_text and
+          "Z-gnosisvpn @anyvm deny" in runner_text,
+          "temporary proxy must be host-restricted and exact-source scoped")
+    check("gnosisvpn_2026.07.24+build.141419_amd64.deb" in installer_text,
+          "GnosisVPN installer must pin the requested snapshot")
+    check("77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b"
+          in installer_text,
+          "GnosisVPN installer must pin the snapshot SHA-256")
+    check("9A308031FD3BFE8EDBF5076D84F73FEA46D10972" in installer_text,
+          "GnosisVPN installer must pin the signing-key fingerprint")
+    check("GNOSISVPN_NETWORK=rotsee apt install ./g.deb -y" in installer_text,
+          "GnosisVPN installer must select the rotsee network")
+    check("curl --proxy 127.0.0.1:8082" in installer_text,
+          "GnosisVPN download must use the Qubes updates proxy")
 
     with open(os.path.join(component_dir, "seqs-gnosisvpn-dns"),
               encoding="utf-8") as f:

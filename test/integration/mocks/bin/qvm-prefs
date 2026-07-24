@@ -10,6 +10,15 @@ vm="${args[0]:-}"
 property="${args[1]:-}"
 value="${args[2]:-}"
 
+if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "template" ]; then
+	echo "debian-13-xfce"
+	exit 0
+fi
+if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "netvm" ]; then
+	echo "sys-net"
+	exit 0
+fi
+
 if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ]; then
 	if [ "${#args[@]}" -ge 3 ]; then
 		tmp="${SEQS_MOCK_NETVM_STATE}.tmp"

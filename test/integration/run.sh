@@ -26,6 +26,7 @@ new_sandbox() {
 	export SEQS_SELECTION_FILE="${SBX}/var/lib/seqs/selection"
 	export SEQS_RUN_MANIFEST="${SBX}/var/lib/seqs/last-run"
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
+	export SEQS_GNOSIS_UPDATE_POLICY="${SBX}/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy"
 	export SEQS_REPO_ROOT="${REPO}"
 	export SEQS_EXPECTED_COMMIT
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
@@ -63,6 +64,10 @@ grep -q "Fetching salt tree from source HEAD commit ${SEQS_EXPECTED_COMMIT}" <<<
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
+grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out" \
+	&& ok || bad "expected the scoped GnosisVPN proxy lifecycle"
+[ ! -e "${SEQS_GNOSIS_UPDATE_POLICY}" ] && ok \
+	|| bad "temporary GnosisVPN update policy should be removed after provisioning"
 # The tree really landed in the sandbox /srv, root markers and all.
 [ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "dom0.sls not installed into sandbox /srv"
 [ -f "${SEQS_SALT_TREE}/.seqs-managed" ] && ok || bad "missing .seqs-managed marker"
