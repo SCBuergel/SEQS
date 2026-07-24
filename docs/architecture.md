@@ -8,18 +8,19 @@ data flow and controls. For the per-component trust analysis see
 
 ## What the runner does, in order
 
-1. **Fetch (once).** The runner requires the full reviewed Git object ID as
-   `--commit`. In `REPO_VM`, it verifies that object resolves to a commit and
-   runs `git archive` for that commit's `salt/` + `install-scripts/` paths,
-   never the live working tree. Every archive entry is validated before
-   extraction
+1. **Fetch (once).** In `REPO_VM`, the runner resolves the checked-out `HEAD`,
+   accepts only a full 40- or 64-hex object ID, and then runs `git archive` for
+   that exact commit's `salt/` + `install-scripts/` paths, never the live
+   working tree. Resolving first avoids a moving-HEAD race between selection
+   and export. Every archive entry is validated before extraction
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
-   This is the **only** VM→dom0 data flow in the whole system. The transfer
-   SHA256 is printed as a diagnostic; integrity is anchored by the git commit
-   hash the operator verifies in the disposable, which covers the whole
-   repository. The bootstrap command likewise obtains `setup-qubes.sh` with
-   `git show <COMMIT>:setup-qubes.sh`.
+   These commit-ID and archive responses are the **only** VM→dom0 data flows in
+   the whole system. The transfer SHA256 is printed as a diagnostic. The
+   operator still verifies the checkout's Git commit hash in the disposable,
+   but dom0 does not receive that independent value to compare against the
+   source's answer. The bootstrap command obtains `setup-qubes.sh` with
+   `git show HEAD:setup-qubes.sh`.
 
 2. **Stage.** `--fetch-only` saves validated data under
    `/var/lib/seqs/fetched` for review. `--stage-only` requires a completed fetch,
@@ -91,9 +92,9 @@ bootstrap window; if the export fails, `s.sh` ends up empty/partial and
 fetch and routes every later display path through `sanitize()`.
 
 Neither operation makes Git or `REPO_VM` independently verifiable by dom0.
-A compromised source qube can lie about what `git show` or `git archive`
-returned. Commit-object export prevents accidental or local working-tree drift;
-the source qube remains an explicit trust assumption.
+A compromised source qube can lie about what `git show`, `rev-parse`, or
+`git archive` returned. Commit-object export prevents accidental or local
+working-tree drift; the source qube remains an explicit trust assumption.
 
 ## Composition model
 

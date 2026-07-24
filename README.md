@@ -34,16 +34,19 @@ from one reviewed configuration.
    independently published full commit ID. A hash copied from the same hosting
    page as the clone is not an independent trust anchor.
 
-3. Copy the runner into dom0 and install in one step. Replace both `disp1234`
-   occurrences with the disposable's name, and pick the qubes you want:
+3. Copy the checked-out runner into dom0 and install in one step. Replace both
+   `disp1234` occurrences with the disposable's name, and pick the qubes you
+   want:
 
    ```bash
-   qvm-run -p disp1234 "git -C /home/user/SEQS show <COMMIT>:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
-   ~/s.sh --commit <COMMIT> --repo-vm disp1234 --qubes brave,signal,keepass
+   qvm-run -p disp1234 "git -C /home/user/SEQS show HEAD:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+   ~/s.sh --repo-vm disp1234 --qubes brave,signal,keepass
    ```
 
-   Use the same full commit ID twice. The disposable can be shut down after the
-   command finishes. Use `--all` instead of `--qubes` for the full catalogue.
+   Fetch resolves and records the disposable's checked-out `HEAD`, then exports
+   that exact commit object rather than the live working tree. The disposable
+   can be shut down after the command finishes. Use `--all` instead of
+   `--qubes` for the full catalogue.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use

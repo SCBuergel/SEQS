@@ -88,7 +88,7 @@ Nothing above proves that software actually installs *inside* a qube — that
 needs a real Salt run. Two options, in ascending fidelity:
 
 1. **Render/compile on a Qubes dom0 without provisioning.** Fetch the tree
-   (`./setup-qubes.sh --repo-vm <VM> --commit <COMMIT> --fetch-only`, then `--stage-only`) and dry-run the states:
+   (`./setup-qubes.sh --repo-vm <VM> --fetch-only`, then `--stage-only`) and dry-run the states:
    ```
    sudo qubesctl --skip-dom0 --targets=Z-brave state.show seqs.qube   # render only
    sudo qubesctl state.apply seqs.dom0 test=True                      # no changes

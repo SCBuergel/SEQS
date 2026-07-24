@@ -66,15 +66,16 @@ name. A fresh temporary DisposableVM is also suitable; keep it alive through
 `--fetch-only`. In dom0:
 
 ```bash
-qvm-run -p seqs-repo "git -C /home/user/SEQS show <COMMIT>:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+qvm-run -p seqs-repo "git -C /home/user/SEQS show HEAD:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
 ```
 
-Replace `<COMMIT>` with the full independently reviewed commit ID. Using
-`git show` binds the copied runner to that object instead of the repository
-qube's live working tree. The `2>/dev/null` is a security boundary: untrusted
-source-qube stderr must not reach the dom0 terminal during the bootstrap
-window. Before execution, review the copied runner and, preferably, compare it
-with the same verified revision on an independent machine.
+The repository qube must already have the independently reviewed revision
+checked out. Using `git show HEAD:` copies from that commit object instead of
+the repository qube's live working tree. The `2>/dev/null` is a security
+boundary: untrusted source-qube stderr must not reach the dom0 terminal during
+the bootstrap window. Before execution, review the copied runner and,
+preferably, compare it with the same verified revision on an independent
+machine.
 
 If the repository is in a temporary DisposableVM, replace `seqs-repo` in both
 commands with its exact `dispNNNN` name and keep it running until the fetch in
@@ -85,14 +86,17 @@ the next step finishes. Once the fetch completes, it is no longer needed.
 In dom0:
 
 ```bash
-~/s.sh --commit <COMMIT> --repo-vm seqs-repo --fetch-only
+~/s.sh --repo-vm seqs-repo --fetch-only
 ```
 
-Use the same full commit ID as in the bootstrap command. The runner asks Git in
-the repository qube to archive that commit's `salt/` and `install-scripts/`
-paths, validates every archive entry, records the ID in
+The runner resolves the repository qube's checked-out `HEAD`, validates that
+the answer is a full object ID, and asks Git to archive that exact commit's
+`salt/` and `install-scripts/` paths. It validates every archive entry, records
+the source-reported ID in
 `/var/lib/seqs/fetched/source-commit`, displays the transfer hash, and saves the
-fetched data without building qubes.
+fetched data without building qubes. Dom0 does not independently compare this
+ID with the revision you reviewed, so confirm the recorded value yourself
+before staging.
 
 Inspect the fetched result as the normal dom0 user:
 
@@ -256,9 +260,8 @@ power-off-based fallback:
 {%- set webcam_usb_no_strict_reset = False %}
 ```
 
-Then perform the normal upgrade steps above: copy the new runner from the
-reviewed commit, fetch the same ID with
-`--repo-vm <VM> --commit <COMMIT> --fetch-only`,
+Then perform the normal upgrade steps above: verify and check out the reviewed
+commit, copy its `HEAD` runner, fetch with `--repo-vm <VM> --fetch-only`,
 review the fetched tree, stage with `--stage-only`, and build
 with `--build-only --qubes qr-camera,qr-display,qr-staging` (omit
 `qr-staging` in dedicated mode if it is not otherwise wanted).

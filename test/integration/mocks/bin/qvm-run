@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Mock qvm-run: the installer's ONLY VM->dom0 dataflow is
+#   qvm-run -p REPO_VM "git ... rev-parse ... HEAD^{commit}"
 #   qvm-run -p REPO_VM "git ... cat-file ... && git ... archive ..."
-# Emit that archive on stdout. SEQS_MOCK_TAR (a path) overrides the payload so a
-# scenario can feed a hostile archive; otherwise archive the requested commit.
+# Emit the requested result. SEQS_MOCK_TAR overrides the archive payload so a
+# scenario can feed a hostile archive.
 case "$*" in
+  *"rev-parse --verify HEAD^{commit}"*)
+    printf '%s\n' "${SEQS_MOCK_RESOLVED_COMMIT:-${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}}"
+    exit 0
+    ;;
   *"cat-file -e ${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}^{commit}"*"archive --format=tar ${SEQS_EXPECTED_COMMIT} -- salt install-scripts"*) ;;
   *) exit 64 ;;
 esac

@@ -3,14 +3,13 @@
 # SEQS dom0 runner; see docs/architecture.md and docs/configuration.md.
 #
 # Usage:
-#   ./setup-qubes.sh --repo-vm VM --commit HASH --all
+#   ./setup-qubes.sh --repo-vm VM --all
 #                                   fetch, stage, and build the full catalogue
-#   ./setup-qubes.sh --repo-vm VM --commit HASH --fetch-only
+#   ./setup-qubes.sh --repo-vm VM --fetch-only
 #                                   fetch and validate into /var/lib/seqs/fetched
 #   ./setup-qubes.sh --stage-only   copy the fetched tree into /srv
 #   ./setup-qubes.sh --build-only --qubes brave,signal
 #   ./setup-qubes.sh --build-only --all
-#   --commit HASH                   bind fetched files to the reviewed commit
 #   --repo-vm VM                    required explicit repository qube for fetch
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
 
@@ -176,26 +175,43 @@ writeRunManifest() {
 # ---- Stage 1 -- fetch and validate -------------------------------------------
 
 fetchSaltTree() {
-	local tarball stage
+	local tarball stage source_commit
 	tarball=$(mktemp /tmp/seqs-fetch.XXXXXX.tar) || die "mktemp failed"
 	stage=$(mktemp -d /tmp/seqs-stage.XXXXXX) || die "mktemp -d failed"
 
-	echo "==> Fetching salt tree from commit ${EXPECTED_COMMIT}"
+	# Resolve HEAD without displaying source-controlled output, then restrict it
+	# to a full object ID before using it in the archive command. Exporting that
+	# exact object avoids both the live working tree and a moving-HEAD race.
+	source_commit="$(
+		qvm-run -p "${REPO_VM}" \
+			"git -C ${REPO_PATH} rev-parse --verify HEAD^{commit}" \
+			2>/dev/null
+	)" || {
+		rm -rf "${tarball}" "${stage}"
+		die "could not resolve repository HEAD in ${REPO_VM}:${REPO_PATH}"
+	}
+	source_commit="${source_commit,,}"
+	[[ "${source_commit}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
+		rm -rf "${tarball}" "${stage}"
+		die "repository qube returned an invalid full commit ID for HEAD"
+	}
+
+	echo "==> Fetching salt tree from source HEAD commit ${source_commit}"
 	echo "    Source: ${REPO_VM}:${REPO_PATH}"
 	# 2>/dev/null: bootstrap-window defense -- the source qube's stderr must
 	# never reach the dom0 terminal raw (docs/architecture.md#bootstrap-window).
-	# Export the named Git object, never the source qube's live working tree.
-	# EXPECTED_COMMIT is restricted to a full hexadecimal object ID below, so
-	# it is safe to interpolate into this fixed remote command.
+	# Export the resolved Git object, never the source qube's live working tree.
+	# source_commit is restricted to a full hexadecimal object ID above, so it
+	# is safe to interpolate into this fixed remote command.
 	if ! qvm-run -p "${REPO_VM}" \
-		"git -C ${REPO_PATH} cat-file -e ${EXPECTED_COMMIT}^{commit} && git -C ${REPO_PATH} archive --format=tar ${EXPECTED_COMMIT} -- salt install-scripts" \
+		"git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit} && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts" \
 		2>/dev/null > "${tarball}"; then
 		rm -rf "${tarball}" "${stage}"
-		die "could not export salt/ + install-scripts/ from commit ${EXPECTED_COMMIT} in ${REPO_VM}:${REPO_PATH} -- check --commit, --repo-vm, and the repository path"
+		die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
 	fi
 
 	echo "    Transfer SHA256 (diagnostic only; the source qube exported the"
-	echo "    reviewed commit object rather than its live working tree):"
+	echo "    resolved commit object rather than its live working tree):"
 	printf '    '; sha256sum "${tarball}"
 
 	tar -tf "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
@@ -256,7 +272,7 @@ fetchSaltTree() {
 	sudo mkdir -p "${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}" || die "mkdir failed"
 	sudo cp -r "${newsalt}/." "${FETCH_SALT_TREE}/" || die "could not save fetched salt tree"
 	sudo cp -r "${newpillar}/." "${FETCH_PILLAR_TREE}/" || die "could not save fetched pillar tree"
-	printf '%s\n' "${EXPECTED_COMMIT}" | sudo tee "${FETCH_ROOT}/source-commit" >/dev/null \
+	printf '%s\n' "${source_commit}" | sudo tee "${FETCH_ROOT}/source-commit" >/dev/null \
 		|| die "could not record fetched source commit"
 	sudo touch "${FETCH_ROOT}/.seqs-complete" || die "could not mark fetch complete"
 	sudo chown -R root:root "${FETCH_ROOT}"
@@ -513,7 +529,6 @@ EXPLICIT_STAGE=0
 VERBOSE="${SEQS_VERBOSE:-0}"
 SELECT_ALL=0
 SELECT_QUBES=""
-EXPECTED_COMMIT=""
 REPO_VM_SET=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -528,12 +543,6 @@ while [ "$#" -gt 0 ]; do
 			SELECT_QUBES="$2"
 			shift
 			;;
-		--commit)
-			[ "$#" -gt 1 ] || die "--commit requires a full Git commit ID"
-			[ -z "${EXPECTED_COMMIT}" ] || die "--commit may be specified only once"
-			EXPECTED_COMMIT="${2,,}"
-			shift
-			;;
 		--repo-vm)
 			[ "$#" -gt 1 ] || die "--repo-vm requires a qube name"
 			[ "${REPO_VM_SET}" -eq 0 ] || die "--repo-vm may be specified only once"
@@ -541,7 +550,7 @@ while [ "$#" -gt 0 ]; do
 			REPO_VM_SET=1
 			shift
 			;;
-		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --commit HASH, --repo-vm VM, --verbose)" ;;
+		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --repo-vm VM, --verbose)" ;;
 	esac
 	shift
 done
@@ -559,12 +568,8 @@ if [ "${RUN_FETCH}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 		|| die "fetch requires --repo-vm with the explicit repository qube name"
 	[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
 		|| die "unsafe repo qube name: '${REPO_VM}'"
-	[[ "${EXPECTED_COMMIT}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] \
-		|| die "fetch requires --commit with the full 40- or 64-hex Git commit ID reviewed by your trusted source"
 	[[ "${REPO_PATH}" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "${REPO_PATH}" != *..* ]] \
 		|| die "unsafe repository path: '${REPO_PATH}'"
-elif [ -n "${EXPECTED_COMMIT}" ]; then
-	die "--commit applies only to --fetch-only or the full fetch-stage-build workflow"
 elif [ "${REPO_VM_SET}" -eq 1 ]; then
 	die "--repo-vm applies only to --fetch-only or the full fetch-stage-build workflow"
 fi

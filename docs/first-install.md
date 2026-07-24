@@ -2,7 +2,7 @@
 
 This is the expanded walkthrough behind the README's install path. A user
 verifies one commit hash (§2) and runs a single command
-(`~/s.sh --commit <COMMIT> --repo-vm disp1234 --qubes …`) that fetches, stages, and builds in one
+(`~/s.sh --repo-vm disp1234 --qubes …`) that fetches, stages, and builds in one
 confirmed run. This document breaks that command into its underlying **fetch →
 stage → build** phases and the separate `--fetch-only` / `--stage-only` /
 `--build-only` commands, so a **reviewer** can pause between phases, inspect
@@ -153,7 +153,7 @@ Assume the disposable reported `disp1234`; replace it with the exact hostname.
 In dom0:
 
 ```bash
-qvm-run -p disp1234 "git -C /home/user/SEQS show <COMMIT>:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+qvm-run -p disp1234 "git -C /home/user/SEQS show HEAD:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
 less ~/s.sh
 ```
 
@@ -161,25 +161,28 @@ The stderr redirection is deliberate: it prevents source-qube terminal-control
 bytes from reaching dom0 before the runner's sanitizer exists. See
 [architecture.md#bootstrap-window](architecture.md#bootstrap-window).
 
-Replace `<COMMIT>` with the same full ID verified in §2. `git show` reads the
-runner from that commit object, not from the disposable's live working tree.
-Review the complete copied runner in `less`; quit with `q`.
+The disposable must still have the revision verified in §2 checked out.
+`git show HEAD:` reads the runner from that commit object, not from the
+disposable's live working tree. Review the complete copied runner in `less`;
+quit with `q`.
 
 ## 6. Fetch without applying
 
 Still in dom0, while the disposable remains running:
 
 ```bash
-~/s.sh --commit <COMMIT> --repo-vm disp1234 --fetch-only
+~/s.sh --repo-vm disp1234 --fetch-only
 ```
 
-The runner first requires that the full ID resolves to a commit, then uses
-`git archive` to export that commit's complete `salt/` and `install-scripts/`
-paths rather than the disposable's live working tree. It validates every
-archive entry, records the requested ID in
+The runner asks the repository qube to resolve its checked-out `HEAD`, accepts
+only a full Git object ID, and then uses `git archive` to export that exact
+commit's complete `salt/` and `install-scripts/` paths rather than the
+disposable's live working tree. Resolving first avoids a moving-HEAD race. It
+validates every archive entry, records the source-reported ID in
 `/var/lib/seqs/fetched/source-commit`, and saves the result under
 `/var/lib/seqs/fetched`. It also prints a `Transfer SHA256` of the tar stream —
-a diagnostic for logs, not a second trust anchor.
+a diagnostic for logs, not a second trust anchor. Dom0 does not independently
+compare the source-reported ID with the value verified in §2.
 
 After `--fetch-only` succeeds, shut down the download disposable. Dom0 no
 longer needs it.
@@ -262,17 +265,20 @@ For the fuller file-by-file order and rationale, use
 
 ### How the fetched tree ties back to the verified commit
 
-There is no separate reviewer-published hash to check in dom0, by design. Your
-integrity anchor is the Git commit verified in §2. Both transfer commands name
-that same full ID: `git show` reads the runner object and `git archive` reads
-the committed `salt/` and `install-scripts/` trees. Local modified and untracked
-files are therefore not transferred. The requested ID is retained in
-`/var/lib/seqs/fetched/source-commit` for audit history. The fetched tree has no
-`.git`, and dom0 does not run Git or independently reconstruct the object graph.
+There is no separately supplied reviewer hash checked in dom0. Your integrity
+anchor remains the Git commit verified in §2, but the later transfer trusts the
+repository qube to keep that revision checked out and report it honestly.
+`git show HEAD:` reads the runner object; fetch resolves `HEAD` to a full ID and
+`git archive` reads that exact committed `salt/` and `install-scripts/` tree.
+Local modified and untracked files are therefore not transferred. The resolved
+ID is retained in `/var/lib/seqs/fetched/source-commit` for audit history. The
+fetched tree has no `.git`, and dom0 does not run Git or independently
+reconstruct the object graph.
 
 The residual is the disposable itself: dom0 receives what the disposable
-*claims* those Git commands returned. A compromised disposable can lie despite
-the named commit. If that is in your threat model, do not rely on the transfer
+*claims* those Git commands returned. A compromised disposable can lie about
+`HEAD`, the resolved ID, and the archive. If that is in your threat model, do
+not rely on the transfer
 binding—review the fetched tree directly (previous section), which is the tree
 that will run.
 The `Transfer SHA256` from §6 only confirms dom0 received the bytes the

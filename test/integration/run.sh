@@ -31,13 +31,14 @@ new_sandbox() {
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
+	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_BROWSER_SUPPRESS_POLICY
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
 
-run_setup() {  # supplies the reviewed commit to workflows that include FETCH
+run_setup() {  # supplies the explicit repository qube to workflows with FETCH
 	local arg
 	for arg in "$@"; do
 		case "${arg}" in
@@ -48,7 +49,7 @@ run_setup() {  # supplies the reviewed commit to workflows that include FETCH
 		esac
 	done
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-		--commit "${SEQS_EXPECTED_COMMIT}" --repo-vm test-repo "$@"
+		--repo-vm test-repo "$@"
 }
 
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
@@ -57,8 +58,8 @@ new_sandbox
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
-grep -q "Fetching salt tree from commit ${SEQS_EXPECTED_COMMIT}" <<<"$out" \
-	&& ok || bad "expected the reviewed commit to be shown"
+grep -q "Fetching salt tree from source HEAD commit ${SEQS_EXPECTED_COMMIT}" <<<"$out" \
+	&& ok || bad "expected the resolved source HEAD commit to be shown"
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
@@ -80,28 +81,26 @@ grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 	|| bad "the named disposable should be independently air-gap verified"
 rm -rf "${SBX}"
 
-# ── Scenario 1b: fetch requires a full reviewed commit ID ─────────────────
-echo "== scenario: fetch requires an explicit source and reviewed commit ID =="
+# ── Scenario 1b: fetch requires an explicit source and validates its HEAD ──
+echo "== scenario: fetch requires an explicit source and validates source HEAD =="
 new_sandbox
 out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "fetch requires --repo-vm" <<<"$out" && ok \
 	|| bad "fetch without --repo-vm should be refused"
 out="$(SEQS_REPO_VM=personal \
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
+	--fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "fetch requires --repo-vm" <<<"$out" && ok \
 	|| bad "SEQS_REPO_VM must not restore an implicit source qube"
+export SEQS_MOCK_RESOLVED_COMMIT='HEAD;touch /tmp/unsafe'
 out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
 	--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && grep -q "fetch requires --commit" <<<"$out" && ok \
-	|| bad "fetch without --commit should be refused"
-out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--repo-vm test-repo --commit 'HEAD;touch /tmp/unsafe' --fetch-only 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && grep -q "full 40- or 64-hex" <<<"$out" && ok \
-	|| bad "unsafe or abbreviated commit IDs should be refused"
+[ "$rc" -ne 0 ] && grep -q "invalid full commit ID" <<<"$out" && ok \
+	|| bad "unsafe source HEAD output should be refused"
+unset SEQS_MOCK_RESOLVED_COMMIT
 out="$(SEQS_REPO_PATH='/home/user/SEQS;touch_unsafe' \
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--repo-vm test-repo --commit "${SEQS_EXPECTED_COMMIT}" --fetch-only 2>&1)"; rc=$?
+	--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "unsafe repository path" <<<"$out" && ok \
 	|| bad "a shell-active repository path should be refused"
 rm -rf "${SBX}"

@@ -18,7 +18,7 @@ Four things must be true *before* SEQS does anything useful — none of them pro
 - **The published commit hash.** The hash a user compares against must come from a source they trust, through a channel independent of this repository and its hosting — the repo cannot designate its own trusted source, since a hostile revision would name a hostile one. Establishing that source is out of scope of this repository. If you are working through this document, you are becoming that source: review the revision, then publish the hash you reviewed through a channel your users can authenticate.
 - **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
-- **`REPO_VM`.** This qube serves the Salt tree into dom0, where it eventually runs as root. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Independently verify the revision, pass that same full ID with `--commit`, and review `/var/lib/seqs/fetched` before staging and building. Commit-object export excludes working-tree drift but cannot make a malicious source qube honest.
+- **`REPO_VM`.** This qube serves the Salt tree into dom0, where it eventually runs as root. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only through `--fetch-only`, then destroy it. Independently verify and check out the intended revision before bootstrap, and review `/var/lib/seqs/fetched` before staging and building. Fetch automatically resolves and records the source qube's `HEAD`; commit-object export excludes working-tree drift but dom0 does not independently compare that answer to the reviewed ID and cannot make a malicious source qube honest.
 
 ## 2. Read what you'll run
 
@@ -35,7 +35,7 @@ Read top-to-bottom, in this order:
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
 
-For a first install, leave the reviewed repo tree unmodified, run `--repo-vm <VM> --commit <COMMIT> --fetch-only`, review `/var/lib/seqs/fetched`, confirm `source-commit` contains that ID, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
+For a first install, leave the reviewed repo tree unmodified, run `--repo-vm <VM> --fetch-only`, review `/var/lib/seqs/fetched`, confirm `source-commit` contains the ID previously verified in the repository qube, run `--stage-only`, and finally run `--build-only --qubes ...` or explicit `--all` in dom0. Repository edits are needed only for intentional advanced definition or hardware changes.
 
 The README warning is in earnest: you are running these scripts in dom0.
 
@@ -77,7 +77,7 @@ Each component's `template-vm.sh` header also documents the three sources it was
 
 When you run `setup-qubes.sh`:
 
-1. **Fetch and stage.** The integrity anchor is the **git commit hash** you verified in the disposable (`git rev-parse HEAD` against the value you publish/trust) — it covers the whole repository, including `setup-qubes.sh`. Copy the runner with `git show <COMMIT>:setup-qubes.sh` and give the same full ID to fetch with `--commit`. Fetch uses `git archive <COMMIT>` rather than the live working tree, records the ID in `/var/lib/seqs/fetched/source-commit`, saves a validated tree there, and prints a `Transfer SHA256` of the tar stream. That transfer hash is diagnostic only: neither it nor the Git command makes a compromised source qube honest. Review the tree before `--stage-only`; staging shows the diff that will be placed under `/srv`, and re-running `--stage-only` reports whether the staged tree is identical to the fetched one.
+1. **Fetch and stage.** The integrity anchor is the **git commit hash** you verified in the disposable (`git rev-parse HEAD` against the value you publish/trust) — it covers the whole repository, including `setup-qubes.sh`. Copy the runner with `git show HEAD:setup-qubes.sh`. Fetch resolves that same checkout's `HEAD`, validates the returned full object-ID shape, and archives that exact object rather than the live working tree. It records the source-reported ID in `/var/lib/seqs/fetched/source-commit`, saves a validated tree there, and prints a `Transfer SHA256` of the tar stream. Dom0 does not independently compare the ID to the value you reviewed, and neither the transfer hash nor Git makes a compromised source qube honest. Review the tree before `--stage-only`; staging shows the diff that will be placed under `/srv`, and re-running `--stage-only` reports whether the staged tree is identical to the fetched one.
 
    At build time, confirm `Staged tree SHA256`, `Build-plan SHA256`, and
    `Requested qubes` match your intent. Reordering the same names must produce

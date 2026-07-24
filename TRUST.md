@@ -65,25 +65,53 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 
 ### `REPO_VM` — the qube hosting the repo
 - **Trust assumption:** The qube the repo is fetched from is not compromised.
-- **Established by:** 📝 Your explicit `--repo-vm` choice; there is deliberately no default. It is contacted exactly once by fetch. Stage-only and build-only never contact it.
-- **Residual risk:** **`--commit` is not a commit verification performed by dom0.** It tells Git in `REPO_VM` which object to export. An honest source qube thereby excludes modified and untracked working-tree files, but a compromised source can return any runner or archive, make a malicious runner ignore the option, and falsely report success. `/var/lib/seqs/fetched/source-commit` records the operator's request; it is not cryptographic evidence of what was received. Because fetched data becomes root-executed Salt code, a compromised `REPO_VM` remains dom0-equivalent unless review catches the substituted bytes.
+- **Established by:** 📝 Your explicit `--repo-vm` choice; there is deliberately
+  no default. Fetch contacts it once to resolve `HEAD` and once to export the
+  resolved object. Stage-only and build-only never contact it.
+- **Residual risk:** Fetch asks `REPO_VM` to resolve its checked-out `HEAD`,
+  validates only that the answer has the shape of a full Git object ID, and
+  exports that exact object. This excludes modified and untracked working-tree
+  files and avoids a moving-HEAD race when the source is honest, but dom0 does
+  not compare the answer to the independently reviewed ID. A compromised
+  source can return any ID, runner, or archive and falsely report success.
+  `/var/lib/seqs/fetched/source-commit` records the source's answer; it is not
+  cryptographic evidence of what was received. Because fetched data becomes
+  root-executed Salt code, a compromised `REPO_VM` remains dom0-equivalent
+  unless review catches the substituted bytes.
 - **Guidance for the operator:** Use a fresh networked DisposableVM, name it explicitly with `--repo-vm`, keep it alive only through fetch, and then destroy it. Do **not** use a daily personal-data qube. For maintenance, repeat the disposable workflow or use a dedicated, minimal, network-light repo qube.
 
-> **Scope of the commit binding:** `git show <COMMIT>:setup-qubes.sh` and
-> `git archive <COMMIT>` are working-tree hygiene controls under the assumption
+> **Scope of the commit binding:** `git show HEAD:setup-qubes.sh` and exporting
+> the full object ID resolved from `HEAD` are working-tree hygiene controls
+> under the assumption
 > that `REPO_VM` and its Git behave honestly. They do not create an end-to-end
 > cryptographic chain from the published commit to bytes executed in dom0.
 > Achieving that would require an independent verifier already trusted in dom0
 > or a separately authenticated runner/archive digest or signature.
 
 ### The dom0 bootstrap copy
-- **Trust assumption:** `qvm-run -p REPO_VM git show COMMIT:setup-qubes.sh` returns the runner from the reviewed commit.
-- **Established by:** 📝 The documented command names the same full commit ID the operator independently checked and avoids the live working tree, assuming the source qube is honest.
-- **Residual risk:** This runner executes before any project code in dom0 can check it. A compromised `REPO_VM` can return arbitrary bytes; the commit argument does not prevent that. Review the received runner before execution. The documented command appends `2>/dev/null` so source-qube ANSI / CSI / OSC output cannot reach the dom0 terminal before the runner's `sanitize()` filter exists.
+- **Trust assumption:** `qvm-run -p REPO_VM git show HEAD:setup-qubes.sh`
+  returns the runner from the revision already checked out and verified in the
+  repository qube.
+- **Established by:** 📝 The documented workflow verifies the checkout before
+  bootstrap, and `git show HEAD:` avoids the live working-tree copy, assuming
+  the source qube remains honest.
+- **Residual risk:** This runner executes before any project code in dom0 can
+  check it. A compromised `REPO_VM` can return arbitrary bytes, and dom0 no
+  longer receives an independently supplied object ID to compare. Review the
+  received runner before execution. The documented command appends
+  `2>/dev/null` so source-qube ANSI / CSI / OSC output cannot reach the dom0
+  terminal before the runner's `sanitize()` filter exists.
 
 ### Fetch, review, and staging
 - **Trust assumption:** The tree staged under `/srv` is the fetched tree you reviewed.
-- **Established by:** 📝 Fetch requires `--commit`, exports `salt/` and `install-scripts/` from that Git commit object rather than the live working tree, validates one tar stream, records the requested ID in `/var/lib/seqs/fetched/source-commit`, and saves the tree under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the `/srv` diff, and copies it root-owned. Build requires the stage completion markers.
+- **Established by:** 📝 Fetch resolves the repository qube's `HEAD`, validates
+  the returned full object-ID shape, exports `salt/` and `install-scripts/`
+  from that exact Git object rather than the live working tree, validates the
+  archive, records the resolved ID in
+  `/var/lib/seqs/fetched/source-commit`, and saves the tree under
+  `/var/lib/seqs/fetched`; stage requires its completion marker, displays the
+  `/srv` diff, and copies it root-owned. Build requires the stage completion
+  markers.
 - **Residual risk:** `source-commit` and the transfer SHA256 are provenance and diagnostic records, not independent authentication. These boundaries help only if `REPO_VM` is honest or the operator reviews the fetched data before staging and building it.
 
 ### `setup-qubes.sh` (thin dom0 runner)
