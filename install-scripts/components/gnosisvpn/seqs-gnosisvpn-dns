@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+interface=wg0_gnosisvpn
+resolver_file="/run/resolvconf/interfaces/${interface}"
+table=seqs_gnosisvpn_dns
+
+exec 9>/run/lock/seqs-gnosisvpn-dns.lock
+flock 9
+
+remove_table() {
+	if nft list table ip "$table" >/dev/null 2>&1; then
+		nft delete table ip "$table"
+	fi
+}
+
+# openresolv removes the interface file when wg-quick tears down the tunnel.
+# Requiring both it and an UP interface prevents stale translations from
+# sending DNS outside the VPN after a disconnect.
+if [[ ! -r "$resolver_file" ]] ||
+	! ip link show dev "$interface" 2>/dev/null |
+		grep -Eq '<([^>]*,)?UP(,|>)'; then
+	remove_table
+	exit 0
+fi
+
+mapfile -t provider_dns < <(
+	awk '
+		$1 == "nameserver" &&
+		$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
+			print $2
+			if (++found == 2)
+				exit
+		}
+	' "$resolver_file"
+)
+
+mapfile -t local_dns < <(
+	for key in /qubes-primary-dns /qubes-secondary-dns; do
+		qubesdb-read "$key" 2>/dev/null || true
+	done
+)
+
+mapfile -t client_dns < <(
+	for key in /qubes-netvm-primary-dns /qubes-netvm-secondary-dns; do
+		qubesdb-read "$key" 2>/dev/null || true
+	done
+)
+
+is_ipv4() {
+	local address=$1 octet
+	local -a octets
+	[[ $address =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+	IFS=. read -r -a octets <<< "$address"
+	for octet in "${octets[@]}"; do
+		((10#$octet <= 255)) || return 1
+	done
+}
+
+if [[ ${#provider_dns[@]} -eq 0 || ${#local_dns[@]} -eq 0 ]]; then
+	remove_table
+	echo "ERROR: active GnosisVPN tunnel has no usable provider or Qubes DNS addresses" >&2
+	exit 1
+fi
+
+for address in "${provider_dns[@]}" "${local_dns[@]}" "${client_dns[@]}"; do
+	if ! is_ipv4 "$address"; then
+		remove_table
+		echo "ERROR: refusing malformed GnosisVPN or Qubes DNS address" >&2
+		exit 1
+	fi
+done
+
+# Atomically replace only the table owned by this component. Output rules
+# translate DNS generated in this qube. Their oifname guard ensures that stale
+# state cannot redirect local DNS over eth0. Prerouting rules serve downstream
+# qubes; the firewall hook independently blocks all forwarded eth0 fallback.
+rules="add table ip ${table}"$'\n'
+rules+="delete table ip ${table}"$'\n'
+rules+="table ip ${table} {"$'\n'
+rules+=$'chain output {\n'
+rules+=$'type nat hook output priority -101; policy accept;\n'
+for i in "${!local_dns[@]}"; do
+	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
+	rules+="ip daddr ${local_dns[$i]} udp dport 53 oifname \"${interface}\" counter dnat to ${destination}"$'\n'
+	rules+="ip daddr ${local_dns[$i]} tcp dport 53 oifname \"${interface}\" counter dnat to ${destination}"$'\n'
+done
+rules+=$'}\n'
+
+if [[ ${#client_dns[@]} -gt 0 ]]; then
+	rules+=$'chain prerouting {\n'
+	rules+=$'type nat hook prerouting priority -101; policy accept;\n'
+	for i in "${!client_dns[@]}"; do
+		destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
+		rules+="ip daddr ${client_dns[$i]} udp dport 53 counter dnat to ${destination}"$'\n'
+		rules+="ip daddr ${client_dns[$i]} tcp dport 53 counter dnat to ${destination}"$'\n'
+	done
+	rules+=$'}\n'
+fi
+
+rules+=$'}\n'
+nft --file - <<< "$rules"

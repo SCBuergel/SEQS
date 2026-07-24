@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+[[ ${EUID} -eq 0 ]] || {
+	echo "ERROR: run seqs-gnosisvpn-prepare-app as root" >&2
+	exit 1
+}
+
+hook=/rw/config/qubes-firewall-user-script
+entry=/usr/sbin/seqs-gnosisvpn-firewall
+
+touch "$hook"
+chmod 0755 "$hook"
+if ! grep -Fqx "$entry" "$hook"; then
+	printf '%s\n' "$entry" >> "$hook"
+fi
+
+/usr/sbin/seqs-gnosisvpn-dns

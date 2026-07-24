@@ -36,7 +36,7 @@ separate build-plan hash and records the canonical selection in
 The shipped catalogue currently exposes these base names:
 
 ```text
-brave  element  telegram  signal  wireguard  openoffice  xournalpp
+brave  element  telegram  signal  wireguard  gnosisvpn  openoffice  xournalpp
 usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
 dev-full  wallet-ledger  wallet-trezor
 ```
@@ -54,6 +54,7 @@ it once `A-brave` already exists.
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
+| `gnosisvpn`    | GnosisVPN NetVM prerequisites and dynamic Qubes DNS/fail-closed hooks; not GnosisVPN itself |
 | `keepass`      | KeePassXC AppImage (GPG-verified) |
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |
@@ -99,6 +100,14 @@ network-provider AppVM configured from a user-supplied WireGuard file. See
 [Using the WireGuard NetVM](wireguard.md) for setup, verification,
 troubleshooting, and a high-level explanation of its routing, DNS, persistence,
 and firewall behavior.
+
+## GnosisVPN NetVM preparation
+
+The optional `gnosisvpn` entry builds `A-gnosisvpn`, installs Debian's
+`wireguard-tools` and `openresolv`, and configures dynamic Qubes-aware DNS and
+fail-closed forwarding hooks. It deliberately does not install the GnosisVPN
+binary. See [Preparing the GnosisVPN NetVM](gnosisvpn.md) for the manual test
+workflow, persistence caveat, and verification commands.
 
 Duplicate names abort the pre-flight.
 

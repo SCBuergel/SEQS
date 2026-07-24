@@ -37,6 +37,7 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
   {'name': 'telegram',          'label': 'red',    'components': ['telegram']},
   {'name': 'signal',            'label': 'green',  'components': ['signal']},
   {'name': 'wireguard',         'label': 'purple', 'components': ['wireguard'], 'network_provider': True, 'no_handoff': True},
+  {'name': 'gnosisvpn',         'label': 'purple', 'components': ['gnosisvpn'], 'network_provider': True, 'no_handoff': True},
   {'name': 'openoffice',        'label': 'yellow', 'components': ['openoffice']},
   {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp']},
   {'name': 'usb-data-transfer', 'label': 'red',    'components': ['adb']},

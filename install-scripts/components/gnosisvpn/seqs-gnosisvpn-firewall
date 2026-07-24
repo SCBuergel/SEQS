@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# qubes-firewall recreates these chains before calling this hook. Downstream
+# clients must not fall back to the upstream NetVM while GnosisVPN is absent,
+# disconnected, or failed.
+nft list chain ip qubes custom-forward >/dev/null 2>&1 &&
+	nft add rule ip qubes custom-forward oifname "eth0" counter drop
+nft list chain ip6 qubes custom-forward >/dev/null 2>&1 &&
+	nft add rule ip6 qubes custom-forward oifname "eth0" counter drop
+
+# Reassert the separately owned DNS translations after network/firewall
+# changes. An inactive tunnel makes the helper remove its table.
+/usr/sbin/seqs-gnosisvpn-dns

@@ -146,6 +146,16 @@ After install:
   `sudo nft list chain ip qubes seqs-wireguard-dns-output` should show the
   equivalent output-hook translations, and both `getent hosts example.com`
   there and in the test client should succeed.
+- If preparing GnosisVPN, `qvm-prefs A-gnosisvpn provides_network` should
+  print `True`; `openresolv` and `wireguard-tools` should be installed, but no
+  GnosisVPN binary should have been downloaded by SEQS. After a manually
+  reviewed same-session GnosisVPN install and connection,
+  `/run/resolvconf/interfaces/wg0_gnosisvpn` should exist,
+  `/etc/resolv.conf` should remain Qubes-managed, and
+  `sudo nft list table ip seqs_gnosisvpn_dns` should show provider-DNS
+  translations with increasing counters. Confirm DNS crosses
+  `wg0_gnosisvpn`, not `eth0`, and confirm an attached disposable test client
+  loses both DNS and IP connectivity when the VPN disconnects.
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `gray`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - `qvm-features A-keepass seqs-managed` prints `1` for every SEQS-built qube (the no-clobber marker), and `/var/lib/seqs/intents/` in dom0 is empty after a clean run.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.

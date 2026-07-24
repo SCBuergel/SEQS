@@ -507,6 +507,54 @@ def test_qube_wireguard_component():
           "provider-qube DNS output must use its own narrowly scoped chain")
 
 
+def test_qube_gnosisvpn_component():
+    case("qube.sls: GnosisVPN preparation renders without installing VPN")
+    _, template = render_state("qube", "Z-gnosisvpn")
+    _, app = render_state("qube", "A-gnosisvpn")
+    check("seqs-install-gnosisvpn" in template,
+          "GnosisVPN prerequisite template installer should render")
+    check("seqs-install-gnosisvpn" in app,
+          "GnosisVPN app hooks should render")
+    check("seqs-default-browser" not in app,
+          "the GnosisVPN network provider should suppress browser handoff")
+
+    component_dir = os.path.join(
+        sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn")
+    with open(os.path.join(component_dir, "template-vm.sh"),
+              encoding="utf-8") as f:
+        installer_text = f.read()
+    check("openresolv wireguard-tools" in installer_text,
+          "GnosisVPN template must include wg-quick and resolvconf prerequisites")
+    check("download" not in installer_text.lower() and
+          "gnosisvpn_" not in installer_text,
+          "GnosisVPN preparation must not download or install the VPN binary")
+
+    with open(os.path.join(component_dir, "seqs-gnosisvpn-dns"),
+              encoding="utf-8") as f:
+        dns_text = f.read()
+    check("/run/resolvconf/interfaces/${interface}" in dns_text,
+          "DNS helper must consume GnosisVPN's runtime openresolv data")
+    check("/qubes-primary-dns" in dns_text and
+          "/qubes-netvm-primary-dns" in dns_text,
+          "DNS helper must obtain local and client synthetic DNS from QubesDB")
+    check("table=seqs_gnosisvpn_dns" in dns_text and
+          "delete table ip" in dns_text,
+          "DNS helper must atomically own a separate replaceable table")
+    check('oifname \\"${interface}\\"' in dns_text,
+          "local DNS translation must be guarded by the VPN output interface")
+
+    with open(os.path.join(component_dir, "seqs-gnosisvpn-firewall"),
+              encoding="utf-8") as f:
+        firewall_text = f.read()
+    check('oifname "eth0" counter drop' in firewall_text,
+          "GnosisVPN forwarding must fail closed through the upstream interface")
+    with open(os.path.join(component_dir, "seqs-gnosisvpn-prepare-app"),
+              encoding="utf-8") as f:
+        prepare_text = f.read()
+    check("/rw/config/qubes-firewall-user-script" in prepare_text,
+          "a manually created AppVM must have an explicit persistent setup path")
+
+
 def test_qube_browser_itself_no_selfhandoff():
     case("qube.sls: the browser qube does not hand links off to itself")
     _, parsed = render_state("qube", "A-brave")

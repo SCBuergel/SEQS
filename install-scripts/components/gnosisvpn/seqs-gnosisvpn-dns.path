@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for GnosisVPN resolver changes
+
+[Path]
+PathChanged=/run/resolvconf/interfaces
+Unit=seqs-gnosisvpn-dns.service
+
+[Install]
+WantedBy=multi-user.target
