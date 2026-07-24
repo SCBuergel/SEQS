@@ -547,15 +547,32 @@ def test_qube_gnosisvpn_component():
               encoding="utf-8") as f:
         dns_text = f.read()
     check("/run/resolvconf/interfaces/${interface}" in dns_text,
-          "DNS helper must consume GnosisVPN's runtime openresolv data")
+          "DNS helper must prefer GnosisVPN's runtime openresolv data")
+    check("fallback_dns=(1.1.1.1 8.8.8.8)" in dns_text,
+          "DNS helper must survive missing GnosisVPN openresolv data")
     check("/qubes-primary-dns" in dns_text and
           "/qubes-netvm-primary-dns" in dns_text,
           "DNS helper must obtain local and client synthetic DNS from QubesDB")
+    check('printf \'%s\\n\' "${local_dns[@]}"' in dns_text,
+          "downstream DNS must fall back to the provider's Qubes DNS pair")
     check("table=seqs_gnosisvpn_dns" in dns_text and
           "delete table ip" in dns_text,
           "DNS helper must atomically own a separate replaceable table")
-    check('oifname \\"${interface}\\"' in dns_text,
-          "local DNS translation must be guarded by the VPN output interface")
+    check('ip daddr ${local_dns[$i]} udp dport 53 counter dnat' in dns_text,
+          "local DNS translation must not depend on NAT-hook oifname matching")
+    check('ip daddr ${address} udp dport 53 oifname != \\"${interface}\\"'
+          in dns_text,
+          "fallback DNS must be guarded against non-VPN output")
+    check('route=$(ip -4 route get "$address"' in dns_text,
+          "DNS destinations must be verified to route through the VPN")
+
+    with open(os.path.join(component_dir, "seqs-gnosisvpn-dns.timer"),
+              encoding="utf-8") as f:
+        timer_text = f.read()
+    check("OnUnitActiveSec=5s" in timer_text,
+          "DNS integration must reconcile connections without openresolv data")
+    check("seqs-gnosisvpn-dns.timer" in installer_text,
+          "GnosisVPN installer must install and enable DNS reconciliation")
 
     with open(os.path.join(component_dir, "seqs-gnosisvpn-firewall"),
               encoding="utf-8") as f:

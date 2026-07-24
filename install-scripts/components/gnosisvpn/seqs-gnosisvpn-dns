@@ -4,6 +4,8 @@ set -Eeuo pipefail
 interface=wg0_gnosisvpn
 resolver_file="/run/resolvconf/interfaces/${interface}"
 table=seqs_gnosisvpn_dns
+state_file=/run/seqs-gnosisvpn-dns.state
+fallback_dns=(1.1.1.1 8.8.8.8)
 
 exec 9>/run/lock/seqs-gnosisvpn-dns.lock
 flock 9
@@ -12,28 +14,34 @@ remove_table() {
 	if nft list table ip "$table" >/dev/null 2>&1; then
 		nft delete table ip "$table"
 	fi
+	rm -f "$state_file"
 }
 
-# openresolv removes the interface file when wg-quick tears down the tunnel.
-# Requiring both it and an UP interface prevents stale translations from
-# sending DNS outside the VPN after a disconnect.
-if [[ ! -r "$resolver_file" ]] ||
-	! ip link show dev "$interface" 2>/dev/null |
+# The reconciler also runs from a timer because some GnosisVPN connections do
+# not publish an openresolv interface file. An inactive interface always
+# removes the translation.
+if ! ip link show dev "$interface" 2>/dev/null |
 		grep -Eq '<([^>]*,)?UP(,|>)'; then
 	remove_table
 	exit 0
 fi
 
-mapfile -t provider_dns < <(
-	awk '
-		$1 == "nameserver" &&
-		$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
-			print $2
-			if (++found == 2)
-				exit
-		}
-	' "$resolver_file"
-)
+provider_dns=()
+if [[ -r "$resolver_file" ]]; then
+	mapfile -t provider_dns < <(
+		awk '
+			$1 == "nameserver" &&
+			$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
+				print $2
+				if (++found == 2)
+					exit
+			}
+		' "$resolver_file"
+	)
+fi
+if [[ ${#provider_dns[@]} -eq 0 ]]; then
+	provider_dns=("${fallback_dns[@]}")
+fi
 
 mapfile -t local_dns < <(
 	for key in /qubes-primary-dns /qubes-secondary-dns; do
@@ -42,9 +50,12 @@ mapfile -t local_dns < <(
 )
 
 mapfile -t client_dns < <(
-	for key in /qubes-netvm-primary-dns /qubes-netvm-secondary-dns; do
-		qubesdb-read "$key" 2>/dev/null || true
-	done
+	{
+		printf '%s\n' "${local_dns[@]}"
+		for key in /qubes-netvm-primary-dns /qubes-netvm-secondary-dns; do
+			qubesdb-read "$key" 2>/dev/null || true
+		done
+	} | awk 'NF && !seen[$0]++'
 )
 
 is_ipv4() {
@@ -57,9 +68,9 @@ is_ipv4() {
 	done
 }
 
-if [[ ${#provider_dns[@]} -eq 0 || ${#local_dns[@]} -eq 0 ]]; then
+if [[ ${#local_dns[@]} -eq 0 ]]; then
 	remove_table
-	echo "ERROR: active GnosisVPN tunnel has no usable provider or Qubes DNS addresses" >&2
+	echo "ERROR: active GnosisVPN tunnel has no usable Qubes DNS addresses" >&2
 	exit 1
 fi
 
@@ -71,10 +82,34 @@ for address in "${provider_dns[@]}" "${local_dns[@]}" "${client_dns[@]}"; do
 	fi
 done
 
-# Atomically replace only the table owned by this component. Output rules
-# translate DNS generated in this qube. Their oifname guard ensures that stale
-# state cannot redirect local DNS over eth0. Prerouting rules serve downstream
-# qubes; the firewall hook independently blocks all forwarded eth0 fallback.
+# Refuse to install a translation unless every destination currently routes
+# through the tunnel. The output filter below also blocks those DNS
+# destinations if a route changes before the next reconciliation.
+for address in "${provider_dns[@]}"; do
+	route=$(ip -4 route get "$address" 2>/dev/null || true)
+	if [[ " $route " != *" dev ${interface} "* ]]; then
+		remove_table
+		echo "ERROR: GnosisVPN DNS destination does not route through ${interface}" >&2
+		exit 1
+	fi
+done
+
+desired_state="$(
+	printf 'interface=%s\n' "$interface"
+	printf 'provider=%s\n' "${provider_dns[@]}"
+	printf 'local=%s\n' "${local_dns[@]}"
+	printf 'client=%s\n' "${client_dns[@]}"
+)"
+if [[ -r "$state_file" ]] &&
+	[[ $(<"$state_file") == "$desired_state" ]] &&
+	nft list table ip "$table" >/dev/null 2>&1; then
+	exit 0
+fi
+
+# Atomically replace only the table owned by this component. Destination-based
+# output DNAT works even when nft has not populated oifname as expected at this
+# hook. Prerouting rules serve downstream qubes, including systems where QubesDB
+# exposes only the provider qube's synthetic DNS pair.
 rules="add table ip ${table}"$'\n'
 rules+="delete table ip ${table}"$'\n'
 rules+="table ip ${table} {"$'\n'
@@ -82,21 +117,33 @@ rules+=$'chain output {\n'
 rules+=$'type nat hook output priority -101; policy accept;\n'
 for i in "${!local_dns[@]}"; do
 	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
-	rules+="ip daddr ${local_dns[$i]} udp dport 53 oifname \"${interface}\" counter dnat to ${destination}"$'\n'
-	rules+="ip daddr ${local_dns[$i]} tcp dport 53 oifname \"${interface}\" counter dnat to ${destination}"$'\n'
+	rules+="ip daddr ${local_dns[$i]} udp dport 53 counter dnat to ${destination}"$'\n'
+	rules+="ip daddr ${local_dns[$i]} tcp dport 53 counter dnat to ${destination}"$'\n'
 done
 rules+=$'}\n'
 
-if [[ ${#client_dns[@]} -gt 0 ]]; then
-	rules+=$'chain prerouting {\n'
-	rules+=$'type nat hook prerouting priority -101; policy accept;\n'
-	for i in "${!client_dns[@]}"; do
-		destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
-		rules+="ip daddr ${client_dns[$i]} udp dport 53 counter dnat to ${destination}"$'\n'
-		rules+="ip daddr ${client_dns[$i]} tcp dport 53 counter dnat to ${destination}"$'\n'
-	done
-	rules+=$'}\n'
-fi
+rules+=$'chain prerouting {\n'
+rules+=$'type nat hook prerouting priority -101; policy accept;\n'
+for i in "${!client_dns[@]}"; do
+	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
+	rules+="ip daddr ${client_dns[$i]} udp dport 53 counter dnat to ${destination}"$'\n'
+	rules+="ip daddr ${client_dns[$i]} tcp dport 53 counter dnat to ${destination}"$'\n'
+done
+rules+=$'}\n'
+
+rules+=$'chain output_dns_leak_guard {\n'
+rules+=$'type filter hook output priority 0; policy accept;\n'
+for address in "${provider_dns[@]}"; do
+	rules+="ip daddr ${address} udp dport 53 oifname != \"${interface}\" counter drop"$'\n'
+	rules+="ip daddr ${address} tcp dport 53 oifname != \"${interface}\" counter drop"$'\n'
+done
+rules+=$'}\n'
 
 rules+=$'}\n'
 nft --file - <<< "$rules"
+
+tmp_state=$(mktemp "${state_file}.XXXXXX")
+trap 'rm -f "$tmp_state"' EXIT
+printf '%s\n' "$desired_state" > "$tmp_state"
+chmod 0600 "$tmp_state"
+mv -f "$tmp_state" "$state_file"

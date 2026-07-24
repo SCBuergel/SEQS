@@ -268,9 +268,13 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   upstream project, so this is not an independent trust anchor by itself. The
   package runs maintainer scripts as root and may configure an APT repository;
   later updates use the normal Qubes UpdateVM, not the temporary domain-only
-  proxy. The VPN qube retains upstream access so the VPN can establish its
-  tunnel, while downstream forwarding fails closed. A compromised VPN qube can
-  alter its own routing and firewall state.
+  proxy. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
+  back to Cloudflare `1.1.1.1` and Google `8.8.8.8`; those providers can
+  observe queries, although the helper verifies that they route through the
+  tunnel and installs an output leak guard. The VPN qube retains upstream
+  access so the VPN can establish its tunnel, while downstream forwarding
+  fails closed. A compromised VPN qube can alter its own routing and firewall
+  state.
 
 ### Browser-link policy (`qubes.OpenURL` → `A-brave`)
 - **Component:** the `seqs.dom0` state (`salt/seqs/dom0.sls`) writes `/etc/qubes/policy.d/29-browser.policy` (the catch-all `@anyvm → A-brave allow`) AND `/etc/qubes/policy.d/28-browser-suppress.policy` (deny rules for every qube spec carrying `offline` or `no_handoff`). The 28- file is evaluated before the 29- file (qrexec first-match-wins), so the deny fires before the catch-all allow for opted-out qubes. Both are root-owned `file.managed` states carrying a `Managed by SEQS` header; a pre-existing policy file *without* that header is never silently overwritten — the runner's `confirmPolicyTakeover` blocks on a default-no `[y/N]` confirmation before any state runs, and only `y`/`Y` proceeds. The link-handoff handler (`/usr/share/applications/open-links-in-browser-qube.desktop`) is installed once per template by the `seqs.qube` state (so it exists, but inert, in every qube), while the per-qube xdg default that actually activates it (`xdg-settings set default-web-browser`) is skipped for `offline`/`no_handoff` qubes — so for those qubes the handler is never the default *and* the dom0 deny blocks the handoff regardless.

@@ -105,9 +105,10 @@ and firewall behavior.
 
 The optional `gnosisvpn` entry builds `A-gnosisvpn`, installs Debian's
 `wireguard-tools` and `openresolv`, installs the pinned GnosisVPN snapshot for
-the `rotsee` network, and configures dynamic Qubes-aware DNS and fail-closed
-forwarding hooks. See [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped
-download path, verification, and runtime checks.
+the `rotsee` network, and configures reconciled Qubes-aware DNS with
+tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
+[Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped download path,
+verification, and runtime checks.
 
 Duplicate names abort the pre-flight.
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile SEQS GnosisVPN Qubes DNS integration
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=5s
+AccuracySec=1s
+Unit=seqs-gnosisvpn-dns.service
+
+[Install]
+WantedBy=timers.target
