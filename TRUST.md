@@ -263,7 +263,8 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   in GnosisVPN's `SECURITY.md`; the operator should cross-check it
   independently. Download uses a temporary update-proxy AppVM whose firewall
   allows only DNS and `download.gnosisvpn.io:443`, with qrexec policy scoped to
-  `Z-gnosisvpn`; the runner removes both afterward.
+  `Z-gnosisvpn`; the runner resolves a configured DispVM UpdateVM through its
+  template chain to a TemplateVM, and removes both proxy and policy afterward.
 - **Residual risk:** The embedded key and fingerprint originate from the same
   upstream project, so this is not an independent trust anchor by itself. The
   package runs maintainer scripts as root and may configure an APT repository;

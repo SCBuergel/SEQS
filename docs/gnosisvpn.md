@@ -28,7 +28,9 @@ through the ordinary configured UpdateVM. It then creates a temporary AppVM
 named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and applies
 a default-deny firewall allowing only DNS and TCP 443 to
 `download.gnosisvpn.io`. A temporary exact-source qrexec rule directs only
-`Z-gnosisvpn` to that proxy.
+`Z-gnosisvpn` to that proxy. If the configured UpdateVM is a DispVM, the
+runner follows its validated DispVM-to-AppVM template chain to the underlying
+TemplateVM used to create the temporary AppVM.
 
 The template downloads the pinned `.deb` and detached signature through
 `127.0.0.1:8082`, checks the embedded signing-key fingerprint

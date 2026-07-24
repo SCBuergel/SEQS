@@ -1,2 +1,5 @@
 #!/usr/bin/env bash
+if [ -n "${SEQS_MOCK_QVM_CREATE_LOG:-}" ]; then
+	printf '%s\n' "$*" >> "${SEQS_MOCK_QVM_CREATE_LOG}"
+fi
 exit 0

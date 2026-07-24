@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 if [ "${1:-}" = "updatevm" ]; then
-	echo "sys-firewall"
+	echo "${SEQS_MOCK_UPDATEVM:-sys-firewall}"
 	exit 0
 fi
 exit 1

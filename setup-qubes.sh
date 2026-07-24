@@ -503,6 +503,36 @@ verifyGnosisUpdateProxyRemoved() {
 		|| die "temporary GnosisVPN updates proxy was not removed"
 }
 
+resolveTemplateVM() {
+	local current=$1 klass parent depth=0
+	local visited=" "
+	while [ "${depth}" -lt 8 ]; do
+		[[ "${current}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+			|| die "unsafe or empty VM name while resolving UpdateVM template: '${current}'"
+		[[ "${visited}" != *" ${current} "* ]] \
+			|| die "cycle while resolving TemplateVM for UpdateVM at '${current}'"
+		visited+="${current} "
+		klass="$(qvm-prefs -- "${current}" klass 2>/dev/null)" \
+			|| die "could not determine the class of UpdateVM dependency ${current}"
+		case "${klass}" in
+			TemplateVM)
+				printf '%s\n' "${current}"
+				return 0
+				;;
+			AppVM|DispVM)
+				parent="$(qvm-prefs -- "${current}" template 2>/dev/null)" \
+					|| die "could not determine the template of UpdateVM dependency ${current}"
+				current="${parent}"
+				;;
+			*)
+				die "UpdateVM dependency ${current} has unsupported class '${klass}'"
+				;;
+		esac
+		depth=$((depth + 1))
+	done
+	die "UpdateVM template chain exceeds the maximum supported depth"
+}
+
 setupGnosisUpdateProxy() {
 	local updatevm proxy_template proxy_netvm value
 	hasTarget Z-gnosisvpn || return 0
@@ -521,8 +551,7 @@ setupGnosisUpdateProxy() {
 		|| die "could not determine the default Qubes UpdateVM"
 	[[ "${updatevm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
 		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
-	proxy_template="$(qvm-prefs -- "${updatevm}" template 2>/dev/null)" \
-		|| die "could not determine the template of UpdateVM ${updatevm}"
+	proxy_template="$(resolveTemplateVM "${updatevm}")"
 	proxy_netvm="$(qvm-prefs -- "${updatevm}" netvm 2>/dev/null)" \
 		|| die "could not determine the NetVM of UpdateVM ${updatevm}"
 	for value in "${proxy_template}" "${proxy_netvm}"; do

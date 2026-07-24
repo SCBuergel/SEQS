@@ -34,6 +34,7 @@ new_sandbox() {
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
+	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG
 	unset SEQS_BROWSER_SUPPRESS_POLICY
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
@@ -86,7 +87,20 @@ grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 	|| bad "the named disposable should be independently air-gap verified"
 rm -rf "${SBX}"
 
-# ── Scenario 1b: fetch requires an explicit source and validates its HEAD ──
+# ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────
+echo "== scenario: GnosisVPN proxy resolves a DisposableVM UpdateVM template chain =="
+new_sandbox
+export SEQS_MOCK_UPDATEVM=disp-updates
+export SEQS_MOCK_QVM_CREATE_LOG="${SBX}/qvm-create.log"
+out="$(run_setup --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok \
+	|| bad "GnosisVPN install with a DisposableVM UpdateVM exited non-zero ($rc)"
+grep -q -- '--class AppVM --template debian-13-xfce --label gray seqs-gnosisvpn-update-proxy' \
+	"${SEQS_MOCK_QVM_CREATE_LOG}" 2>/dev/null && ok \
+	|| bad "temporary proxy must resolve DispVM -> AppVM -> TemplateVM"
+rm -rf "${SBX}"
+
+# ── Scenario 1c: fetch requires an explicit source and validates its HEAD ──
 echo "== scenario: fetch requires an explicit source and validates source HEAD =="
 new_sandbox
 out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --fetch-only 2>&1)"; rc=$?

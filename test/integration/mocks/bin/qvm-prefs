@@ -10,6 +10,34 @@ vm="${args[0]:-}"
 property="${args[1]:-}"
 value="${args[2]:-}"
 
+if [ "${vm}" = "disp-updates" ] && [ "${property}" = "klass" ]; then
+	echo "DispVM"
+	exit 0
+fi
+if [ "${vm}" = "disp-updates" ] && [ "${property}" = "template" ]; then
+	echo "default-dvm"
+	exit 0
+fi
+if [ "${vm}" = "disp-updates" ] && [ "${property}" = "netvm" ]; then
+	echo "sys-firewall"
+	exit 0
+fi
+if [ "${vm}" = "default-dvm" ] && [ "${property}" = "klass" ]; then
+	echo "AppVM"
+	exit 0
+fi
+if [ "${vm}" = "default-dvm" ] && [ "${property}" = "template" ]; then
+	echo "debian-13-xfce"
+	exit 0
+fi
+if [ "${vm}" = "debian-13-xfce" ] && [ "${property}" = "klass" ]; then
+	echo "TemplateVM"
+	exit 0
+fi
+if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "klass" ]; then
+	echo "AppVM"
+	exit 0
+fi
 if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "template" ]; then
 	echo "debian-13-xfce"
 	exit 0
