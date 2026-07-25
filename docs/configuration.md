@@ -74,7 +74,7 @@ a separate canonical run.
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
-| `gnosisvpn`    | Pinned, signed GnosisVPN snapshot for `rotsee` plus dynamic Qubes DNS/fail-closed hooks |
+| `gnosisvpn`    | Pinned, signed GnosisVPN snapshot for `rotsee`, persistent `/var/lib/gnosisvpn`, and dynamic Qubes DNS/fail-closed hooks |
 | `keepass`      | KeePassXC AppImage (GPG-verified) |
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |

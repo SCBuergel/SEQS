@@ -547,6 +547,9 @@ def test_qube_gnosisvpn_component():
 
     component_dir = os.path.join(
         sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn")
+    with open(os.path.join(component_dir, "app-vm.sh"),
+              encoding="utf-8") as f:
+        app_installer_text = f.read()
     with open(os.path.join(component_dir, "template-vm.sh"),
               encoding="utf-8") as f:
         installer_text = f.read()
@@ -569,6 +572,9 @@ def test_qube_gnosisvpn_component():
           "GnosisVPN installer must select the rotsee network")
     check("curl --proxy 127.0.0.1:8082" in installer_text,
           "GnosisVPN download must use the Qubes updates proxy")
+    check('sudo "${ASSET_DIR}/seqs-gnosisvpn-prepare-app"'
+          in app_installer_text,
+          "AppVM provisioning must use the freshly staged preparation helper")
 
     with open(os.path.join(component_dir, "seqs-gnosisvpn-dns"),
               encoding="utf-8") as f:
@@ -611,6 +617,12 @@ def test_qube_gnosisvpn_component():
         prepare_text = f.read()
     check("/rw/config/qubes-firewall-user-script" in prepare_text,
           "a manually created AppVM must have an explicit persistent setup path")
+    check("/rw/config/qubes-bind-dirs.d/50-seqs-gnosisvpn.conf" in prepare_text
+          and "binds+=( '/var/lib/gnosisvpn' )" in prepare_text,
+          "GnosisVPN state must persist in the AppVM private volume")
+    check("persistent_dir=/rw/bind-dirs/var/lib/gnosisvpn" in prepare_text
+          and "cp -a -- /var/lib/gnosisvpn" in prepare_text,
+          "GnosisVPN backing directory must be seeded during AppVM provisioning")
 
 
 def test_qube_browser_itself_no_selfhandoff():

@@ -8,11 +8,32 @@ set -Eeuo pipefail
 
 hook=/rw/config/qubes-firewall-user-script
 entry=/usr/sbin/seqs-gnosisvpn-firewall
+bind_dir_config=/rw/config/qubes-bind-dirs.d/50-seqs-gnosisvpn.conf
+persistent_dir=/rw/bind-dirs/var/lib/gnosisvpn
 
 touch "$hook"
 chmod 0755 "$hook"
 if ! grep -Fqx "$entry" "$hook"; then
 	printf '%s\n' "$entry" >> "$hook"
 fi
+
+install -d -m 0755 "${bind_dir_config%/*}"
+printf '%s\n' "binds+=( '/var/lib/gnosisvpn' )" > "$bind_dir_config"
+chmod 0644 "$bind_dir_config"
+
+# Seed the private-volume backing directory before the bind becomes active on
+# the next boot. Preserve package-provided state, ownership, and permissions.
+if [[ ! -e "$persistent_dir" ]]; then
+	install -d -m 0755 "${persistent_dir%/*}"
+	if [[ -d /var/lib/gnosisvpn && ! -L /var/lib/gnosisvpn ]]; then
+		cp -a -- /var/lib/gnosisvpn "$persistent_dir"
+	else
+		install -d -m 0755 "$persistent_dir"
+	fi
+fi
+[[ -d "$persistent_dir" && ! -L "$persistent_dir" ]] || {
+	echo "ERROR: GnosisVPN persistent path is not a directory" >&2
+	exit 1
+}
 
 /usr/sbin/seqs-gnosisvpn-dns

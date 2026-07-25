@@ -21,7 +21,11 @@ For an independent second managed template and AppVM:
 ```
 
 This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`. Each
-AppVM has independent private VPN state. The temporary update-proxy policy is
+AppVM has independent private VPN state: `/var/lib/gnosisvpn` is mapped into
+its private volume at `/rw/bind-dirs/var/lib/gnosisvpn` through Qubes
+bind-dirs, so that directory survives AppVM restarts and template updates.
+SEQS creates and seeds the private-volume directory during AppVM provisioning;
+the bind becomes active on the next boot. The temporary update-proxy policy is
 generated with exact source rules for every selected GnosisVPN instance and is
 removed after template provisioning.
 
@@ -64,9 +68,10 @@ qvm-service --enable sys-gnosisvpn qubes-firewall
 qvm-run -u root sys-gnosisvpn /usr/sbin/seqs-gnosisvpn-prepare-app
 ```
 
-The last command installs the persistent AppVM firewall hook from inherited
-template assets. Do not skip it: manually creating an AppVM does not run the
-SEQS app role that prepared `A-gnosisvpn`.
+The last command installs the persistent AppVM firewall hook and the
+`/var/lib/gnosisvpn` private-volume bind from inherited template assets. The
+bind takes effect on the next AppVM start. Do not skip this command: manually
+creating an AppVM does not run the SEQS app role that prepared `A-gnosisvpn`.
 
 ## Test GnosisVPN
 
@@ -172,8 +177,10 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
   working IPv6 through GnosisVPN.
 - A manually created AppVM requires `provides_network`, the
   `qubes-firewall` service, and one successful root invocation of
-  `seqs-gnosisvpn-prepare-app`; the generated `A-gnosisvpn` already has all
-  three.
+  `seqs-gnosisvpn-prepare-app`; restart it afterward to activate the
+  `/var/lib/gnosisvpn` bind. The generated `A-gnosisvpn` already has all three
+  settings and is shut down after provisioning, so the bind is active on its
+  next start.
 - The DNS path unit reacts to openresolv changes and the timer reconciles
   interface state every five seconds. Check
   `systemctl status seqs-gnosisvpn-dns.path seqs-gnosisvpn-dns.timer` and
