@@ -82,11 +82,11 @@ trap 'rm -rf "${tmp}"' EXIT
 export TARGETS_FILE="${tmp}/targets"
 cat > "${TARGETS_FILE}" <<'EOF'
 # comment
-template Z-brave
-template Z-keepass
-app A-brave
-app A-keepass offline
-disposable D-qr-display offline
+template Z-brave brave
+template Z-keepass keepass
+app A-brave brave
+app A-keepass keepass offline
+disposable D-qr-display qr-display offline
 EOF
 if readTargets 2>/dev/null; then
 	eq "templates count" "${#TEMPLATE_TARGETS[@]}" "2"
@@ -99,7 +99,7 @@ if readTargets 2>/dev/null; then
 	eq "offline includes the disposable" "${OFFLINE_TARGETS[*]}" "A-keepass D-qr-display"
 else bad "readTargets failed on a valid file"; fi
 # Unsafe qube name must abort.
-printf 'template Z-brave\napp A-brave; rm -rf /\n' > "${TARGETS_FILE}"
+printf 'template Z-brave brave\napp A-brave; rm -rf / brave\n' > "${TARGETS_FILE}"
 if ( readTargets ) 2>/dev/null; then bad "readTargets accepted an unsafe name"; else ok; fi
 
 echo "== verifyAirgap() only passes when offline qubes truly have no netvm =="

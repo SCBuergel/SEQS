@@ -13,6 +13,9 @@ the affected qubes first.
 
 The argument is a **base name** available in `qube_catalog`, not a complete VM
 name. For example, use `keepass` to target both `A-keepass` and `Z-keepass`.
+For a postfixed instance, pass its full generated base name: `gnosisvpn-alpha`
+targets `A-gnosisvpn-alpha` and `Z-gnosisvpn-alpha`, while leaving the
+canonical `gnosisvpn` instance untouched.
 
 Review what would happen without changing anything:
 

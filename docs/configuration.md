@@ -10,6 +10,23 @@ runner argument:
 ~/s.sh --build-only --all
 ```
 
+To create an additional, independently named instance of every selected
+catalogue recipe, add one postfix:
+
+```bash
+~/s.sh --build-only --qubes gnosisvpn,signal --postfix alpha
+```
+
+This creates `Z-gnosisvpn-alpha` / `A-gnosisvpn-alpha` and
+`Z-signal-alpha` / `A-signal-alpha`. With `--all`, the postfix applies to the
+entire catalogue. The postfix is part of the persistent instance name; use the
+same command to converge that instance later.
+
+Without `--postfix`, selecting an entry whose managed qubes already exist
+reuses and reconciles them. SEQS prints an explicit existing-qube message,
+never clones over them, and refuses a same-named qube it does not own. A
+postfixed instance that already exists is handled identically.
+
 Do not edit the staged `/srv` copy to select qubes. Editing the repository file
 is an advanced operation for changing catalogue definitions or machine-wide
 settings; those changes must go through fetch, review, and stage again.
@@ -42,9 +59,12 @@ dev-full  wallet-ledger  wallet-trezor
 ```
 
 Names are case-sensitive and must be passed without the generated `A-` or `Z-`
-prefix. On a new machine, include `brave` in the first selection because the
+prefix. A postfix must also be a safe qube-name fragment; SEQS inserts the
+separating `-`. On a new machine, include `brave` in the first selection because the
 default browser-handoff policy targets `A-brave`. Later partial builds may omit
-it once `A-brave` already exists.
+it once `A-brave` already exists. A postfixed `A-brave-alpha` does not replace
+that canonical browser target, so `A-brave` must already exist or be built in
+a separate canonical run.
 
 | Component | What it installs |
 |---|---|

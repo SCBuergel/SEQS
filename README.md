@@ -46,7 +46,8 @@ from one reviewed configuration.
    Fetch resolves and records the disposable's checked-out `HEAD`, then exports
    that exact commit object rather than the live working tree. The disposable
    can be shut down after the command finishes. Use `--all` instead of
-   `--qubes` for the full catalogue.
+   `--qubes` for the full catalogue. Add `--postfix alpha` to create or
+   converge a separate `*-alpha` instance of every selected recipe.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use

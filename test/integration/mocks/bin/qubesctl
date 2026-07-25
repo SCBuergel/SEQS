@@ -15,18 +15,35 @@ import salt_render as sr
 seqs = sr.render_pillar("dom0")
 catalogue = seqs["catalogue"]
 selection = open(sys.argv[3]).read().splitlines()
-selected = catalogue if selection == ["@all"] else {n: catalogue[n] for n in selection}
+selected = {}
+recipes = {}
+first = selection[0].split() if selection else []
+if first and first[0] == "@all":
+    postfix = first[1] if len(first) == 2 else ""
+    for recipe, spec in catalogue.items():
+        instance = recipe + (("-" + postfix) if postfix else "")
+        selected[instance] = spec
+        recipes[instance] = recipe
+else:
+    for line in selection:
+        fields = line.split()
+        recipe = fields[0]
+        instance = fields[1] if len(fields) == 2 else recipe
+        selected[instance] = catalogue[recipe]
+        recipes[instance] = recipe
 ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
 pdvm = seqs["prefix_disposable"]
 lines = ["# Managed by SEQS (mock).",
-         "# Format: <template|app|disposable> <qube-name> [offline]"]
+         "# Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline]"]
 for n in selected:
-    lines.append("template %s%s" % (ptpl, n))
+    lines.append("template %s%s %s" % (ptpl, n, recipes[n]))
 for n, q in selected.items():
-    lines.append("app %s%s%s" % (papp, n, " offline" if q.get("offline") else ""))
+    lines.append("app %s%s %s%s" % (
+        papp, n, recipes[n], " offline" if q.get("offline") else ""))
 for n, q in selected.items():
     if q.get("named_disposable"):
-        lines.append("disposable %s%s%s" % (pdvm, n, " offline" if q.get("offline") else ""))
+        lines.append("disposable %s%s %s%s" % (
+            pdvm, n, recipes[n], " offline" if q.get("offline") else ""))
 os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 open(sys.argv[2], "w").write("\n".join(lines) + "\n")
 PY

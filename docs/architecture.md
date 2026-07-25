@@ -34,6 +34,10 @@ data flow and controls. For the per-component trust analysis see
    selected app qubes — declaratively and idempotently. Pre-existing qubes NOT
    created by SEQS are refused via the `seqs-managed` qvm-feature guard (with
    intent markers so an interrupted run can be resumed, not locked out).
+   Existing managed qubes are reported and converged in place. With
+   `--postfix`, the root-owned build plan maps every selected catalogue recipe
+   to a separate generated instance name, and each VM records its recipe in
+   the `seqs-recipe` feature.
    Air-gapped (`offline`) qubes are independently re-verified by the runner
    before anything is provisioned.
 

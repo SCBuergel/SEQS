@@ -14,6 +14,17 @@ After fetching, reviewing, and staging this revision, run in dom0:
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
 
+For an independent second managed template and AppVM:
+
+```bash
+~/s.sh --build-only --qubes gnosisvpn --postfix alpha
+```
+
+This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`. Each
+AppVM has independent private VPN state. The temporary update-proxy policy is
+generated with exact source rules for every selected GnosisVPN instance and is
+removed after template provisioning.
+
 The template contains:
 
 - `wireguard-tools`, including `wg` and `wg-quick`;
@@ -42,7 +53,8 @@ removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
 policy then applies again.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
-test below. To use a separately named AppVM instead, create it from
+test below. Prefer `--postfix` when the extra AppVM and its template should
+remain managed by SEQS. To use a manually named AppVM instead, create it from
 `Z-gnosisvpn`, then configure it in dom0 (replace `sys-gnosisvpn` with the
 chosen exact name):
 

@@ -128,6 +128,24 @@ def test_dom0_runtime_selection():
     check("seqs-validation-failed" in bad,
           "unknown runtime selections must fail pre-flight")
 
+    _, postfixed = render_state(
+        "dom0", "dom0",
+        Scenario(selection="brave alpha\nsignal signal-alpha"))
+    check("seqs-validation-failed" in postfixed,
+          "a malformed recipe/instance mapping must fail pre-flight")
+
+    _, postfixed = render_state(
+        "dom0", "dom0",
+        Scenario(selection="brave brave-alpha\nsignal signal-alpha",
+                 existing_qubes=["A-brave"], tagged_qubes=["A-brave"]))
+    check("seqs-clone-brave-alpha" in postfixed
+          and "seqs-clone-signal-alpha" in postfixed,
+          "one postfix should create an instance of every selected recipe")
+    targets = state_arg(postfixed, "seqs-targets", "file.managed", "contents")
+    check("template Z-brave-alpha brave" in targets
+          and "app A-signal-alpha signal" in targets,
+          "targets must retain recipe identity for postfixed instances")
+
 
 def test_dom0_idempotent_rerun():
     case("dom0.sls: a fully-provisioned re-run is churn-free (no clone/tag states)")
@@ -142,6 +160,12 @@ def test_dom0_idempotent_rerun():
           "re-run over tagged qubes should not re-clone anything")
     check(not ids_containing(parsed, "seqs-tag-app-"),
           "re-run over tagged qubes should not re-tag anything")
+    check("seqs-existing-template-gnosisvpn" in parsed
+          and "seqs-existing-app-gnosisvpn" in parsed,
+          "re-runs should explicitly report managed qubes that already exist")
+    check("seqs-recipe-template-gnosisvpn" in parsed
+          and "seqs-recipe-app-gnosisvpn" in parsed,
+          "legacy managed qubes should converge their catalogue recipe metadata")
     check("seqs-targets" in parsed, "targets file is still (re)written on re-run")
 
 
@@ -277,7 +301,7 @@ def test_dom0_named_disposable():
     # The disposable is written to the targets file as its own kind + offline,
     # so the runner air-gap-verifies it without trying to provision it.
     targets = state_arg(parsed, "seqs-targets", "file.managed", "contents")
-    check("disposable D-qr-display offline" in targets,
+    check("disposable D-qr-display qr-display offline" in targets,
           "the named disposable must be listed for independent air-gap verification")
     check("app D-qr-display" not in targets,
           "the disposable must not be listed as an app (it is never provisioned)")
@@ -511,10 +535,13 @@ def test_qube_gnosisvpn_component():
     case("qube.sls: pinned GnosisVPN component and Qubes hooks render")
     _, template = render_state("qube", "Z-gnosisvpn")
     _, app = render_state("qube", "A-gnosisvpn")
+    _, postfixed_template = render_state("qube", "Z-gnosisvpn-alpha")
     check("seqs-install-gnosisvpn" in template,
           "GnosisVPN prerequisite template installer should render")
     check("seqs-install-gnosisvpn" in app,
           "GnosisVPN app hooks should render")
+    check("seqs-install-gnosisvpn" in postfixed_template,
+          "a postfixed GnosisVPN template must resolve to the original recipe")
     check("seqs-default-browser" not in app,
           "the GnosisVPN network provider should suppress browser handoff")
 
@@ -529,7 +556,7 @@ def test_qube_gnosisvpn_component():
     check("openresolv wireguard-tools" in runner_text,
           "GnosisVPN preflight must include wg-quick and resolvconf prerequisites")
     check("download.gnosisvpn.io proto=tcp dstports=443" in runner_text and
-          "Z-gnosisvpn @anyvm deny" in runner_text,
+          "printf 'qubes.UpdatesProxy * %s @anyvm deny" in runner_text,
           "temporary proxy must be host-restricted and exact-source scoped")
     check("gnosisvpn_2026.07.24+build.141419_amd64.deb" in installer_text,
           "GnosisVPN installer must pin the requested snapshot")

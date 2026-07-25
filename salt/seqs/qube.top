@@ -3,6 +3,9 @@
 # highstate: sudo qubesctl top.enable seqs.qube
 # NOTE: the Z-*/A-* globs must match prefix_template / prefix_app in
 # /srv/pillar/seqs/config.sls (top files cannot read pillar).
+# Postfixed names beginning with a catalogue recipe also receive that recipe's
+# pillar. setup-qubes.sh validates ownership before targeting them; operators
+# who manually enable this optional highstate must retain that trust boundary.
 base:
   'Z-*':
     - seqs.qube

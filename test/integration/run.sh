@@ -77,11 +77,11 @@ grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out"
 [ -f "${SEQS_SALT_TREE}/files/components/brave/template-vm.sh" ] && ok \
 	|| bad "component payload not staged into files/"
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "targets file not written by dom0 apply"
-grep -q "app A-keepass offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+grep -q "app A-keepass keepass offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 	|| bad "keepass should be listed offline in targets"
 # The named disposable is listed as its own kind + offline, and the runner's
 # air-gap pass names it alongside the offline app qubes.
-grep -q "disposable D-qr-display offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+grep -q "disposable D-qr-display qr-display offline" "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 	|| bad "the named disposable should be listed offline in targets"
 grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 	|| bad "the named disposable should be independently air-gap verified"
@@ -182,12 +182,25 @@ out="$(run_setup --build-only 2>&1)"; rc=$?
 	|| bad "build without --qubes/--all should be refused"
 run_setup --build-only --qubes signal,brave >/dev/null 2>&1 \
 	&& ok || bad "selected build failed"
-grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" \
-	&& grep -q '^app A-signal$' "${SEQS_TARGETS_FILE}" \
+grep -q '^template Z-brave brave$' "${SEQS_TARGETS_FILE}" \
+	&& grep -q '^app A-signal signal$' "${SEQS_TARGETS_FILE}" \
 	&& ! grep -q 'keepass' "${SEQS_TARGETS_FILE}" \
 	&& ok || bad "selected build targets should contain only brave and signal"
-[ -f "${SEQS_RUN_MANIFEST}" ] && grep -q '^selection=brave,signal$' "${SEQS_RUN_MANIFEST}" \
+[ -f "${SEQS_RUN_MANIFEST}" ] && grep -q '^selection=brave=>brave,signal=>signal$' "${SEQS_RUN_MANIFEST}" \
 	&& ok || bad "run manifest should record canonical selection"
+
+out="$(run_setup --build-only --qubes gnosisvpn,signal --postfix alpha 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "postfixed multi-qube build failed"
+grep -q '^template Z-gnosisvpn-alpha gnosisvpn$' "${SEQS_TARGETS_FILE}" \
+	&& grep -q '^app A-signal-alpha signal$' "${SEQS_TARGETS_FILE}" \
+	&& ok || bad "postfix should apply to every selected qube"
+grep -q 'selection=gnosisvpn=>gnosisvpn-alpha,signal=>signal-alpha' \
+	"${SEQS_RUN_MANIFEST}" && ok || bad "manifest should record recipe-to-instance mapping"
+grep -q 'Z-gnosisvpn-alpha' <<<"$out" && ok \
+	|| bad "GnosisVPN preparation should target the postfixed template"
+out="$(run_setup --build-only --qubes brave --postfix '../unsafe' 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "unsafe or empty postfix" <<<"$out" && ok \
+	|| bad "unsafe postfix should be refused before the build"
 rm -rf "${SBX}"
 
 # ── Scenario 6b: the single-step install runs fetch+stage+build in one go ──
@@ -199,7 +212,7 @@ out="$(run_setup --qubes brave 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "single-step install exited non-zero ($rc)"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "single-step install did not complete"
 [ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "single-step install did not stage /srv"
-grep -q '^template Z-brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
+grep -q '^template Z-brave brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 	|| bad "single-step install did not build the selected qube"
 # One combined confirmation, not the old three-phase prompt.
 ! grep -q "Step 1/3" <<<"$out" && ok || bad "install should not show the old 3-step prompts"

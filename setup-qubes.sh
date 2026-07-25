@@ -9,6 +9,7 @@
 #                                   fetch and validate into /var/lib/seqs/fetched
 #   ./setup-qubes.sh --stage-only   copy the fetched tree into /srv
 #   ./setup-qubes.sh --build-only --qubes brave,signal
+#   ./setup-qubes.sh --build-only --qubes brave,signal --postfix alpha
 #   ./setup-qubes.sh --build-only --all
 #   --repo-vm VM                    required explicit repository qube for fetch
 #   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
@@ -114,10 +115,11 @@ showWorkflow() {
 }
 
 canonicalizeSelection() {
-	local raw name
+	local raw name instance
 	local -a requested=()
 	if [ "${SELECT_ALL}" -eq 1 ]; then
 		SELECTED_NAMES=("@all")
+		SELECTED_INSTANCES=("@all")
 		return 0
 	fi
 	IFS=',' read -r -a requested <<< "${SELECT_QUBES}"
@@ -128,6 +130,13 @@ canonicalizeSelection() {
 			|| die "unsafe or empty qube base name in --qubes: '${name}'"
 	done
 	mapfile -t SELECTED_NAMES < <(printf '%s\n' "${requested[@]}" | LC_ALL=C sort -u)
+	SELECTED_INSTANCES=()
+	for name in "${SELECTED_NAMES[@]}"; do
+		instance="${name}${POSTFIX:+-${POSTFIX}}"
+		[[ "${instance}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+			|| die "unsafe generated qube base name: '${instance}'"
+		SELECTED_INSTANCES+=("${instance}")
+	done
 }
 
 treeHash() {
@@ -143,9 +152,19 @@ treeHash() {
 }
 
 writeBuildIntent() {
-	local selected tree_hash plan_hash selection_text
-	selected=$(printf '%s\n' "${SELECTED_NAMES[@]}")
-	selection_text=$(printf '%s\n' "${SELECTED_NAMES[@]}" | paste -sd, -)
+	local selected tree_hash plan_hash selection_text i
+	if [ "${SELECT_ALL}" -eq 1 ]; then
+		selected="@all ${POSTFIX}"
+		selection_text="@all${POSTFIX:+ (postfix: ${POSTFIX})}"
+	else
+		selected=""
+		selection_text=""
+		for i in "${!SELECTED_NAMES[@]}"; do
+			selected+="${SELECTED_NAMES[$i]} ${SELECTED_INSTANCES[$i]}"$'\n'
+			selection_text+="${selection_text:+,}${SELECTED_NAMES[$i]}=>${SELECTED_INSTANCES[$i]}"
+		done
+		selected="${selected%$'\n'}"
+	fi
 	tree_hash=$(treeHash)
 	plan_hash=$(printf '%s\n%s\n' "${tree_hash}" "${selected}" | sha256sum | awk '{print $1}')
 	sudo mkdir -p "${SELECTION_FILE%/*}" "${RUN_MANIFEST%/*}" \
@@ -159,15 +178,15 @@ writeBuildIntent() {
 	echo "    Requested qubes:    ${selection_text}"
 	RUN_TREE_HASH="${tree_hash}"
 	RUN_PLAN_HASH="${plan_hash}"
+	RUN_SELECTION="${selection_text}"
 }
 
 writeRunManifest() {
-	local result="$1" selected
-	selected=$(printf '%s\n' "${SELECTED_NAMES[@]}" | paste -sd, -)
+	local result="$1"
 	{
 		printf 'staged_tree_sha256=%s\n' "${RUN_TREE_HASH}"
 		printf 'build_plan_sha256=%s\n' "${RUN_PLAN_HASH}"
-		printf 'selection=%s\n' "${selected}"
+		printf 'selection=%s\n' "${RUN_SELECTION}"
 		printf 'result=%s\n' "${result}"
 		printf 'recorded_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	} | sudo tee "${RUN_MANIFEST}" >/dev/null || die "could not write ${RUN_MANIFEST}"
@@ -408,17 +427,22 @@ readTargets() {
 	APP_TARGETS=()
 	DISPOSABLE_TARGETS=()
 	OFFLINE_TARGETS=()
+	GNOSIS_TEMPLATE_TARGETS=()
 	[ -r "${TARGETS_FILE}" ] || die "${TARGETS_FILE} missing -- did the seqs.dom0 state run?"
-	local kind name flags flag
-	while read -r kind name flags; do
+	local kind name recipe flags flag
+	while read -r kind name recipe flags; do
 		case "${kind}" in ''|\#*) continue ;; esac
 		# Re-validated (root-written, but interpolated into qubesctl/qvm-* commands).
 		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe qube name in ${TARGETS_FILE}: '${name}'"
+		[[ "${recipe}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe recipe name in ${TARGETS_FILE}: '${recipe}'"
 		# 'disposable' entries (named DisposableVMs) are air-gap-verified like app
 		# qubes but never provisioned via seqs.qube -- they inherit everything
 		# from their dispvm template and reset on each shutdown.
 		case "${kind}" in
-			template)   TEMPLATE_TARGETS+=("${name}") ;;
+			template)
+				TEMPLATE_TARGETS+=("${name}")
+				[ "${recipe}" != "gnosisvpn" ] || GNOSIS_TEMPLATE_TARGETS+=("${name}")
+				;;
 			app)        APP_TARGETS+=("${name}") ;;
 			disposable) DISPOSABLE_TARGETS+=("${name}") ;;
 			*) die "unknown entry kind in ${TARGETS_FILE}: '${kind}'" ;;
@@ -462,24 +486,20 @@ shutdownAll() {
 	done
 }
 
-hasTarget() {
-	local wanted=$1 target
-	for target in "${TEMPLATE_TARGETS[@]}"; do
-		[ "${target}" = "${wanted}" ] && return 0
-	done
-	return 1
-}
-
 prepareGnosisPrerequisites() {
-	hasTarget Z-gnosisvpn || return 0
+	[ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ] || return 0
+	local template
 	echo "==> Preparing GnosisVPN dependencies through the default UpdateVM"
-	if ! qvm-run -p -u root Z-gnosisvpn \
-		"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg openresolv wireguard-tools libc6 systemd iptables logrotate wireguard ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0t64 libayatana-appindicator3-1 libglib2.0-bin" \
-		2>&1 | sanitize; then
-		die "could not install GnosisVPN prerequisites through the default updates proxy"
-	fi
-	qvm-shutdown --wait Z-gnosisvpn \
-		|| die "could not commit GnosisVPN prerequisite installation"
+	for template in "${GNOSIS_TEMPLATE_TARGETS[@]}"; do
+		echo "    ${template}"
+		if ! qvm-run -p -u root "${template}" \
+			"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg openresolv wireguard-tools libc6 systemd iptables logrotate wireguard ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0t64 libayatana-appindicator3-1 libglib2.0-bin" \
+			2>&1 | sanitize; then
+			die "could not install GnosisVPN prerequisites in ${template} through the default updates proxy"
+		fi
+		qvm-shutdown --wait "${template}" \
+			|| die "could not commit GnosisVPN prerequisite installation in ${template}"
+	done
 }
 
 cleanupGnosisUpdateProxy() {
@@ -534,8 +554,8 @@ resolveTemplateVM() {
 }
 
 setupGnosisUpdateProxy() {
-	local updatevm proxy_template proxy_netvm value
-	hasTarget Z-gnosisvpn || return 0
+	local updatevm proxy_template proxy_netvm value template
+	[ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ] || return 0
 
 	if sudo test -e "${GNOSIS_UPDATE_POLICY}" \
 		&& ! sudo grep -q "${MANAGED_MARKER}" "${GNOSIS_UPDATE_POLICY}"; then
@@ -585,8 +605,10 @@ setupGnosisUpdateProxy() {
 		|| die "could not create qrexec policy directory"
 	{
 		printf '# %s\n' "${MANAGED_MARKER}"
-		printf 'qubes.UpdatesProxy * Z-gnosisvpn @default allow target=%s\n' "${GNOSIS_UPDATE_PROXY}"
-		printf 'qubes.UpdatesProxy * Z-gnosisvpn @anyvm deny\n'
+		for template in "${GNOSIS_TEMPLATE_TARGETS[@]}"; do
+			printf 'qubes.UpdatesProxy * %s @default allow target=%s\n' "${template}" "${GNOSIS_UPDATE_PROXY}"
+			printf 'qubes.UpdatesProxy * %s @anyvm deny\n' "${template}"
+		done
 	} | sudo tee "${GNOSIS_UPDATE_POLICY}" >/dev/null \
 		|| die "could not install temporary GnosisVPN updates policy"
 	sudo chmod 0644 "${GNOSIS_UPDATE_POLICY}" \
@@ -615,7 +637,7 @@ FAILED=0
 
 echo ""
 	prepareGnosisPrerequisites
-	if hasTarget Z-gnosisvpn; then
+	if [ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ]; then
 		trap cleanupGnosisUpdateProxy EXIT
 		trap 'cleanupGnosisUpdateProxy; trap - EXIT; exit 130' INT TERM
 	fi
@@ -672,6 +694,8 @@ EXPLICIT_STAGE=0
 VERBOSE="${SEQS_VERBOSE:-0}"
 SELECT_ALL=0
 SELECT_QUBES=""
+POSTFIX=""
+POSTFIX_SET=0
 REPO_VM_SET=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -680,6 +704,13 @@ while [ "$#" -gt 0 ]; do
 		--build-only) RUN_BUILD=1; EXPLICIT_STAGE=$((EXPLICIT_STAGE + 1)) ;;
 		--verbose) VERBOSE=1 ;;
 		--all) SELECT_ALL=1 ;;
+		--postfix)
+			[ "$#" -gt 1 ] || die "--postfix requires a value"
+			[ "${POSTFIX_SET}" -eq 0 ] || die "--postfix may be specified only once"
+			POSTFIX="$2"
+			POSTFIX_SET=1
+			shift
+			;;
 		--qubes)
 			[ "$#" -gt 1 ] || die "--qubes requires a comma-separated list"
 			[ -z "${SELECT_QUBES}" ] || die "--qubes may be specified only once"
@@ -693,7 +724,7 @@ while [ "$#" -gt 0 ]; do
 			REPO_VM_SET=1
 			shift
 			;;
-		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --repo-vm VM, --verbose)" ;;
+		*) die "unknown argument '$1' (supported: --fetch-only, --stage-only, --build-only, --qubes LIST, --all, --postfix NAME, --repo-vm VM, --verbose)" ;;
 	esac
 	shift
 done
@@ -702,9 +733,12 @@ done
 if [ "${RUN_BUILD}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 	[ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ] \
 		|| die "a build selection is required: use --qubes NAME[,NAME...] or --all"
+	if [ "${POSTFIX_SET}" -eq 1 ] && ! [[ "${POSTFIX}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+		die "unsafe or empty postfix '${POSTFIX}' (allowed: [A-Za-z0-9_][A-Za-z0-9._-]*)"
+	fi
 	canonicalizeSelection
-elif [ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ]; then
-	die "--qubes/--all applies only to a build or the full fetch-stage-build workflow"
+elif [ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ] || [ "${POSTFIX_SET}" -eq 1 ]; then
+	die "--qubes/--all/--postfix applies only to a build or the full fetch-stage-build workflow"
 fi
 if [ "${RUN_FETCH}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 	[ "${REPO_VM_SET}" -eq 1 ] \

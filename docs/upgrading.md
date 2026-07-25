@@ -139,6 +139,18 @@ These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
 If a state fails, fix the reported cause and rerun the same `--build-only`
 command with the same selection. Completed work is normally skipped.
 
+An optional postfix identifies a separate managed instance of every selected
+recipe:
+
+```bash
+~/s.sh --build-only --qubes gnosisvpn,signal --postfix alpha
+```
+
+Rerun that exact selection and postfix to upgrade or repair the `*-alpha`
+instances. A run without the postfix continues to target only the canonical
+instances. Existing managed qubes are reported explicitly and reconciled in
+place; neither form overwrites or reclones them.
+
 ## 5. Verify the intended change
 
 Verify the specific outcome instead of treating a successful summary as the
@@ -160,6 +172,7 @@ USB/QR setup has hardware and policy checks in
 | Repository/configuration change | Upgrade behavior |
 |---|---|
 | Add a new `qube_catalog` entry and select it | Creates and provisions its missing `Z-*` and `A-*` qubes |
+| Select recipes with `--postfix NAME` | Creates or converges separate `Z-<recipe>-NAME` and `A-<recipe>-NAME` instances |
 | Change a supported label, offline flag, firewall, policy, or generated dom0 file | Reapplies the declared setting |
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
 | Change an installer script for a component already completed | Skipped until its completion marker is deliberately removed |

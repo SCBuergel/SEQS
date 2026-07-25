@@ -125,8 +125,22 @@ seqs:
 {%-     set ns.role = 'app' %}
 {%-     set ns.base = id[(prefix_app | length):] %}
 {%-   endif %}
-{%-   if ns.base and ns.base in qubes %}
-{%-     set spec = qubes[ns.base] %}
+{#-   Instance names are <recipe> or <recipe>-<postfix>. Prefer an exact
+       catalogue match, otherwise choose the longest matching recipe prefix.
+       Dom0 rejects generated names that collide with a different exact recipe. #}
+{%-   set resolved = namespace(recipe='') %}
+{%-   if ns.base in qubes %}
+{%-     set resolved.recipe = ns.base %}
+{%-   else %}
+{%-     for candidate in qubes if ns.base.startswith(candidate ~ '-') %}
+{%-       if candidate | length > resolved.recipe | length %}
+{%-         set resolved.recipe = candidate %}
+{%-       endif %}
+{%-     endfor %}
+{%-   endif %}
+{%-   if ns.base and resolved.recipe %}
+{%-     set recipe = resolved.recipe %}
+{%-     set spec = qubes[recipe] %}
 {#-     Only ship the extension IDs this qube actually references. #}
 {%-     set exts = {} %}
 {%-     for c in spec.get('components', []) if c.startswith('brave-extension-') %}
@@ -138,6 +152,7 @@ seqs:
 seqs:
   role: '{{ ns.role }}'
   base_name: '{{ ns.base }}'
+  recipe_name: '{{ recipe }}'
   browser_vm: '{{ browser_vm }}'
   browser_desktop: '{{ browser_desktop }}'
   component_timeout: {{ component_timeout }}
@@ -147,9 +162,10 @@ seqs:
   cleanup_dirs: {{ cleanup_dirs | tojson }}
 {%-     endif %}
 {%-   else %}
-{#-     A qube that merely matches the Z-*/A-* glob but is not in the map
-        (user-added qube with the same prefix) gets an empty marker so
-        seqs.qube renders to a no-op for it. #}
+{#-     A qube that matches the Z-*/A-* glob but is neither an exact catalogue
+        name nor <catalogue-name>-<postfix> gets an empty marker, so seqs.qube
+        renders to a no-op for it. The runner targets postfixed names only
+        after dom0 has created/validated their seqs-managed ownership. #}
 seqs: {}
 {%-   endif %}
 {%- endif %}

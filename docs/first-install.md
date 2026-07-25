@@ -117,6 +117,8 @@ catalogue base names you want, then pass them to the runner later in dom0:
 
 Each available qube is an entry in `qube_catalog`. Selection supplies base
 names only; it cannot alter reviewed labels, components, or security flags.
+Add `--postfix alpha` to create a separate `*-alpha` instance of every
+selected recipe without duplicating its catalogue definition.
 Use `--all` only when you deliberately want the entire catalogue. See
 [configuration.md](configuration.md) for the available components and exact
 selection semantics.
@@ -341,6 +343,12 @@ Build without contacting any repo/download qube:
 
 ```bash
 ~/s.sh --build-only --qubes brave,signal,keepass
+```
+
+For separate instances of the whole selection:
+
+```bash
+~/s.sh --build-only --qubes brave,signal,keepass --postfix alpha
 ```
 
 Watch for:

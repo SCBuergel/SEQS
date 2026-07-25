@@ -12,14 +12,28 @@
 {% set selection_raw = salt['cmd.shell']('cat ' ~ selection_file ~ ' 2>/dev/null') %}
 {% set selection = selection_raw.splitlines() %}
 {% set qmap = {} %}
-{% if selection == ['@all'] %}
-{%   do qmap.update(qcatalog) %}
-{% else %}
-{%   for selected_name in selection %}
-{%     if selected_name in qcatalog %}
-{%       do qmap.update({selected_name: qcatalog[selected_name]}) %}
-{%     endif %}
-{%   endfor %}
+{% set recipes = {} %}
+{% if selection %}
+{%   set first = selection[0].split() %}
+{%   if first and first[0] == '@all' %}
+{%     set postfix = first[1] if first | length == 2 else '' %}
+{%     for recipe, spec in qcatalog.items() %}
+{%       set instance = recipe ~ (('-' ~ postfix) if postfix else '') %}
+{%       do qmap.update({instance: spec}) %}
+{%       do recipes.update({instance: recipe}) %}
+{%     endfor %}
+{%   else %}
+{%     for line in selection %}
+{%       set fields = line.split() %}
+{%       if fields | length == 1 and fields[0] in qcatalog %}
+{%         do qmap.update({fields[0]: qcatalog[fields[0]]}) %}
+{%         do recipes.update({fields[0]: fields[0]}) %}
+{%       elif fields | length == 2 and fields[0] in qcatalog %}
+{%         do qmap.update({fields[1]: qcatalog[fields[0]]}) %}
+{%         do recipes.update({fields[1]: fields[0]}) %}
+{%       endif %}
+{%     endfor %}
+{%   endif %}
 {% endif %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
@@ -39,16 +53,35 @@
 
 {% if not selection %}
 {%   do errors.append("runtime selection is missing -- invoke setup-qubes.sh with --qubes or --all") %}
-{% elif '@all' in selection and selection != ['@all'] %}
-{%   do errors.append("runtime selection mixes @all with named entries") %}
 {% endif %}
-{% for selected_name in selection if selected_name != '@all' %}
-{%   if selected_name | regex_match(name_re) is none %}
-{%     do errors.append("runtime selection contains unsafe name '" ~ selected_name ~ "'") %}
-{%   elif selected_name not in qcatalog %}
-{%     do errors.append("runtime selection names unknown catalogue entry '" ~ selected_name ~ "'") %}
+{% for line in selection %}
+{%   set fields = line.split() %}
+{%   if fields and fields[0] == '@all' %}
+{%     if selection | length != 1 or fields | length > 2 %}
+{%       do errors.append("runtime @all selection is malformed or mixed with named entries") %}
+{%     elif fields | length == 2 and fields[1] | regex_match(name_re) is none %}
+{%       do errors.append("runtime selection contains unsafe postfix '" ~ fields[1] ~ "'") %}
+{%     endif %}
+{%   elif fields | length not in [1, 2] %}
+{%     do errors.append("runtime selection entry '" ~ line ~ "' is malformed") %}
+{%   elif fields[0] | regex_match(name_re) is none or (fields | length == 2 and fields[1] | regex_match(name_re) is none) %}
+{%     do errors.append("runtime selection contains unsafe recipe or instance name '" ~ line ~ "'") %}
+{%   elif fields[0] not in qcatalog %}
+{%     do errors.append("runtime selection names unknown catalogue entry '" ~ fields[0] ~ "'") %}
+{%   elif fields | length == 2 and fields[1] != fields[0] and not fields[1].startswith(fields[0] ~ '-') %}
+{%     do errors.append("runtime instance '" ~ fields[1] ~ "' is not derived from recipe '" ~ fields[0] ~ "'") %}
+{%   elif fields | length == 2 and fields[1] in qcatalog and fields[1] != fields[0] %}
+{%     do errors.append("generated instance name '" ~ fields[1] ~ "' collides with catalogue recipe '" ~ fields[1] ~ "'") %}
 {%   endif %}
 {% endfor %}
+{% for instance, recipe in recipes.items() %}
+{%   if instance in qcatalog and instance != recipe %}
+{%     do errors.append("generated instance name '" ~ instance ~ "' collides with catalogue recipe '" ~ instance ~ "'") %}
+{%   endif %}
+{% endfor %}
+{% if selection and not qmap %}
+{%   do errors.append("runtime selection resolved to no qube instances") %}
+{% endif %}
 
 {% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
@@ -202,6 +235,7 @@
        Adopt qubes carrying seqs-managed or an interrupted-run intent
        marker; refuse unrelated same-named qubes before any state runs. #}
 {%     if name in qmap %}
+{%     set recipe = recipes.get(name, '') %}
 {%     set adopt_names = [ptpl ~ name, papp ~ name] %}
 {%     if q.get('named_disposable') and pdvm %}{% set adopt_names = adopt_names + [pdvm ~ name] %}{% endif %}
 {%     for vmname in adopt_names %}
@@ -209,6 +243,11 @@
 {%         if salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim != '1'
               and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
 {%           do errors.append("qube '" ~ vmname ~ "' already exists but is not marked seqs-managed -- refusing to adopt it (remove or rename it, or set: qvm-features " ~ vmname ~ " seqs-managed 1)") %}
+{%         elif salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+{%           set existing_recipe = salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-recipe 2>/dev/null') | trim %}
+{%           if existing_recipe and existing_recipe != recipe %}
+{%             do errors.append("qube '" ~ vmname ~ "' is managed for recipe '" ~ existing_recipe ~ "', not requested recipe '" ~ recipe ~ "' -- refusing to repurpose it") %}
+{%           endif %}
 {%         endif %}
 {%       endif %}
 {%     endfor %}
@@ -378,6 +417,7 @@ seqs-policy-usb-keyboard:
 # stay churn-free.
 
 {% for name, q in qmap.items() %}
+{%   set recipe = recipes.get(name, '') %}
 {%   set tpl = ptpl ~ name %}
 {%   set app = papp ~ name %}
 {%   set dvm = pdvm ~ name %}
@@ -387,6 +427,17 @@ seqs-policy-usb-keyboard:
 {%   set tpl_tagged = tpl_exists and salt['cmd.shell']('qvm-features -- ' ~ tpl ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 {%   set app_tagged = app_exists and salt['cmd.shell']('qvm-features -- ' ~ app ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 {%   set dvm_tagged = dvm_exists and salt['cmd.shell']('qvm-features -- ' ~ dvm ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+
+{%   if tpl_tagged %}
+seqs-existing-template-{{ name }}:
+  test.nop:
+    - name: Existing managed qube {{ tpl }} found; reusing and reconciling it
+{%   endif %}
+{%   if app_tagged %}
+seqs-existing-app-{{ name }}:
+  test.nop:
+    - name: Existing managed qube {{ app }} found; reusing and reconciling it
+{%   endif %}
 
 {%   if not tpl_tagged %}
 seqs-intent-template-{{ name }}:
@@ -419,6 +470,15 @@ seqs-tag-template-{{ name }}:
 {%     if not tpl_exists %}
       - qvm: seqs-clone-{{ name }}
 {%     endif %}
+{%   endif %}
+
+seqs-recipe-template-{{ name }}:
+  cmd.run:
+    - name: qvm-features -- {{ tpl }} seqs-recipe {{ recipe }}
+    - unless: test "$(qvm-features -- {{ tpl }} seqs-recipe 2>/dev/null)" = "{{ recipe }}"
+{%   if not tpl_tagged %}
+    - require:
+      - cmd: seqs-tag-template-{{ name }}
 {%   endif %}
 
 {%   if not app_tagged %}
@@ -536,6 +596,17 @@ seqs-tag-app-{{ name }}:
       - file: seqs-intent-app-{{ name }}
 {%   endif %}
 
+seqs-recipe-app-{{ name }}:
+  cmd.run:
+    - name: qvm-features -- {{ app }} seqs-recipe {{ recipe }}
+    - unless: test "$(qvm-features -- {{ app }} seqs-recipe 2>/dev/null)" = "{{ recipe }}"
+    - require:
+{%   if not app_tagged %}
+      - cmd: seqs-tag-app-{{ name }}
+{%   else %}
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+
 {%   if q.get('named_disposable') %}
 # ── Named DisposableVM ({{ dvm }}) so the offline dispvm template {{ app }} is
 # launchable from the Qubes menu; a bare dispvm template only appears under
@@ -586,6 +657,15 @@ seqs-tag-disposable-{{ name }}:
     - require:
       - cmd: seqs-disposable-prefs-{{ name }}
       - file: seqs-intent-disposable-{{ name }}
+{%     endif %}
+
+seqs-recipe-disposable-{{ name }}:
+  cmd.run:
+    - name: qvm-features -- {{ dvm }} seqs-recipe {{ recipe }}
+    - unless: test "$(qvm-features -- {{ dvm }} seqs-recipe 2>/dev/null)" = "{{ recipe }}"
+{%     if not dvm_tagged %}
+    - require:
+      - cmd: seqs-tag-disposable-{{ name }}
 {%     endif %}
 {%   endif %}
 {% endfor %}
@@ -713,15 +793,15 @@ seqs-targets:
     - makedirs: True
     - contents: |
         # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
-        # Format: <template|app|disposable> <qube-name> [offline]
+        # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline]
         {%- for name in qmap %}
-        template {{ ptpl }}{{ name }}
+        template {{ ptpl }}{{ name }} {{ recipes.get(name, '') }}
         {%- endfor %}
         {%- for name, q in qmap.items() %}
-        app {{ papp }}{{ name }}{{ ' offline' if q.get('offline') else '' }}
+        app {{ papp }}{{ name }} {{ recipes.get(name, '') }}{{ ' offline' if q.get('offline') else '' }}
         {%- endfor %}
         {%- for name, q in qmap.items() if q.get('named_disposable') %}
-        disposable {{ pdvm }}{{ name }}{{ ' offline' if q.get('offline') else '' }}
+        disposable {{ pdvm }}{{ name }} {{ recipes.get(name, '') }}{{ ' offline' if q.get('offline') else '' }}
         {%- endfor %}
 
 {% endif %}
