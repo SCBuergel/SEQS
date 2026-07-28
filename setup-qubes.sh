@@ -523,6 +523,26 @@ verifyGnosisUpdateProxyRemoved() {
 		|| die "temporary GnosisVPN updates proxy was not removed"
 }
 
+refuseExistingGnosisTargets() {
+	local i instance="" vm
+	if [ "${SELECT_ALL}" -eq 1 ]; then
+		instance="gnosisvpn${POSTFIX:+-${POSTFIX}}"
+	else
+		for i in "${!SELECTED_NAMES[@]}"; do
+			if [ "${SELECTED_NAMES[$i]}" = "gnosisvpn" ]; then
+				instance="${SELECTED_INSTANCES[$i]}"
+				break
+			fi
+		done
+	fi
+	[ -n "${instance}" ] || return 0
+	for vm in "Z-${instance}" "A-${instance}"; do
+		if qvm-check -q -- "${vm}" >/dev/null 2>&1; then
+			die "GnosisVPN target '${vm}' already exists -- refusing to run Salt or modify the existing GnosisVPN qubes; delete the managed instance explicitly before rebuilding"
+		fi
+	done
+}
+
 resolveTemplateVM() {
 	local current=$1 klass parent depth=0
 	local visited=" "
@@ -737,6 +757,7 @@ if [ "${RUN_BUILD}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 		die "unsafe or empty postfix '${POSTFIX}' (allowed: [A-Za-z0-9_][A-Za-z0-9._-]*)"
 	fi
 	canonicalizeSelection
+	refuseExistingGnosisTargets
 elif [ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ] || [ "${POSTFIX_SET}" -eq 1 ]; then
 	die "--qubes/--all/--postfix applies only to a build or the full fetch-stage-build workflow"
 fi

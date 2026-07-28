@@ -100,6 +100,26 @@ grep -q -- '--class AppVM --template debian-13-xfce --label gray seqs-gnosisvpn-
 	|| bad "temporary proxy must resolve DispVM -> AppVM -> TemplateVM"
 rm -rf "${SBX}"
 
+# ── Scenario 1c: existing GnosisVPN targets fail before Salt ───────────────
+echo "== scenario: existing GnosisVPN targets fail before Salt =="
+new_sandbox
+run_setup --fetch-only >/dev/null 2>&1
+run_setup --stage-only >/dev/null 2>&1
+export SEQS_MOCK_EXISTING="debian-13-xfce Z-gnosisvpn"
+out="$(run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "existing GnosisVPN target should abort the build"
+grep -q "GnosisVPN target 'Z-gnosisvpn' already exists" <<<"$out" && ok \
+	|| bad "expected an exact existing-target error"
+! grep -q "Applying dom0 state" <<<"$out" && ok \
+	|| bad "existing GnosisVPN target must be rejected before Salt"
+! grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out" && ok \
+	|| bad "existing GnosisVPN target must be rejected before proxy creation"
+export SEQS_MOCK_EXISTING="debian-13-xfce A-gnosisvpn-alpha"
+out="$(run_setup --build-only --qubes gnosisvpn --postfix alpha 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "A-gnosisvpn-alpha.*already exists" <<<"$out" && ok \
+	|| bad "postfixed existing GnosisVPN target should abort before Salt"
+rm -rf "${SBX}"
+
 # ── Scenario 1c: fetch requires an explicit source and validates its HEAD ──
 echo "== scenario: fetch requires an explicit source and validates source HEAD =="
 new_sandbox

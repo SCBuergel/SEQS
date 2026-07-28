@@ -149,7 +149,11 @@ recipe:
 Rerun that exact selection and postfix to upgrade or repair the `*-alpha`
 instances. A run without the postfix continues to target only the canonical
 instances. Existing managed qubes are reported explicitly and reconciled in
-place; neither form overwrites or reclones them.
+place; neither form overwrites or reclones them. GnosisVPN is the exception:
+selecting it fails before Salt when either target already exists, because its
+completed component would otherwise make a lengthy run appear successful
+without installing the newly pinned release. Delete that managed instance
+explicitly before rebuilding it.
 
 ## 5. Verify the intended change
 
@@ -180,6 +184,7 @@ USB/QR setup has hardware and policy checks in
 | Omit a catalogue entry from `--qubes` | Leaves its existing VMs untouched and does not target or recreate them |
 | Remove a qube from a custom `qube_catalog` | Makes it unavailable to future selections; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |
+| Select an existing GnosisVPN instance | Fails before Salt; delete it explicitly before rebuilding |
 
 These conservative rules avoid silently deleting qubes, software, or data.
 

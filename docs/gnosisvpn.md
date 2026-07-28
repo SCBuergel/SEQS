@@ -14,6 +14,11 @@ After fetching, reviewing, and staging this revision, run in dom0:
 
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
+The build refuses immediately if either target already exists; it does not
+enter Salt or treat an existing GnosisVPN instance as a successful no-op.
+Use `delete-vms.sh gnosisvpn` deliberately when the existing managed instance
+should be destroyed and rebuilt. This also destroys the AppVM's private VPN
+state, so back up anything that must survive first.
 
 For an independent second managed template and AppVM:
 
@@ -21,7 +26,8 @@ For an independent second managed template and AppVM:
 ~/s.sh --build-only --qubes gnosisvpn --postfix alpha
 ```
 
-This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`. Each
+This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`, provided
+neither target already exists. Each
 AppVM has independent private VPN state: `/var/lib/gnosisvpn` is mapped into
 its private volume at `/rw/bind-dirs/var/lib/gnosisvpn` through Qubes
 bind-dirs, so that directory survives AppVM restarts and template updates.
