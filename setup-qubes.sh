@@ -596,7 +596,7 @@ setupGnosisUpdateProxy() {
 	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add accept specialtarget=dns \
 		|| die "could not allow temporary proxy DNS"
 	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add accept \
-		dsthost=download.gnosisvpn.io proto=tcp dstports=443 \
+		dsthost=download.vpn.gnosis.eth.limo proto=tcp dstports=443 \
 		|| die "could not allow the GnosisVPN download host"
 	qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add drop \
 		|| die "could not install temporary proxy default deny"

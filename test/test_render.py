@@ -558,14 +558,14 @@ def test_qube_gnosisvpn_component():
         runner_text = f.read()
     check("openresolv wireguard-tools" in runner_text,
           "GnosisVPN preflight must include wg-quick and resolvconf prerequisites")
-    check("download.gnosisvpn.io proto=tcp dstports=443" in runner_text and
+    check("download.vpn.gnosis.eth.limo proto=tcp dstports=443" in runner_text and
           "printf 'qubes.UpdatesProxy * %s @anyvm deny" in runner_text,
           "temporary proxy must be host-restricted and exact-source scoped")
-    check("gnosisvpn_2026.07.24+build.141419_amd64.deb" in installer_text,
-          "GnosisVPN installer must pin the requested snapshot")
-    check("77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b"
+    check("gnosisvpn_0.90.0_amd64.deb" in installer_text,
+          "GnosisVPN installer must pin the requested stable release")
+    check("ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1"
           in installer_text,
-          "GnosisVPN installer must pin the snapshot SHA-256")
+          "GnosisVPN installer must pin the stable release SHA-256")
     check("9A308031FD3BFE8EDBF5076D84F73FEA46D10972" in installer_text,
           "GnosisVPN installer must pin the signing-key fingerprint")
     check("GNOSISVPN_NETWORK=rotsee apt install ./g.deb -y" in installer_text,

@@ -74,7 +74,7 @@ a separate canonical run.
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
-| `gnosisvpn`    | Pinned, signed GnosisVPN snapshot for `rotsee`, persistent `/var/lib/gnosisvpn`, and dynamic Qubes DNS/fail-closed hooks |
+| `gnosisvpn`    | Pinned, signed GnosisVPN stable release for `rotsee`, persistent `/var/lib/gnosisvpn`, and dynamic Qubes DNS/fail-closed hooks |
 | `keepass`      | KeePassXC AppImage (GPG-verified) |
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |
@@ -124,7 +124,7 @@ and firewall behavior.
 ## GnosisVPN NetVM preparation
 
 The optional `gnosisvpn` entry builds `A-gnosisvpn`, installs Debian's
-`wireguard-tools` and `openresolv`, installs the pinned GnosisVPN snapshot for
+`wireguard-tools` and `openresolv`, installs the pinned GnosisVPN stable release for
 the `rotsee` network, and configures reconciled Qubes-aware DNS with
 tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
 [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped download path,

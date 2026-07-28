@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-echo "Installing pinned GnosisVPN snapshot..."
+echo "Installing pinned GnosisVPN stable release..."
 
 ASSET_DIR="$(dirname "$0")"
-GNOSISVPN_URL="https://download.gnosisvpn.io/linux/apt/pool/snapshot/g/gnosisvpn/gnosisvpn_2026.07.24+build.141419_amd64.deb"
-GNOSISVPN_SHA256="77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b"
+# This is the package selected by the upstream stable-channel installer at
+# https://downloads.vpn.gnosis.eth.limo/linux/install.sh on 2026-07-28.
+# Fetch the reviewed package directly instead of piping that mutable script to
+# root. This preserves SEQS's version/hash pin and detached-signature check.
+GNOSISVPN_URL="https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.90.0_amd64.deb"
+GNOSISVPN_SHA256="ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1"
 GNOSISVPN_KEY_FPR="9A308031FD3BFE8EDBF5076D84F73FEA46D10972"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT

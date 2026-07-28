@@ -1,7 +1,8 @@
 # Using the GnosisVPN NetVM
 
 SEQS builds `A-gnosisvpn`, a network-provider AppVM with a pinned GnosisVPN
-snapshot for the `rotsee` network and Qubes-aware DNS/fail-closed integration.
+stable release for the `rotsee` network and Qubes-aware DNS/fail-closed
+integration.
 
 ## Build the prepared qube
 
@@ -33,7 +34,7 @@ The template contains:
 
 - `wireguard-tools`, including `wg` and `wg-quick`;
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
-- GnosisVPN `2026.07.24+build.141419` for `amd64`, configured with
+- GnosisVPN `0.90.0` for `amd64`, configured with
   `GNOSISVPN_NETWORK=rotsee`.
 
 Do not install `openresolv` or GnosisVPN manually.
@@ -42,16 +43,24 @@ Before provisioning `Z-gnosisvpn`, the runner installs Debian dependencies
 through the ordinary configured UpdateVM. It then creates a temporary AppVM
 named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and applies
 a default-deny firewall allowing only DNS and TCP 443 to
-`download.gnosisvpn.io`. A temporary exact-source qrexec rule directs only
+`download.vpn.gnosis.eth.limo`. A temporary exact-source qrexec rule directs only
 `Z-gnosisvpn` to that proxy. If the configured UpdateVM is a DispVM, the
 runner follows its validated DispVM-to-AppVM template chain to the underlying
 TemplateVM used to create the temporary AppVM.
+
+Upstream currently recommends piping
+`https://downloads.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable
+installer downloads the repository keyring, writes a stable or snapshot APT
+source, refreshes APT metadata, and installs the channel's current candidate.
+SEQS does not execute that mutable root script. Instead, it downloads the
+stable package selected by the reviewed installer directly, retaining an exact
+version and content pin.
 
 The template downloads the pinned `.deb` and detached signature through
 `127.0.0.1:8082`, checks the embedded signing-key fingerprint
 `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, verifies the detached signature,
 and checks SHA-256
-`77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b`
+`ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1`
 before installation. After template provisioning—even on failure—the runner
 removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
 policy then applies again.
@@ -162,7 +171,7 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
 
 ## Caveats
 
-- The snapshot is version- and hash-pinned and its detached signature is
+- The stable release is version- and hash-pinned and its detached signature is
   checked against an embedded key, but the key was sourced from the GnosisVPN
   project. Review the fingerprint through an independent channel.
 - The package's post-install behavior may configure its own APT repository.

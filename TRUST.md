@@ -255,18 +255,22 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   Qubes networking/firewall services, the embedded GnosisVPN signing key, and
   GnosisVPN's package/runtime behavior.
 - **Established by:** ✅ Debian prerequisites come from configured signed
-  repositories. The `amd64` snapshot
-  `2026.07.24+build.141419` is pinned to SHA-256
-  `77e51eb09abff6a7a471b297decb73a8368ce8ea99f87c1d88757f63f437dc3b`
+  repositories. The `amd64` stable release `0.90.0`, selected by the reviewed
+  upstream installer on 2026-07-28, is pinned to SHA-256
+  `ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1`
   and its detached signature must verify with embedded fingerprint
   `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`. The key fingerprint is published
   in GnosisVPN's `SECURITY.md`; the operator should cross-check it
   independently. Download uses a temporary update-proxy AppVM whose firewall
-  allows only DNS and `download.gnosisvpn.io:443`, with qrexec policy scoped to
+  allows only DNS and `download.vpn.gnosis.eth.limo:443`, with qrexec policy scoped to
   `Z-gnosisvpn`; the runner resolves a configured DispVM UpdateVM through its
   template chain to a TemplateVM, and removes both proxy and policy afterward.
 - **Residual risk:** The embedded key and fingerprint originate from the same
   upstream project, so this is not an independent trust anchor by itself. The
+  upstream `downloads.vpn.gnosis.eth.limo/linux/install.sh` is mutable; SEQS
+  deliberately does not pipe it to root and instead pins the package it
+  selected when reviewed. A later upstream stable release requires a reviewed
+  SEQS update rather than being installed automatically. The
   package runs maintainer scripts as root and may configure an APT repository;
   later updates use the normal Qubes UpdateVM, not the temporary domain-only
   proxy. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
