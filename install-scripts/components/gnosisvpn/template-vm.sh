@@ -31,7 +31,7 @@ install -d -m 0700 "${tmp}/gnupg"
 gpg --batch --homedir "${tmp}/gnupg" \
 	--import "${ASSET_DIR}/gnosisvpn-public-key.asc" >/dev/null
 gpg --batch --homedir "${tmp}/gnupg" --verify g.deb.asc g.deb
-sudo env GNOSISVPN_NETWORK=rotsee apt install ./g.deb -y
+sudo env GNOSISVPN_NETWORK=jura apt install ./g.deb -y
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall
@@ -43,4 +43,4 @@ sudo systemctl daemon-reload
 sudo systemctl enable seqs-gnosisvpn-dns.path
 sudo systemctl enable seqs-gnosisvpn-dns.timer
 
-echo "GnosisVPN ${GNOSISVPN_URL##*/} installed for network rotsee."
+echo "GnosisVPN ${GNOSISVPN_URL##*/} installed for network jura."

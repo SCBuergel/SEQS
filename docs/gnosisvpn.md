@@ -1,7 +1,7 @@
 # Using the GnosisVPN NetVM
 
 SEQS builds `A-gnosisvpn`, a network-provider AppVM with a pinned GnosisVPN
-stable release for the `rotsee` network and Qubes-aware DNS/fail-closed
+stable release for the `jura` network and Qubes-aware DNS/fail-closed
 integration.
 
 ## Build the prepared qube
@@ -35,7 +35,7 @@ The template contains:
 - `wireguard-tools`, including `wg` and `wg-quick`;
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
 - GnosisVPN `0.90.0` for `amd64`, configured with
-  `GNOSISVPN_NETWORK=rotsee`.
+  `GNOSISVPN_NETWORK=jura`.
 
 Do not install `openresolv` or GnosisVPN manually.
 

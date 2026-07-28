@@ -568,8 +568,8 @@ def test_qube_gnosisvpn_component():
           "GnosisVPN installer must pin the stable release SHA-256")
     check("9A308031FD3BFE8EDBF5076D84F73FEA46D10972" in installer_text,
           "GnosisVPN installer must pin the signing-key fingerprint")
-    check("GNOSISVPN_NETWORK=rotsee apt install ./g.deb -y" in installer_text,
-          "GnosisVPN installer must select the rotsee network")
+    check("GNOSISVPN_NETWORK=jura apt install ./g.deb -y" in installer_text,
+          "GnosisVPN installer must select the jura network")
     check("curl --proxy 127.0.0.1:8082" in installer_text,
           "GnosisVPN download must use the Qubes updates proxy")
     check('sudo "${ASSET_DIR}/seqs-gnosisvpn-prepare-app"'
