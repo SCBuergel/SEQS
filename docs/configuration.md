@@ -55,7 +55,7 @@ The shipped catalogue currently exposes these base names:
 ```text
 brave  element  telegram  signal  wireguard  gnosisvpn  openoffice  xournalpp
 usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
-dev-full  wallet-ledger  wallet-trezor
+claude-code  dev-full  wallet-ledger  wallet-trezor
 ```
 
 Names are case-sensitive and must be passed without the generated `A-` or `Z-`

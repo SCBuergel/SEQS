@@ -134,7 +134,8 @@ For example, catalogue definitions have this form:
 ```jinja
 {%- set qube_catalog = [
   {'name': 'keepass', 'label': 'black', 'components': ['keepass'], 'offline': True},
-  {'name': 'dev-full', 'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode']},
+  {'name': 'claude-code', 'label': 'orange', 'components': ['claude-code']},
+  {'name': 'dev-full', 'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
 ] %}
 ```
 

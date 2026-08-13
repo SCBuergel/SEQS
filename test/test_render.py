@@ -85,6 +85,10 @@ def test_pillar_slicing():
     check(staging.get("spec", {}).get("preserve_incoming") is True,
           "qr-staging must preserve the ciphertext across physical shutdown")
 
+    claude = render_pillar("A-claude-code")
+    check(claude.get("spec", {}).get("components") == ["claude-code"],
+          "claude-code app should contain only the claude-code component")
+
 
 # ---------------------------------------------------------------------------
 # dom0.sls -- happy path
@@ -100,7 +104,7 @@ def test_dom0_happy_path():
     check("seqs-policy-browser-suppress" in parsed,
           "suppress policy expected (offline/no_handoff qubes are configured)")
     # every configured qube gets a clone + app + tag state on a fresh dom0
-    for name in ("brave", "keepass", "dev-full", "wallet-ledger"):
+    for name in ("brave", "keepass", "claude-code", "dev-full", "wallet-ledger"):
         check("seqs-clone-%s" % name in parsed, "expected clone state for %s" % name)
         check("seqs-app-%s" % name in parsed, "expected app state for %s" % name)
         check("seqs-tag-app-%s" % name in parsed, "expected app tag state for %s" % name)
