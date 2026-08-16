@@ -25,6 +25,21 @@ are documented in `test/README.md`.
 Use `rg`/`rg --files` for discovery. Prefer small patches. Do not perform broad
 formatting or cleanup alongside a functional change.
 
+## Documentation style
+
+- Keep `README.md` as a bare-minimum user entry point. Put checkout verification,
+  one-time checks, explanations, alternatives, and troubleshooting in the
+  applicable document under `docs/` and link to it from the README.
+- Do not expand the README with repeated post-install checks already covered by
+  `VERIFY-HUMAN.md` or the detailed first-install walkthrough.
+- The normal first install is the single fetch-stage-build invocation:
+  `~/s.sh --repo-vm disp1234 --qubes ...`. Do not present `--build-only` as a
+  complete first-install command. The runner currently names the disposable
+  repository source with `--repo-vm`; it does not accept `--dispvm`.
+- Keep the dom0 runner-copy command compact, but retain the commit-bound
+  `git show HEAD:setup-qubes.sh` export rather than copying the live working-tree
+  file.
+
 ## Repository map
 
 - `setup-qubes.sh`: fetch, validate, stage, build, and verify orchestration.

@@ -19,35 +19,25 @@ from one reviewed configuration.
 
 1. [Install and verify Qubes OS](docs/install-qubes.md), update it, and reboot.
 
-2. In a fresh networked Debian DisposableVM, check out the independently
-   published commit:
+2. In a fresh networked Debian DisposableVM, clone SEQS:
 
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git
-   cd SEQS
-   git checkout <COMMIT>
-   git status --short
-   git rev-parse HEAD
    ```
 
-   `git status --short` must be empty and the printed hash must equal the
-   independently published full commit ID. A hash copied from the same hosting
-   page as the clone is not an independent trust anchor.
+   Before installing, follow the checkout and commit verification in the
+   [full first-install walkthrough](docs/first-install.md).
 
 3. Copy the checked-out runner into dom0 and install in one step. Replace both
    `disp1234` occurrences with the disposable's name, and pick the qubes you
    want:
 
    ```bash
-   qvm-run -p disp1234 "git -C /home/user/SEQS show HEAD:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+   qvm-run -p disp1234 'cd SEQS && git show HEAD:setup-qubes.sh' > ~/s.sh && chmod 700 ~/s.sh
    ~/s.sh --repo-vm disp1234 --qubes brave,signal,keepass
    ```
 
-   Fetch resolves and records the disposable's checked-out `HEAD`, then exports
-   that exact commit object rather than the live working tree. The disposable
-   can be shut down after the command finishes. Use `--all` instead of
-   `--qubes` for the full catalogue. Add `--postfix alpha` to create or
-   converge a separate `*-alpha` instance of every selected recipe.
+   Use `--all` instead of `--qubes` for the full catalogue.
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use
