@@ -71,6 +71,26 @@ A missing network connection does not block
 (Qubes' controlled communication system between qubes), so SEQS also installs
 policies restricting input and file-copy services.
 
+The diagram below uses these hardware terms:
+
+- A **USB device** is something connected over USB, such as the webcam,
+  keyboard, or mouse.
+- A **USB port** is the physical socket into which a USB device or hub is
+  plugged.
+- A **USB device path**, such as `4-2`, is Linux's location for one connected
+  device: root USB bus 4, followed by port 2. Additional numbers can describe
+  ports on connected hubs.
+- A **root USB bus**, such as bus 4, is a group of USB paths presented by one
+  controller. It is a Linux-visible grouping, not hardware that Qubes can
+  assign separately.
+- A **PCI USB controller** is the hardware that manages one or more root USB
+  buses and their ports. PCI is the computer's internal connection to that
+  controller. The complete controller is the smallest USB unit Qubes can
+  assign to a qube.
+- A PCI **bus-device-function** (BDF) address identifies one PCI device,
+  including a USB controller. The same example is written `00:14.0` by standard
+  Linux tools and `00_14.0` by Qubes device commands.
+
 Qubes assigns an entire PCI USB controller to a qube, not an individual USB
 port or root USB bus. A controller can contain several root buses:
 
@@ -93,10 +113,9 @@ PCI USB controller 03_00.0        PCI USB controller 00_14.0
     -> sys-usb-webcam                  -> normal sys-usb
 ```
 
-The PCI **bus-device-function** (BDF) value, such as `03_00.0`, identifies the
-controller and therefore decides which hardware Qubes can separate. A value
-such as `4-2` identifies one USB device path below that controller; it is not a
-BDF.
+The BDF identifies the controller and therefore decides which hardware Qubes
+can separate. A USB device path identifies something below that controller and
+is not an isolation boundary.
 
 ## Choose the hardware-isolation path
 
