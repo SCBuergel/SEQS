@@ -22,7 +22,7 @@ This section lists what must exist before configuring the QR transfer. Install
 SEQS by following the main [README](../README.md), and include the `qr-display`
 and `qr-camera` recipes in the selected qubes. The hardware assessment later in
 this guide determines whether to add `qr-staging` (the offline landing qube
-needed when the webcam and keyboard must share one USB controller).
+needed when no webcam socket has a controller suitable for dedicated use).
 
 You also need a trusted source key qube containing the small secret file, a
 trusted target key qube that does not already contain the destination file, and
@@ -73,19 +73,23 @@ policies restricting input and file-copy services.
 
 A PCI USB controller (the hardware component connecting a group of physical USB
 ports to the system over PCI) is the smallest unit Qubes can assign to a qube.
-Ports on separate controllers can be isolated in different qubes; ports on the
-same controller cannot, which is why controller separation determines the safer
-path below. The physical controller is identified by a PCI
-**bus-device-function** (BDF) address such as `00_14.0`; that address is not the
-same as a USB device path such as `4-2`.
+One controller can expose more than one root USB bus, so different bus numbers
+do not prove that two devices can be isolated. Ports on separate controllers
+can be assigned to different qubes; ports on the same controller cannot, which
+is why the physical controller—not the root USB bus—is the deciding security
+boundary below. The controller is identified by a PCI **bus-device-function**
+(BDF) address such as `00_14.0`; that address is not the same as a USB device
+path such as `4-2`.
 
 ## Choose the hardware-isolation path
 
-This guide offers two hardware-isolation paths. The stronger path permanently
-separates the webcam from trusted input, but it is possible only when the
-machine exposes a suitable second USB controller. When the machine has only one
-usable controller, the fallback path separates webcam and keyboard use in time
-and requires a complete power-off between them.
+This guide offers two hardware-isolation paths. The stronger path assigns the
+webcam's PCI USB controller without also assigning any trusted input or other
+device needed to operate, boot, or recover the machine. An internal non-USB
+keyboard does not occupy a USB controller and therefore does not prevent this
+separation. When no webcam socket maps to a controller meeting these conditions,
+the fallback path separates webcam and trusted-input use in time and requires a
+complete power-off between them.
 
 Use the preferred **dedicated-controller path** only when the webcam socket
 reaches a PCI USB controller that carries none of these:
@@ -95,16 +99,16 @@ reaches a PCI USB controller that carries none of these:
 - USB anti-evil-maid (AEM) or boot device; or
 - any other device needed to operate or recover the machine.
 
-Use the reduced-assurance **sequential path** when the webcam and trusted input
-must share one controller. The sequential ceremony stops normal `sys-usb`,
-uses the controller for the webcam, physically removes the webcam, and powers
-the entire computer off before keyboard input resumes. Its additional trust
-assumption is that complete power removal clears camera-influenced transient
-state in the controller and other powered hardware. A restart is insufficient,
-and persistent malicious firmware remains outside the protection. This path
-additionally uses the disposable `seqs-qr-scanner` and the persistent, offline
-`A-qr-staging` qube, which preserves encrypted data across the required
-power-off.
+Use the reduced-assurance **sequential path** when no webcam socket has a
+controller meeting those conditions. The sequential ceremony stops normal
+`sys-usb`, uses the selected controller for the webcam, physically removes the
+webcam, and powers the entire computer off before trusted USB use resumes. Its
+additional trust assumption is that complete power removal clears
+camera-influenced transient state in the controller and other powered hardware.
+A restart is insufficient, and persistent malicious firmware remains outside
+the protection. This path additionally uses the disposable `seqs-qr-scanner`
+and the persistent, offline `A-qr-staging` qube, which preserves encrypted data
+across the required power-off.
 
 Leaving webcam automation disabled is also valid:
 
@@ -129,30 +133,32 @@ identifiers appear during the process:
 These numbers do not have to match. Never turn the virtual `00:09.0` address
 inside `sys-usb` into the configured dom0 value.
 
-### Test every physical webcam socket
+### Record the relevant USB device paths
 
-This subsection determines whether another socket reaches a different root USB
-bus. Leave the keyboard and mouse connected, move only the webcam to each
-candidate socket, and run this in dom0 after every move:
+This subsection records the paths that must be traced to physical controllers.
+Leave the keyboard, mouse, boot media, recovery devices, and other required USB
+devices connected. Move only the webcam to each candidate socket, and run this
+in dom0 after every move:
 
 ```bash
 qvm-usb
 ```
 
 The command lists individual devices using identifiers such as
-`sys-usb:4-3`. Record the complete webcam path after each command. The leading
-number identifies the root USB bus: results `4-3`, `4-2`, and `4-7` all remain
-on bus 4, while a change from `4-3` to `2-1` reaches a different root bus. Trace
-each distinct root bus in the next steps. If the webcam maps to a controller
-separate from the keyboard and all other trusted input devices, choose the
-dedicated-controller path; otherwise, choose the sequential path. The suffix
-identifies a port or hub path; a hub, extension, Bluetooth dongle, or
-USB-to-PS/2 adapter does not add another controller.
+`sys-usb:4-3`. Record the complete path for the webcam at every socket and for
+every connected USB device that must remain available. The leading number is a
+root USB bus: results `4-3`, `4-2`, and `4-7` are all on bus 4, while `2-1` is
+on bus 2. A different bus number is useful for tracing but does not establish a
+different controller. The suffix identifies a port or hub path; a hub,
+extension, Bluetooth dongle, or USB-to-PS/2 adapter does not add another
+controller.
 
-### Trace the USB path inside `sys-usb`
+### Trace each root USB bus inside `sys-usb`
 
-This subsection finds the virtual PCI address that serves the webcam's root
-bus. Open a terminal directly in `sys-usb`. For a camera reported as `4-2`, run:
+This subsection finds the virtual PCI controller serving each recorded root USB
+bus. Open a terminal directly in `sys-usb`. Run the command once for each
+distinct leading bus number, using any recorded path on that bus. For example,
+for a device reported as `4-2`, run:
 
 ```bash
 readlink -f /sys/bus/usb/devices/4-2
@@ -164,14 +170,16 @@ Look for the PCI address immediately before `/usbN`. Example output is:
 /sys/devices/pci0000:00/0000:00:09.0/usb4/4-2
 ```
 
-Here the virtual address is `0000:00:09.0`. It identifies the controller inside
-`sys-usb`, not the physical BDF to configure.
+Here the virtual address is `0000:00:09.0`. Record which root buses resolve to
+each virtual controller. Multiple root buses may resolve to the same controller.
+The virtual address identifies the controller inside `sys-usb`, not the
+physical BDF to configure.
 
 ### Read the controller identity inside `sys-usb`
 
-This subsection reads the controller's vendor and device IDs so it can be
-matched to physical hardware. Continue in the `sys-usb` terminal, replacing
-the address if the previous command returned another value:
+This subsection reads each virtual controller's vendor and device IDs so it can
+be matched to physical hardware. Continue in the `sys-usb` terminal, replacing
+the address for each distinct virtual controller found above:
 
 ```bash
 p=/sys/bus/pci/devices/0000:00:09.0
@@ -186,12 +194,12 @@ vendor=0x8086
 device=0xa36d
 ```
 
-Record `8086:a36d`, without the `0x` prefixes. These are public hardware
-identifiers, not secret values.
+For each virtual controller, record a pair such as `8086:a36d`, without the
+`0x` prefixes. These are public hardware identifiers, not secret values.
 
 ### Match the physical controller in dom0
 
-This subsection matches the recorded hardware identity to the physical BDF.
+This subsection matches each recorded hardware identity to a physical BDF.
 In dom0, run:
 
 ```bash
@@ -211,9 +219,13 @@ Look for the recorded vendor/device pair in brackets, for example:
 00:14.0 USB controller: Intel Corporation ... [8086:a36d]
 ```
 
-When the pair matches, configure the Qubes device identifier without the
-`dom0:` prefix: `00_14.0`. If several controllers have identical identities and
-cannot be distinguished confidently, do not guess.
+Record the physical BDF matching each virtual controller. If several physical
+controllers have identical identities and cannot be distinguished confidently,
+do not guess. The webcam qualifies for the dedicated-controller path only if
+its physical controller carries none of the prohibited devices listed above;
+otherwise, choose the sequential path. When configuring SEQS later, use the
+chosen controller's Qubes device identifier without the `dom0:` prefix, such as
+`00_14.0`.
 
 ### Confirm current ownership
 
@@ -228,18 +240,19 @@ Look for the selected `dom0:<BDF>` in the first column. Do not use
 `qvm-prefs sys-usb pcidevs`; PCI devices are managed by `qvm-pci` (an alias for
 `qvm-device pci`), and `pcidevs` is not a `qvm-prefs` property.
 
-If the webcam and keyboard share this controller, the machine does not qualify
-for the dedicated path. Use sequential mode or add a separately assignable PCIe
-USB controller. If a genuinely non-USB internal keyboard remains usable with
-`sys-usb` stopped, it may provide a dedicated-input alternative, but verify
-that fact before exposing any controller.
+If the webcam controller also carries trusted USB input or another prohibited
+device listed above, the machine does not qualify for the dedicated-controller
+path. Use the sequential path or add a separately assignable PCIe USB
+controller. A genuinely non-USB internal keyboard is independent of the USB
+controller, but verify that it remains usable with `sys-usb` stopped before
+relying on it.
 
 ## Install or update the QR qubes
 
 This section applies the chosen mode from the reviewed repository. Edit
 `salt/pillar/seqs/config.sls` in the repository qube, never in dom0.
 
-For a verified dedicated controller:
+For the dedicated-controller path:
 
 ```jinja
 {%- set webcam_usb_mode = 'dedicated' %}
@@ -247,7 +260,7 @@ For a verified dedicated controller:
 {%- set webcam_usb_no_strict_reset = False %}
 ```
 
-For a verified shared controller:
+For the sequential path:
 
 ```jinja
 {%- set webcam_usb_mode = 'sequential' %}
@@ -331,7 +344,8 @@ to every other destination.
 
 ## Dedicated-controller operation
 
-This section verifies and uses a controller that never carries trusted input.
+This section verifies and uses a controller that carries none of the prohibited
+devices from the path-selection section.
 Start `sys-usb-webcam` from the Qubes menu, connect the webcam, and run this
 short command in dom0:
 
@@ -339,9 +353,9 @@ short command in dom0:
 qvm-usb
 ```
 
-The webcam must appear under `sys-usb-webcam`, while every keyboard and mouse
-must remain under another backend. If an input device moves with the webcam,
-stop: the controller is not dedicated.
+The webcam must appear under `sys-usb-webcam`, while every keyboard, mouse, and
+other required USB device must remain under another backend. If any prohibited
+device moves with the webcam, stop: the controller is not dedicated.
 
 During a transfer, start a fresh camera disposable from `A-qr-camera`, attach
 only the webcam with the Qubes Devices widget, and follow the dedicated scan
@@ -349,9 +363,9 @@ subsection below.
 
 ## Sequential-controller operation
 
-This section uses one controller first for trusted input and later for the
-untrusted webcam. It is reduced assurance and always ends in complete power-off
-after the controller is exposed.
+This section uses one controller first for its normal USB duties and later for
+the untrusted webcam. It is reduced assurance and always ends in complete
+power-off after the controller is exposed.
 
 ### Prepare the sequential ceremony
 
