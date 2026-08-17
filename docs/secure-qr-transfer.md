@@ -169,15 +169,6 @@ the protection. This path additionally uses the disposable `seqs-qr-scanner`
 and the persistent, offline `A-qr-staging` qube, which preserves encrypted data
 across the required power-off.
 
-Leaving webcam automation disabled is also valid:
-
-```jinja
-{%- set webcam_usb_mode = 'disabled' %}
-{%- set webcam_usb_controller = '' %}
-```
-
-Do not configure a controller until the next section identifies it.
-
 ## Identify the webcam's physical USB controller
 
 This section maps a physical webcam socket to the BDF that SEQS needs. Three
