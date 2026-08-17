@@ -50,6 +50,10 @@ formatting or cleanup alongside a functional change.
   placeholders or freshly generated disposable test data.
 - Start every section and subsection by saying what it covers or what will
   happen there.
+- Before adding a section, step, command, example, or explanation, verify that
+  it is necessary for the document's objective or for these documentation
+  rules. Remove material that is redundant, premature, or used and explained
+  more clearly at the point where the reader actually needs it.
 - For command instructions, first name the terminal in which the command is
   entered, then show the command, then explain what output or effect to look
   for. A directly continuing command block in the same subsection does not

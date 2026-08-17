@@ -107,27 +107,18 @@ identifiers appear during the process:
 These numbers do not have to match. Never turn the virtual `00:09.0` address
 inside `sys-usb` into the configured dom0 value.
 
-### List controllers and attached USB devices
+### List physical PCI controllers
 
-This subsection records the short dom0 view of physical controllers and USB
-devices. In a dom0 terminal, run:
+This subsection records the physical PCI controllers and their current qube
+assignments. In a dom0 terminal, run:
 
 ```bash
 qvm-pci list --assignments
-qvm-usb
 ```
 
-The first command lists physical PCI devices and the qubes using them. The
-second lists individual USB devices. Example USB output is:
-
-```text
-sys-usb:4-1.1  Mouse
-sys-usb:4-1.4  Keyboard
-sys-usb:4-3    Camera
-```
-
-The leading `4-` means all three devices use root USB bus 4. The suffix after
-the first dash identifies a port or hub path; it does not create isolation.
+The output lists physical PCI devices and the qubes using them. Record the USB
+controller entries; the later identity-matching step determines which one
+serves the webcam socket.
 
 ### Test every physical webcam socket
 
@@ -139,10 +130,13 @@ candidate socket, and run this in dom0 after every move:
 qvm-usb
 ```
 
-Record the complete webcam path after each command. Results `4-3`, `4-2`, and
-`4-7` all remain on root bus 4. A change from `4-3` to `2-1` reaches a different
-root bus and may be a candidate for dedicated isolation. A hub, extension,
-Bluetooth dongle, or USB-to-PS/2 adapter does not add another controller.
+The command lists individual devices using identifiers such as
+`sys-usb:4-3`. Record the complete webcam path after each command. The leading
+number identifies the root USB bus: results `4-3`, `4-2`, and `4-7` all remain
+on bus 4, while a change from `4-3` to `2-1` reaches a different root bus and
+may be a candidate for dedicated isolation. The suffix identifies a port or
+hub path; a hub, extension, Bluetooth dongle, or USB-to-PS/2 adapter does not
+add another controller.
 
 ### Trace the USB path inside `sys-usb`
 
