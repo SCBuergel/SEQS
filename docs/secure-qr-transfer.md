@@ -4,9 +4,10 @@ This guide explains how to move one small secret file between two SEQS-equipped
 Qubes OS machines without connecting them by a network or removable drive. The
 source encrypts the file, a display qube shows only the encrypted bytes as a
 [QR code](https://www.qrcode.com/en/about/), and a camera qube on the target
-scans those bytes. The target verifies independent hashes before and after
-decrypting with [GnuPG](https://www.gnupg.org/), the encryption program used by
-this procedure.
+scans those bytes. Before decrypting, the operator visually compares short
+fingerprints calculated independently by the trusted source and target qubes.
+[GnuPG](https://www.gnupg.org/) then decrypts the file with a one-time
+passphrase that travelled only on paper.
 
 Read the guide in order. Hardware choices made near the beginning determine
 which later receive procedure is safe to use.
@@ -347,7 +348,7 @@ after the controller is exposed.
 This subsection establishes the safe starting state. Finish source encryption
 and show its encrypted QR code as described later. Then:
 
-1. Put away the paper passphrase and both hashes.
+1. Put away the paper passphrase and every secret-bearing screen.
 2. Physically unplug the webcam.
 3. In `A-qr-staging`, remove any old
    `~/QubesIncoming/seqs-qr-scanner/key.asc` and verify it is absent.
@@ -385,7 +386,7 @@ mouse, and remove AC or standby power where practical before booting again.
 
 After boot, confirm the incoming `key.asc` exists in `A-qr-staging`. Its absence
 means the scan failed. Copy only that encrypted file to the trusted target key
-qube, then check the paper ciphertext hash before starting GnuPG.
+qube, then complete the visual fingerprint comparison before starting GnuPG.
 
 Never use the manual dedicated-camera procedure in sequential mode. The dom0
 ceremony replaces the entire scan phase and must retain control through power-off.
@@ -402,17 +403,17 @@ controller avoids reusing camera-exposed hardware and is more resilient.
 ## Transfer ceremony
 
 This section encrypts, displays, receives, authenticates, and decrypts one
-`master.key`. Use fresh paper for exactly these three labeled values:
+`master.key`. Use fresh paper for exactly one value:
 
 ```text
 PASSPHRASE: <26 letters and digits>
-PLAINTEXT SHA256: <64 hexadecimal characters>
-CIPHERTEXT SHA256: <64 hexadecimal characters>
 ```
 
-SHA-256 is a cryptographic hash used here as an independent change detector;
-the hashes cannot decrypt the file. The paper and every secret-bearing screen
-must remain outside the webcam's field of view.
+The passphrase is the one-time encryption key and must remain outside the
+webcam's field of view. Later, each trusted key qube calculates a short
+fingerprint from its own copy of `key.asc`. The fingerprint is not secret and
+is never carried through the QR channel; comparing the two trusted displays
+confirms that the target received the source ciphertext before GnuPG parses it.
 
 ### Encrypt in the source key qube
 
@@ -422,39 +423,40 @@ a terminal in the trusted source key qube and run:
 ```bash
 set -euo pipefail
 umask 077
+test -f master.key
+test ! -e key.asc
 PASSPHRASE=$(head -c 16 /dev/urandom | base32 | tr -d '=\n')
-plaintext_sha256=$(sha256sum -- master.key); plaintext_sha256=${plaintext_sha256%% *}
 printf 'PASSPHRASE: %s\n' "$PASSPHRASE"
-printf 'PLAINTEXT SHA256: %s\n' "$plaintext_sha256"
 printf '%s\n' "$PASSPHRASE" | \
 gpg --no-symkey-cache --symmetric --armor --cipher-algo AES256 \
   --s2k-mode 3 --s2k-count 65011712 --compress-algo none \
   --batch --pinentry-mode loopback --passphrase-fd 0 \
   --set-filename '' --output key.asc -- master.key
-ciphertext_sha256=$(sha256sum -- key.asc); ciphertext_sha256=${ciphertext_sha256%% *}
-printf 'CIPHERTEXT SHA256: %s\n' "$ciphertext_sha256"
-unset PASSPHRASE plaintext_sha256 ciphertext_sha256
+unset PASSPHRASE
 ```
 
-Write the three complete output lines on paper. The passphrase was sent to GnuPG
-through standard input, not a command-line argument, and the shell variable is
-now unset. If `key.asc` is too large for one QR code later, stop; this procedure
-does not implement multiple frames.
+Write the passphrase on paper. It was sent to GnuPG through standard input, not
+a command-line argument, and the shell variable is now unset. Close this
+terminal completely so its passphrase-bearing scrollback cannot later enter the
+webcam's field of view. Merely running `clear` is not sufficient. If `key.asc`
+is too large for one QR code later, stop; this procedure does not implement
+multiple frames.
 
 ### Start the display and copy ciphertext into it
 
 This subsection starts a fresh display before Qubes file copy so boot cleanup
-cannot remove the incoming file. Start `D-qr-display` from the Qubes menu. Then,
-in the source key qube terminal, run:
+cannot remove the incoming file. Start `D-qr-display` from the Qubes menu. Then
+open a new terminal in the source key qube, return to the directory containing
+`key.asc`, and run:
 
 ```bash
 qvm-copy key.asc
-rm -f -- key.asc
 ```
 
-Choose the already-running `D-qr-display` as the destination. The source retains
-`master.key` but no longer retains the temporary encrypted copy. Clear terminal
-scrollback, close the terminal, and preferably shut down the source key qube.
+Choose the already-running `D-qr-display` as the destination. Keep the source
+copy of `key.asc` until fingerprint comparison is complete; the trusted source
+must calculate its code from the exact ciphertext sent through the display.
+The source key qube may be shut down because its private storage is persistent.
 
 ### Display only the encrypted QR code
 
@@ -497,43 +499,72 @@ This subsection receives the ciphertext after the sequential power-off. In an
 
 ```bash
 cd ~/QubesIncoming/seqs-qr-scanner
-sha256sum -- key.asc
 qvm-copy key.asc
 ```
 
-The displayed hash must equal the paper ciphertext hash. Choose the
-already-running trusted target key qube. Do not decrypt anything in staging.
+Choose the already-running trusted target key qube. Do not decrypt anything in
+staging; the target authenticates the received bytes in the next subsection.
 
-### Authenticate and decrypt in the target key qube
+### Compare the source and target fingerprints
 
-This subsection verifies ciphertext before GnuPG, decrypts into a temporary
-directory, verifies plaintext, and only then installs `master.key`. Confirm the
-webcam is unplugged and every camera-facing qube and backend is stopped. Move
-the received `key.asc` into the intended directory, then run this in the trusted
-target key qube:
+This subsection authenticates the received ciphertext before GnuPG parses it.
+Confirm the webcam is unplugged and every camera-facing qube and backend is
+stopped. In sequential mode, complete the cold-power boundary first. Move the
+received `key.asc` into the intended directory in the trusted target key qube.
+
+Open a new terminal in the trusted source key qube. Do not reopen or reuse the
+terminal that displayed the passphrase. Return to the directory containing the
+retained `key.asc`, then run:
+
+```bash
+test -f key.asc
+printf 'SOURCE: '
+sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' '[:upper:]'
+```
+
+The output is four groups of five uppercase hexadecimal characters, for
+example:
+
+```text
+SOURCE: 7A91C-24D8E-6F032-B5A10
+```
+
+The 20 hexadecimal characters are the first 80 bits of the file's SHA-256
+cryptographic hash. For a fixed source fingerprint, producing a different file
+with the same code would require about 2^80 attempts. Grouping changes only the
+display, not the calculation.
+
+In a terminal in the trusted target key qube, run:
+
+```bash
+test -f key.asc
+printf 'TARGET: '
+sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' '[:upper:]'
+```
+
+Place the trusted source and target displays where they can be compared. Use a
+large monospace font and compare all four groups from left to right. Do not
+copy, paste, retype, photograph, or include the expected code in a QR payload.
+
+If any character differs, do not invoke GnuPG. Delete the received target copy,
+clear sequential staging if applicable, and repeat the receive procedure from
+a clean state. The source `key.asc` may be reused because it remains the trusted
+ciphertext being authenticated.
+
+### Decrypt in the target key qube
+
+This subsection decrypts the visually authenticated ciphertext into a temporary
+directory and installs `master.key` only after GnuPG succeeds. Continue in the
+trusted target key qube terminal:
 
 ```bash
 set -euo pipefail
 umask 077
 test ! -e master.key
 
-hash_read=(-r); [[ -n "${SEQS_SHOW_HASH_INPUT:-}" ]] || hash_read+=(-s)
-
-IFS= read "${hash_read[@]}" -p 'CIPHERTEXT SHA256: ' expected; echo
-[[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]]
-actual=$(sha256sum -- key.asc); actual=${actual%% *}
-test "${actual,,}" = "${expected,,}" || { rm -f -- key.asc; exit 1; }
-unset expected actual
-
 tmpdir=$(mktemp -d .master-key-import.XXXXXX)
 trap 'rm -rf -- "$tmpdir"' EXIT HUP INT QUIT TERM
 gpg --no-symkey-cache --decrypt --output "$tmpdir/master.key" -- key.asc
-
-IFS= read "${hash_read[@]}" -p 'PLAINTEXT SHA256: ' expected; echo
-[[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]]
-actual=$(sha256sum -- "$tmpdir/master.key"); actual=${actual%% *}
-test "${actual,,}" = "${expected,,}"
-unset expected actual
 
 test ! -e master.key
 mv -T -- "$tmpdir/master.key" master.key
@@ -542,25 +573,33 @@ trap - EXIT HUP INT QUIT TERM
 chmod 600 master.key
 rm -f -- key.asc
 stat --format='%a %n' master.key
-sha256sum -- master.key
 ```
 
-First enter the paper ciphertext hash. Only after it matches will GnuPG prompt
-for the paper passphrase. Then enter the paper plaintext hash. Any mismatch is a
-hard stop. Successful output must show mode `600`, and the final hash must match
-the paper plaintext hash again.
-
-For a rehearsal only, set `SEQS_SHOW_HASH_INPUT=1` before the block to echo the
-non-secret hashes while typing. It never echoes the passphrase. Leave it unset
-for a real transfer.
+Enter the paper passphrase only at GnuPG's trusted prompt. A wrong passphrase,
+modified ciphertext, or failed encrypted-data integrity check makes GnuPG exit
+with an error; `set -e` then prevents installation, and the trap removes the
+temporary output. Successful output must show mode `600`.
 
 ### Finish the transfer
 
 This subsection removes temporary transfer material after all checks pass.
 Confirm all display, scanner, and webcam-backend disposables are stopped, the
-webcam is unplugged, no `key.asc` remains in source or target, and sequential
-staging no longer contains its copy. Destroy the complete paper record only
-after the final plaintext hash and file mode are confirmed.
+webcam is unplugged, and the target no longer contains `key.asc`. After
+successful decryption, run this in the trusted source key qube from the
+directory containing its ciphertext:
+
+```bash
+rm -f -- key.asc
+```
+
+For sequential mode, also run this in `A-qr-staging`:
+
+```bash
+rm -f -- ~/QubesIncoming/seqs-qr-scanner/key.asc
+```
+
+Both commands should finish silently. Confirm the files are absent, then
+destroy the paper passphrase only after the final file mode is confirmed.
 
 For additional Qubes background, consult the official documentation for
 [USB qubes](https://doc.qubes-os.org/en/latest/user/advanced-topics/usb-qubes.html),
