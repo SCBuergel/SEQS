@@ -690,21 +690,21 @@ seqs-webcam-usb-backend:
         qvm-features -- {{ webcam_usb_qube }} appmenus-dispvm ''
         qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
 {% if webcam_mode == 'dedicated' %}
-        # Remove persistent assignments from other qubes. qvm-pci's display
-        # begins with dom0:BDF and has a free-form description, so it is not a
-        # reliable owner parser; query each qube's pcidevs preference instead.
+        # Remove live attachments and persistent assignments from other qubes.
+        # PCI devices are managed by qvm-pci/qvm-device, not qvm-prefs.
         for current in $(qvm-ls --raw-list); do
           printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
           [ "$current" = "{{ webcam_usb_qube }}" ] && continue
-          if qvm-prefs -- "$current" pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}'; then
+          if qvm-pci list "$current" 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }'; then
             qvm-shutdown --wait "$current" || true
-            qvm-pci detach --persistent "$current" dom0:{{ webcam_controller }}
+            qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
           fi
+          qvm-pci unassign "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
         done
 {% else %}
         # Sequential mode is valid only when this is already the physical
         # controller used by the configured normal USB backend.
-        qvm-prefs -- {{ webcam_normal_usb_qube }} pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}' || {
+        qvm-pci list {{ webcam_normal_usb_qube }} 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }' || {
           echo 'Configured controller is not assigned to {{ webcam_normal_usb_qube }}' >&2
           exit 1
         }
@@ -718,7 +718,7 @@ seqs-webcam-usb-backend:
 {% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
 {% if webcam_mode == 'dedicated' %}
-    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-prefs -- {{ webcam_usb_qube }} pcidevs 2>/dev/null | grep -Fq '{{ webcam_controller }}'
+    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i=1; i<=NF; i++) { token=$i; sub(/^\*/, "", token); if (token == vm) found=1 } } END { exit !found }'
 {% endif %}
     - require:
       - qvm: seqs-app-qr-camera

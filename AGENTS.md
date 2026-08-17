@@ -39,6 +39,27 @@ formatting or cleanup alongside a functional change.
 - Keep the dom0 runner-copy command compact, but retain the commit-bound
   `git show HEAD:setup-qubes.sh` export rather than copying the live working-tree
   file.
+- Minimize commands typed in dom0. Dom0 has no clipboard by design, and typing
+  complex commands there increases both operator error and exposure of the
+  trusted administrative domain. When an equivalent read-only command can run
+  directly in a qube terminal, instruct the user to run it there instead of
+  wrapping it in `qvm-run` from dom0.
+- Never commit secrets, credentials, private keys, recovery material, or secret
+  command output. Never record any such value in `AGENTS.md`, logs, fixtures,
+  examples, or other repository files; examples must use unmistakably fake
+  placeholders or freshly generated disposable test data.
+- Start every section and subsection by saying what it covers or what will
+  happen there.
+- For command instructions, first name the terminal in which the command is
+  entered, then show the command, then explain what output or effect to look
+  for. A directly continuing command block in the same subsection does not
+  need the terminal repeated.
+- At first use, briefly explain terminology that a moderately technical Linux
+  user may not know from Qubes OS. Do not rely on a later section to define a
+  concept needed now; if a forward dependency is unavoidable, include the
+  minimum explanation at the first use.
+- At first use of external software, technology, or a service, give its shortest
+  useful description and link to its authoritative documentation.
 
 ## Repository map
 

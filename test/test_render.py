@@ -261,6 +261,11 @@ def test_dom0_sequential_qr_mode():
           "scanner filecopy must be restricted to offline staging")
     check("no-strict-reset=true" not in text,
           "sequential mode must never render no-strict-reset")
+    backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
+    check("qvm-pci list sys-usb" in backend,
+          "sequential mode must verify the controller through qvm-pci")
+    check("pcidevs" not in backend,
+          "PCI ownership is not a qvm-prefs property")
 
 
 def test_dom0_sequential_qr_rejects_weak_reset():
@@ -275,6 +280,23 @@ def test_dom0_sequential_qr_rejects_weak_reset():
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
     check("seqs-validation-failed" in parsed,
           "sequential + no-strict-reset must fail pre-flight")
+
+
+def test_dom0_dedicated_qr_uses_device_api():
+    case("dom0.sls: dedicated QR mode manages PCI through qvm-pci")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "dedicated",
+        "webcam_usb_controller": "03_00.0",
+        "webcam_usb_no_strict_reset": False,
+    })
+    _, parsed = render_state(
+        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+    backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
+    check("qvm-pci list" in backend and "qvm-pci unassign" in backend,
+          "dedicated mode must inspect and remove PCI assignments with qvm-pci")
+    check("pcidevs" not in backend,
+          "dedicated mode must not query nonexistent qvm-prefs pcidevs")
 
 
 def test_dom0_named_disposable():
