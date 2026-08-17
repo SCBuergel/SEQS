@@ -71,15 +71,32 @@ A missing network connection does not block
 (Qubes' controlled communication system between qubes), so SEQS also installs
 policies restricting input and file-copy services.
 
-A PCI USB controller (the hardware component connecting a group of physical USB
-ports to the system over PCI) is the smallest unit Qubes can assign to a qube.
-One controller can expose more than one root USB bus, so different bus numbers
-do not prove that two devices can be isolated. Ports on separate controllers
-can be assigned to different qubes; ports on the same controller cannot, which
-is why the physical controller—not the root USB bus—is the deciding security
-boundary below. The controller is identified by a PCI **bus-device-function**
-(BDF) address such as `00_14.0`; that address is not the same as a USB device
-path such as `4-2`.
+Qubes assigns an entire PCI USB controller to a qube, not an individual USB
+port or root USB bus. A controller can contain several root buses:
+
+```text
+PCI USB controller 00_14.0        <- Qubes assigns this whole controller
+|-- root USB bus 4
+|   `-- physical port: webcam     <- USB device path 4-2
+`-- root USB bus 5
+    `-- physical port: keyboard   <- USB device path 5-1
+```
+
+In this example, bus 4 and bus 5 look different but belong to the same
+controller, so Qubes cannot give the webcam side to one qube while keeping the
+keyboard side in another. Isolation is possible only when the devices map to
+separate PCI USB controllers, for example:
+
+```text
+PCI USB controller 03_00.0        PCI USB controller 00_14.0
+`-- webcam                         `-- keyboard
+    -> sys-usb-webcam                  -> normal sys-usb
+```
+
+The PCI **bus-device-function** (BDF) value, such as `03_00.0`, identifies the
+controller and therefore decides which hardware Qubes can separate. A value
+such as `4-2` identifies one USB device path below that controller; it is not a
+BDF.
 
 ## Choose the hardware-isolation path
 
