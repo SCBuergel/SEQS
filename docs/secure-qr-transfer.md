@@ -129,19 +129,6 @@ identifiers appear during the process:
 These numbers do not have to match. Never turn the virtual `00:09.0` address
 inside `sys-usb` into the configured dom0 value.
 
-### List physical PCI controllers
-
-This subsection records the physical PCI controllers and their current qube
-assignments. In a dom0 terminal, run:
-
-```bash
-qvm-pci list --assignments
-```
-
-The output lists physical PCI devices and the qubes using them. Record the USB
-controller entries; the later identity-matching step determines which one
-serves the webcam socket.
-
 ### Test every physical webcam socket
 
 This subsection determines whether another socket reaches a different root USB
@@ -155,10 +142,12 @@ qvm-usb
 The command lists individual devices using identifiers such as
 `sys-usb:4-3`. Record the complete webcam path after each command. The leading
 number identifies the root USB bus: results `4-3`, `4-2`, and `4-7` all remain
-on bus 4, while a change from `4-3` to `2-1` reaches a different root bus and
-may be a candidate for dedicated isolation. The suffix identifies a port or
-hub path; a hub, extension, Bluetooth dongle, or USB-to-PS/2 adapter does not
-add another controller.
+on bus 4, while a change from `4-3` to `2-1` reaches a different root bus. Trace
+each distinct root bus in the next steps. If the webcam maps to a controller
+separate from the keyboard and all other trusted input devices, choose the
+dedicated-controller path; otherwise, choose the sequential path. The suffix
+identifies a port or hub path; a hub, extension, Bluetooth dongle, or
+USB-to-PS/2 adapter does not add another controller.
 
 ### Trace the USB path inside `sys-usb`
 

@@ -27,33 +27,13 @@ formatting or cleanup alongside a functional change.
 
 ## Documentation style
 
-- Keep `README.md` as a bare-minimum user entry point. Put checkout verification,
-  one-time checks, explanations, alternatives, and troubleshooting in the
-  applicable document under `docs/` and link to it from the README.
-- Do not expand the README with repeated post-install checks already covered by
-  `VERIFY-HUMAN.md` or the detailed first-install walkthrough.
-- The normal first install is the single fetch-stage-build invocation:
-  `~/s.sh --repo-vm disp1234 --qubes ...`. Do not present `--build-only` as a
-  complete first-install command. The runner currently names the disposable
-  repository source with `--repo-vm`; it does not accept `--dispvm`.
-- Keep the dom0 runner-copy command compact, but retain the commit-bound
-  `git show HEAD:setup-qubes.sh` export rather than copying the live working-tree
-  file.
-- Minimize commands typed in dom0. Dom0 has no clipboard by design, and typing
-  complex commands there increases both operator error and exposure of the
-  trusted administrative domain. When an equivalent read-only command can run
-  directly in a qube terminal, instruct the user to run it there instead of
-  wrapping it in `qvm-run` from dom0.
-- Never commit secrets, credentials, private keys, recovery material, or secret
-  command output. Never record any such value in `AGENTS.md`, logs, fixtures,
-  examples, or other repository files; examples must use unmistakably fake
-  placeholders or freshly generated disposable test data.
 - Start every section and subsection by saying what it covers or what will
   happen there.
 - Before adding a section, step, command, example, or explanation, verify that
   it is necessary for the document's objective or for these documentation
-  rules. Remove material that is redundant, premature, or used and explained
-  more clearly at the point where the reader actually needs it.
+  rules. Trace what later decision or action uses it, and place it immediately
+  before its first actual use. Remove material that has no downstream use or is
+  redundant, premature, or explained more clearly where the reader needs it.
 - For command instructions, first name the terminal in which the command is
   entered, then show the command, then explain what output or effect to look
   for. A directly continuing command block in the same subsection does not
@@ -72,6 +52,27 @@ formatting or cleanup alongside a functional change.
   useful description and link to its authoritative documentation in the same
   parenthetical when practical. Do not explain universally familiar concepts
   merely to satisfy this rule.
+- Never commit secrets, credentials, private keys, recovery material, or secret
+  command output. Never record any such value in `AGENTS.md`, logs, fixtures,
+  examples, or other repository files; examples must use unmistakably fake
+  placeholders or freshly generated disposable test data.
+- Keep `README.md` as a bare-minimum user entry point. Put checkout verification,
+  one-time checks, explanations, alternatives, and troubleshooting in the
+  applicable document under `docs/` and link to it from the README.
+- Do not expand the README with repeated post-install checks already covered by
+  `VERIFY-HUMAN.md` or the detailed first-install walkthrough.
+- The normal first install is the single fetch-stage-build invocation:
+  `~/s.sh --repo-vm disp1234 --qubes ...`. Do not present `--build-only` as a
+  complete first-install command. The runner currently names the disposable
+  repository source with `--repo-vm`; it does not accept `--dispvm`.
+- Keep the dom0 runner-copy command compact, but retain the commit-bound
+  `git show HEAD:setup-qubes.sh` export rather than copying the live working-tree
+  file.
+- Minimize commands typed in dom0. Dom0 has no clipboard by design, and typing
+  complex commands there increases both operator error and exposure of the
+  trusted administrative domain. When an equivalent read-only command can run
+  directly in a qube terminal, instruct the user to run it there instead of
+  wrapping it in `qvm-run` from dom0.
 
 ## Repository map
 
