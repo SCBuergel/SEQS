@@ -13,6 +13,16 @@ derived from the encrypted file) calculated independently by the trusted source
 and target qubes. [GnuPG](https://www.gnupg.org/) (the encryption program used
 by this procedure) then decrypts the file with the one-time paper passphrase.
 
+The elaborate USB separation keeps the untrusted webcam away from the keyboard
+used to enter that passphrase. Qubes assigns a complete PCI USB controller to a
+USB backend qube; if the webcam and a USB keyboard share that controller, the
+same backend can handle both. A malicious webcam that compromises the backend
+could then observe keyboard input immediately or after the keyboard is
+reconnected. The preferred path uses separate controllers; the fallback path
+separates their use in time and powers the machine off before trusted input
+returns. See [Understand USB hardware and identifiers](#understand-usb-hardware-and-identifiers)
+for the controller, bus, and device-path relationship.
+
 Read the guide in order. Hardware choices made near the beginning determine
 which later receive procedure is safe to use.
 
