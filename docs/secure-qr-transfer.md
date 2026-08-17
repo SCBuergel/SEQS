@@ -1,16 +1,34 @@
-# Secure air-gapped data transfer with QR codes
+# Reasonably secure air-gapped data transfer
 
-This guide explains how to move one small secret file between two SEQS-equipped
-Qubes OS machines without connecting them by a network or removable drive. The
-source encrypts the file, a display qube shows only the encrypted bytes as a
-[QR code](https://www.qrcode.com/en/about/), and a camera qube on the target
-scans those bytes. Before decrypting, the operator visually compares short
-fingerprints calculated independently by the trusted source and target qubes.
-[GnuPG](https://www.gnupg.org/) then decrypts the file with a one-time
-passphrase that travelled only on paper.
+This guide is for copying a tiny secret file between two offline Qubes OS
+machines without connecting them by a network or removable drive. That unusual
+constraint rules out the convenient transfer methods and is the reason for the
+QR procedure: the source encrypts the file, the target receives only encrypted
+QR data through a webcam, and the decryption passphrase travels separately on
+paper. This method is suitable only for files small enough to fit in one QR
+code; it does not support a sequence of QR frames for larger files.
+
+Before decrypting, the operator visually compares short fingerprints (codes
+derived from the encrypted file) calculated independently by the trusted source
+and target qubes. [GnuPG](https://www.gnupg.org/) (the encryption program used
+by this procedure) then decrypts the file with the one-time paper passphrase.
 
 Read the guide in order. Hardware choices made near the beginning determine
 which later receive procedure is safe to use.
+
+## Prerequisites
+
+This section lists what must exist before configuring the QR transfer. Install
+SEQS by following the main [README](../README.md), and include the `qr-display`
+and `qr-camera` recipes in the selected qubes. The hardware assessment later in
+this guide determines whether to add `qr-staging` (the offline landing qube
+needed when the webcam and keyboard must share one USB controller).
+
+You also need a trusted source key qube containing the small secret file, a
+trusted target key qube that does not already contain the destination file, and
+a webcam suitable for scanning the displayed QR code. SEQS intentionally does
+not create the two trusted key qubes because their identities and contents are
+operator-specific.
 
 ## Security property and limits
 
@@ -34,40 +52,40 @@ swap, backups, or SSD media.
 
 ## Qubes and hardware used by the procedure
 
-This section introduces every qube and hardware term used later. A **qube** is
-an isolated virtual machine in Qubes OS. **dom0** is the highly trusted
-administrative domain; commands there can control the entire machine, so this
-guide keeps dom0 commands short and uses qube terminals whenever possible.
+This section identifies the qubes and hardware involved in every transfer.
 
 The transfer uses these qubes:
 
 - A trusted **source key qube** holds and encrypts the original secret.
-- `A-qr-display` is an offline DisposableVM template. A DisposableVM is a qube
-  whose writable state is discarded after a full shutdown. Its named
-  disposable, `D-qr-display`, displays only encrypted data.
-- `A-qr-camera` is an offline DisposableVM template containing `zbarcam`, the
-  QR scanner, and Qubes USB-device support.
+- `A-qr-display` is an offline template for DisposableVMs (fresh qubes whose
+  writable state is discarded after a full shutdown). Its named disposable,
+  `D-qr-display`, displays only encrypted data.
+- `A-qr-camera` is an offline DisposableVM template containing `zbarcam` (the
+  QR scanner) and Qubes USB-device support.
 - A trusted **target key qube** verifies and decrypts the received file.
-- `sys-usb-webcam` is a disposable USB backend: a qube that owns the physical
-  webcam controller and exposes individual USB devices to other qubes.
-- Sequential mode additionally uses the disposable `seqs-qr-scanner` and the
-  persistent, offline `A-qr-staging` qube. Staging preserves encrypted data
-  across the mandatory power-off boundary.
+- `sys-usb-webcam` is a disposable USB backend (a qube that owns the physical
+  webcam controller and exposes individual USB devices to other qubes).
 
-[Qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html) is
-Qubes' controlled communication system between qubes. A missing network
-connection does not block qrexec, so SEQS also installs policies restricting
-input and file-copy services.
+A missing network connection does not block
+[qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
+(Qubes' controlled communication system between qubes), so SEQS also installs
+policies restricting input and file-copy services.
 
-The physical USB controller is identified by a PCI **bus-device-function**
-(BDF) address such as `00_14.0`. PCI is the hardware bus through which the
-controller is assigned to a qube. The BDF is not the same as a USB device path
-such as `4-2`.
+A PCI USB controller (the hardware component connecting a group of physical USB
+ports to the system over PCI) is the smallest unit Qubes can assign to a qube.
+Ports on separate controllers can be isolated in different qubes; ports on the
+same controller cannot, which is why controller separation determines the safer
+path below. The physical controller is identified by a PCI
+**bus-device-function** (BDF) address such as `00_14.0`; that address is not the
+same as a USB device path such as `4-2`.
 
 ## Choose the hardware-isolation path
 
-This section determines whether the machine can permanently isolate the webcam
-or must reuse one controller over time.
+This guide offers two hardware-isolation paths. The stronger path permanently
+separates the webcam from trusted input, but it is possible only when the
+machine exposes a suitable second USB controller. When the machine has only one
+usable controller, the fallback path separates webcam and keyboard use in time
+and requires a complete power-off between them.
 
 Use the preferred **dedicated-controller path** only when the webcam socket
 reaches a PCI USB controller that carries none of these:
@@ -83,7 +101,10 @@ uses the controller for the webcam, physically removes the webcam, and powers
 the entire computer off before keyboard input resumes. Its additional trust
 assumption is that complete power removal clears camera-influenced transient
 state in the controller and other powered hardware. A restart is insufficient,
-and persistent malicious firmware remains outside the protection.
+and persistent malicious firmware remains outside the protection. This path
+additionally uses the disposable `seqs-qr-scanner` and the persistent, offline
+`A-qr-staging` qube, which preserves encrypted data across the required
+power-off.
 
 Leaving webcam automation disabled is also valid:
 

@@ -59,11 +59,19 @@ formatting or cleanup alongside a functional change.
   for. A directly continuing command block in the same subsection does not
   need the terminal repeated.
 - At first use, briefly explain terminology that a moderately technical Linux
-  user may not know from Qubes OS. Do not rely on a later section to define a
-  concept needed now; if a forward dependency is unavoidable, include the
-  minimum explanation at the first use.
+  user may not know from Qubes OS. Prefer a short parenthetical immediately
+  after the first use instead of a separate sentence that defines the term
+  before using it. Do not rely on a later section to define a concept needed
+  now; if a forward dependency is unavoidable, include the minimum explanation
+  at the first use.
+- Before finalizing documentation, review the order in which concepts and modes
+  appear. Introduce and briefly explain each one before any list, prerequisite,
+  or procedure refers to it; do not assume that a later heading repairs an
+  unexplained earlier reference.
 - At first use of external software, technology, or a service, give its shortest
-  useful description and link to its authoritative documentation.
+  useful description and link to its authoritative documentation in the same
+  parenthetical when practical. Do not explain universally familiar concepts
+  merely to satisfy this rule.
 
 ## Repository map
 

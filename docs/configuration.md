@@ -154,7 +154,7 @@ unchanged with a warning for manual review.
 ## Secure QR USB modes
 
 `webcam_usb_mode` is `disabled` by default. After completing the qualification
-test in [secure QR transfer](secure-qr-transfer.md#start-here-determine-which-path-the-machine-qualifies-for),
+test in [secure QR transfer](secure-qr-transfer.md#choose-the-hardware-isolation-path),
 select `dedicated` for a webcam-only physical controller or `sequential` for
 the reduced-assurance shared-controller ceremony. Both require a verified
 physical `webcam_usb_controller` BDF. Sequential mode requires strict PCI reset
