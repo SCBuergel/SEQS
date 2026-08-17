@@ -78,16 +78,16 @@ The diagram below uses these hardware terms:
 - A **USB port** is a socket into which a USB device or hub is plugged. This
   includes sockets on the case and internal USB connectors.
 - A **USB device path**, such as `4-2`, is how Linux names the location of one
-  connected device: root USB bus 4, then port 2 on that bus's root hub. Each
-  downstream hub adds a dot and another port number, so `4-2.1.3` continues
-  through ports 1 and 3 on two hubs. These numbers are internal topology, not
-  labels printed on the case.
-- A **root USB bus**, such as bus 4, is one tree of ports headed by a physical
-  root hub inside the controller. A modern USB 3 controller commonly presents
-  separate root buses for USB 2.0-and-slower and USB 3.0-and-faster operation.
-  The same physical socket can therefore appear under different bus numbers
-  depending on the connected device's speed. Qubes cannot assign one root bus
-  by itself.
+  connected device: root USB bus 4, then port 2 on that bus's root hub (the
+  controller-provided starting point of a USB port tree). Each downstream hub
+  adds a dot and another port number, so `4-2.1.3` continues through ports 1 and
+  3 on two hubs. These numbers are internal topology, not labels printed on the
+  case.
+- A **root USB bus**, such as bus 4, is one tree of ports headed by a root hub.
+  A modern USB 3 controller commonly presents separate root buses for USB
+  2.0-and-slower and USB 3.0-and-faster operation. The same physical socket can
+  therefore appear under different bus numbers depending on the connected
+  device's speed. Qubes cannot assign one root bus by itself.
 - A **Peripheral Component Interconnect (PCI) USB controller** is the hardware
   that drives one or more root USB buses and their ports. PCI is the machine's
   internal bus connecting the controller to the rest of the system. The whole
