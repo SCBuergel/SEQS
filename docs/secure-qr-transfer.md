@@ -50,9 +50,9 @@ of dom0, Qubes isolation, or either trusted key qube defeats it. Deleting files
 also does not guarantee forensic erasure from snapshots, copy-on-write storage,
 swap, backups, or SSD media.
 
-## Qubes and hardware used by the procedure
+## Qubes used by the procedure
 
-This section identifies the qubes and hardware involved in every transfer.
+This section identifies the qubes involved in every transfer.
 
 The transfer uses these qubes:
 
@@ -71,50 +71,54 @@ A missing network connection does not block
 (Qubes' controlled communication system between qubes), so SEQS also installs
 policies restricting input and file-copy services.
 
-The diagram below uses these hardware terms:
+## Understand USB hardware and identifiers
 
-- A **USB device** is anything connected over Universal Serial Bus (USB), such
-  as a webcam, keyboard, or mouse.
-- A **USB port** is a socket into which a USB device or hub is plugged. This
-  includes sockets on the case and internal USB connectors.
-- A **USB device path**, such as `4-2`, is how Linux names the location of one
-  connected device: root USB bus 4, then port 2 on that bus's root hub (the
-  controller-provided starting point of a USB port tree). Each downstream hub
-  adds a dot and another port number, so `4-2.1.3` continues through ports 1 and
-  3 on two hubs. These numbers are internal topology, not labels printed on the
-  case.
-- A **root USB bus**, such as bus 4, is one tree of ports headed by a root hub.
-  A modern USB 3 controller commonly presents separate root buses for USB
-  2.0-and-slower and USB 3.0-and-faster operation. The same physical socket can
-  therefore appear under different bus numbers depending on the connected
-  device's speed. Qubes cannot assign one root bus by itself.
+This section explains the USB hierarchy and the two identifiers used later to
+find the hardware boundary that Qubes can assign. The general relationship is:
+
+```text
+PCI USB controller 00_14.0             <- Qubes assigns this whole unit
+|-- root USB bus 4 (USB 2 root hub)
+|   |-- port 2 -> device                <- USB device path 4-2
+|   `-- port 3 -> hub -> port 1 -> device
+|                                        <- USB device path 4-3.1
+`-- root USB bus 5 (USB 3 root hub)
+    `-- port 1 -> device                <- USB device path 5-1
+```
+
+A modern controller commonly provides a USB 2 and a USB 3 side for the same
+physical socket. A slower device plugged into that socket might therefore have
+path `4-2`, while a faster device in the same socket might have path `5-1`.
+
+The terms in the diagram mean:
+
 - A **Peripheral Component Interconnect (PCI) USB controller** is the hardware
-  that drives one or more root USB buses and their ports. PCI is the machine's
+  that drives one or more USB buses and all their ports. PCI is the machine's
   internal bus connecting the controller to the rest of the system. The whole
   controller is the smallest USB unit Qubes can assign to a qube; the controller
   and all its connected devices first belong to that USB backend qube, which
   may then expose individual devices to other qubes.
-- A PCI **bus-device-function** (BDF) address identifies one device on the PCI
-  bus, including a USB controller. The word “bus” here refers to PCI and is
-  unrelated to the root USB bus numbers above. Standard Linux tools write an
-  address as `00:14.0`; Qubes device commands write the same address as
-  `00_14.0`.
+- A **root USB bus**, such as bus 4, is one tree of ports headed by a root hub
+  (the controller-provided starting point of that tree). Qubes cannot assign a
+  root USB bus separately from its controller.
+- A **USB port** is a socket into which a USB device or hub is plugged. This
+  includes sockets on the case and internal USB connectors.
+- A **USB device** is anything connected over Universal Serial Bus (USB), such
+  as a webcam, keyboard, or mouse.
+- A PCI **bus-device-function** (BDF) address, such as `00:14.0`, identifies one
+  device on the PCI bus, including a USB controller. The word “bus” here refers
+  to PCI and is unrelated to the root USB bus numbers above. Qubes device
+  commands write the same address with an underscore: `00_14.0`.
+- A **USB device path**, such as `4-2`, is how Linux names one connected
+  device's location: root USB bus 4, then port 2. Each downstream hub adds a dot
+  and another port number, so `4-2.1.3` continues through ports 1 and 3 on two
+  hubs. These numbers describe the internal topology and do not match labels
+  printed on the case.
 
-Qubes assigns an entire PCI USB controller to a qube, not an individual USB
-port or root USB bus. A controller can contain several root buses:
-
-```text
-PCI USB controller 00_14.0        <- Qubes assigns this whole controller
-|-- root USB bus 4
-|   `-- physical port: webcam     <- USB device path 4-2
-`-- root USB bus 5
-    `-- physical port: keyboard   <- USB device path 5-1
-```
-
-In this example, bus 4 and bus 5 look different but belong to the same
-controller, so Qubes cannot give the webcam side to one qube while keeping the
-keyboard side in another. Isolation is possible only when the devices map to
-separate PCI USB controllers, for example:
+Everything below one controller in the diagram must first be assigned to the
+same USB backend qube, even when the devices have different root USB bus
+numbers. Hardware isolation is possible only when the devices map to separate
+PCI USB controllers, for example:
 
 ```text
 PCI USB controller 03_00.0        PCI USB controller 00_14.0
@@ -122,9 +126,9 @@ PCI USB controller 03_00.0        PCI USB controller 00_14.0
     -> sys-usb-webcam                  -> normal sys-usb
 ```
 
-The BDF identifies the controller and therefore decides which hardware Qubes
-can separate. A USB device path identifies something below that controller and
-is not an isolation boundary.
+The BDF identifies the assignable controller and therefore decides which
+hardware Qubes can separate. A USB device path identifies something below that
+controller and is not an isolation boundary.
 
 ## Choose the hardware-isolation path
 
