@@ -2,9 +2,10 @@
 
 This guide copies one small secret file, such as a key, from one offline Qubes
 OS computer to another without a network cable or USB stick between them. The
-sending computer shows the file as a QR code on its screen, and a webcam on the
-receiving computer reads it. The file must fit in a single QR code; larger
-files, which would need several codes, are not supported.
+sending computer shows the encrypted file as a QR code on its screen, and a
+webcam on the receiving computer reads it. The encrypted file must fit in a
+single QR code; larger files, which would need several codes, are not
+supported.
 
 ## How the transfer works
 
@@ -574,8 +575,10 @@ qvm-copy key.asc
 ```
 
 If `cd` or `qvm-copy` reports a missing directory or file, the scan failed;
-repeat from step 3. Otherwise, choose the target key qube in the dialog. Do not
-open or decrypt the file in `A-qr-staging`.
+repeat from
+[Step 3: Show the QR code](#step-3-show-the-qr-code-sending-computer).
+Otherwise, choose the target key qube in the dialog. Do not open or decrypt the
+file in `A-qr-staging`.
 
 ### Step 5: Compare fingerprints (both computers)
 
@@ -625,7 +628,9 @@ about 2^80 attempts.
 
 If any character differs, do not run GnuPG. Delete the received `key.asc` in
 the target key qube, and on the sequential path also in `A-qr-staging`, then
-repeat from step 3. The source `key.asc` can be reused.
+repeat from
+[Step 3: Show the QR code](#step-3-show-the-qr-code-sending-computer).
+The source `key.asc` can be reused.
 
 ### Step 6: Decrypt (receiving computer)
 
