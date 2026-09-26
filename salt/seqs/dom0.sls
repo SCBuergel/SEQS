@@ -292,10 +292,19 @@ seqs-policy-qr-input-deny:
         qubes.InputMouse     *  {{ webcam_usb_qube }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_usb_qube }}  @adminvm  deny
         qubes.Filecopy       *  {{ webcam_usb_qube }}  @anyvm    deny
+        # netvm=none does not block qrexec: close the browser handoff too, or
+        # 29-browser.policy would let a compromised camera-side qube push the
+        # ciphertext to the browser qube without a prompt.
+        qubes.OpenURL        *  {{ webcam_usb_qube }}  @anyvm    deny
+        qubes.OpenURL        *  @dispvm:{{ webcam_scanner_dvm }}  @anyvm    deny
+        qubes.InputKeyboard  *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
+        qubes.InputMouse     *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
+        qubes.InputTablet    *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
 {% if webcam_mode == 'sequential' %}
         qubes.InputKeyboard  *  {{ webcam_sequential_scanner }}  @adminvm  deny
         qubes.InputMouse     *  {{ webcam_sequential_scanner }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_sequential_scanner }}  @adminvm  deny
+        qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @anyvm    deny
 {% endif %}
 {% else %}
 seqs-policy-qr-input-deny:
@@ -345,6 +354,14 @@ seqs-policy-browser:
 {% set suppressed = [] %}
 {% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') %}
 {%   do suppressed.append(papp ~ name) %}
+{#   Disposables are separate policy subjects: a rule for A-x covers neither a
+     disposable spawned from it (@dispvm:A-x) nor the named disposable D-x. #}
+{%   if q.get('dispvm_template') %}
+{%     do suppressed.append('@dispvm:' ~ papp ~ name) %}
+{%   endif %}
+{%   if q.get('named_disposable') and pdvm %}
+{%     do suppressed.append(pdvm ~ name) %}
+{%   endif %}
 {% endfor %}
 {% set suppress_policy = '/etc/qubes/policy.d/28-browser-suppress.policy' %}
 {% if salt['file.file_exists'](suppress_policy) %}
@@ -352,10 +369,18 @@ seqs-policy-browser:
 {%     set fields = line.split() %}
 {%     if fields | length == 5 and fields[0] == 'qubes.OpenURL' and fields[1] == '*' and fields[3] == '@anyvm' and fields[4] == 'deny' %}
 {%       set vm = fields[2] %}
-{%       set base = vm[(papp | length):] if papp and vm.startswith(papp) else '' %}
-{%       if base and vm | regex_match(name_re) is not none and base not in browser_suppress_prune and vm not in suppressed
-            and salt['cmd.retcode']('qvm-check -q -- ' ~ vm) == 0
-            and salt['cmd.shell']('qvm-features -- ' ~ vm ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+{#       Accept the three shapes written above; existence and the managed
+         marker are checked on the concrete qube behind each one. #}
+{%       set concrete = vm[8:] if vm.startswith('@dispvm:') else vm %}
+{%       set base = '' %}
+{%       if papp and concrete.startswith(papp) %}
+{%         set base = concrete[(papp | length):] %}
+{%       elif pdvm and concrete == vm and concrete.startswith(pdvm) %}
+{%         set base = concrete[(pdvm | length):] %}
+{%       endif %}
+{%       if base and concrete | regex_match(name_re) is not none and base not in browser_suppress_prune and vm not in suppressed
+            and salt['cmd.retcode']('qvm-check -q -- ' ~ concrete) == 0
+            and salt['cmd.shell']('qvm-features -- ' ~ concrete ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 {%         do suppressed.append(vm) %}
 {%       endif %}
 {%     endif %}

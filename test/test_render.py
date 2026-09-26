@@ -111,6 +111,16 @@ def test_dom0_happy_path():
     # keepass air-gap state
     check("seqs-offline-keepass" in parsed, "keepass should get an offline state")
     check("seqs-offline-brave" not in parsed, "brave must NOT be air-gapped")
+    # netvm=none does not gate qrexec, and a rule for A-x does not match a
+    # disposable spawned from it or the named disposable D-x. Every offline
+    # dispvm template must therefore deny OpenURL for all three subjects.
+    suppress = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
+    for subject in ("A-qr-camera", "@dispvm:A-qr-camera", "A-qr-display",
+                    "@dispvm:A-qr-display", "D-qr-display", "A-qr-staging"):
+        check("qubes.OpenURL  *  %s  @anyvm  deny" % subject in suppress,
+              "browser handoff must be denied for %s" % subject)
+    check("@dispvm:A-keepass" not in suppress and "D-keepass" not in suppress,
+          "non-disposable offline qubes get only their own deny")
     camera_state = parsed["seqs-app-qr-camera"]["qvm.vm"]
     camera_prefs = next(x["prefs"] for x in camera_state if "prefs" in x)
     check(any(p.get("template_for_dispvms") is True for p in camera_prefs),
@@ -179,6 +189,9 @@ def test_dom0_partial_upgrade_preserves_strict_browser_denies():
     old = """\
 qubes.OpenURL * A-keepass @anyvm deny
 qubes.OpenURL * A-old-wallet @anyvm deny
+qubes.OpenURL * @dispvm:A-old-wallet @anyvm deny
+qubes.OpenURL * D-old-wallet @anyvm deny
+qubes.OpenURL * @dispvm:A-unmanaged @anyvm deny
 qubes.OpenURL * A-unmanaged @anyvm deny
 qubes.OpenURL * A-danger @anyvm allow
 not.a.valid policy line
@@ -196,6 +209,10 @@ not.a.valid policy line
     check("A-qr-display" in contents, "new offline qube deny must be emitted")
     check("A-keepass" in contents and "A-old-wallet" in contents,
           "strict denies for existing managed qubes must survive a partial upgrade")
+    check("@dispvm:A-old-wallet" in contents,
+          "a preserved @dispvm: deny must survive when its template is managed")
+    check("D-old-wallet" not in contents,
+          "a D- deny must not be preserved when that disposable does not exist")
     check("A-unmanaged" not in contents,
           "deny for an untagged qube must not be imported")
     check("A-danger" not in contents and "not.a.valid" not in contents,
@@ -259,6 +276,12 @@ def test_dom0_sequential_qr_mode():
         check(state in parsed, "sequential mode should render %s" % state)
     check("qubes.Filecopy" in text and "A-qr-staging" in text,
           "scanner filecopy must be restricted to offline staging")
+    deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
+    for subject in ("sys-usb-webcam", "seqs-qr-scanner", "@dispvm:A-qr-camera"):
+        check("qubes.OpenURL        *  %s  @anyvm    deny" % subject in deny,
+              "camera-side qube %s must not reach the browser handoff" % subject)
+    check("qubes.InputKeyboard  *  @dispvm:A-qr-camera  @adminvm  deny" in deny,
+          "camera disposables must be denied dom0 input")
     check("no-strict-reset=true" not in text,
           "sequential mode must never render no-strict-reset")
     backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
@@ -297,6 +320,10 @@ def test_dom0_dedicated_qr_uses_device_api():
           "dedicated mode must inspect and remove PCI assignments with qvm-pci")
     check("pcidevs" not in backend,
           "dedicated mode must not query nonexistent qvm-prefs pcidevs")
+    deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
+    check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny
+          and "qubes.OpenURL        *  @dispvm:A-qr-camera  @anyvm    deny" in deny,
+          "dedicated mode must also close the browser handoff for camera-side qubes")
 
 
 def test_dom0_named_disposable():

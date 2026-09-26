@@ -101,11 +101,21 @@ browserRuleExists() {
 	' "${BROWSER_SUPPRESS_POLICY}"
 }
 
-# removeBrowserSuppression BASE_NAME -- remove one exact stale deny after the
-# corresponding A-* qube is gone. Never modify a policy we cannot identify as
-# SEQS-managed. The same-directory temporary makes replacement atomic.
+# removeBrowserSuppression BASE_NAME -- remove the stale denies after the
+# corresponding qubes are gone: the A-* rule plus the @dispvm:A-* and D-*
+# rules that dom0.sls writes for disposable templates and named disposables.
 removeBrowserSuppression() {
-	local vm="A-${1}" tmp
+	local vm
+	for vm in "A-${1}" "@dispvm:A-${1}" "D-${1}"; do
+		removeBrowserRule "${vm}" || return 1
+	done
+}
+
+# removeBrowserRule VM -- remove one exact stale deny. Never modify a policy
+# we cannot identify as SEQS-managed. The same-directory temporary makes
+# replacement atomic.
+removeBrowserRule() {
+	local vm="$1" tmp
 
 	sudo test -e "${BROWSER_SUPPRESS_POLICY}" || return 0
 	browserRuleExists "${vm}" || return 0

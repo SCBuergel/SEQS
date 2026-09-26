@@ -1,7 +1,7 @@
 # Reasonably secure air-gapped data transfer
 
-This guide copies one small secret file, such as a key, from one offline Qubes
-OS computer to another without a network cable or USB stick between them. The
+This guide copies one small secret file, such as a key, from one Qubes OS
+computer to another without a network cable or USB stick between them. The
 sending computer shows the encrypted file as a QR code on its screen, and a
 webcam on the receiving computer reads it. The encrypted file must fit in a
 single QR code; larger files, which would need several codes, are not
@@ -111,10 +111,15 @@ controller that carries none of these:
 
 - a keyboard or mouse;
 - the disk or USB device Qubes boots from or stores data on;
-- a USB anti-evil-maid (AEM, a Qubes boot-integrity check) or boot device; or
+- a USB anti-evil-maid (AEM, a Qubes boot-integrity check) or boot device;
+- a hardware wallet, security key, phone, or backup drive; or
 - any other device you need to operate or recover the computer.
 
-`sys-usb-webcam` then owns that controller permanently.
+`sys-usb-webcam` then owns that controller permanently, so anything plugged
+into any of that controller's sockets from then on is handled by the qube this
+guide treats as hostile, or is unusable while that qube is stopped. The
+separation also relies on the IOMMU (the VT-d or AMD-Vi feature Qubes needs to
+assign PCI devices); leave it enabled in the firmware settings.
 
 A built-in keyboard that is genuinely not connected over USB does not count,
 because it uses no USB controller. Some built-in keyboards are wired internally
@@ -128,7 +133,10 @@ controller to the webcam for one scan, and powers the computer off before the
 keyboard is used again. It relies on an assumption that the dedicated path does
 not need: that cutting power clears anything the webcam could have left behind
 in the controller or other hardware. A restart does not qualify, and malicious
-firmware that survives power loss defeats it.
+firmware that survives power loss defeats it. The path also requires that every
+other device on that controller can be unplugged: a built-in keyboard that is
+internally wired to the shared controller cannot, and the script then refuses
+to scan.
 
 Before choosing the sequential path, check whether you can remove all power
 from the receiving computer after the scan. A normal power-off can leave parts
@@ -255,13 +263,17 @@ Look for a recorded hardware ID in square brackets at the end:
 
 You now know which BDF serves each socket and each required device. If two
 controllers show the same ID and you cannot tell them apart, do not guess.
+Everything you read inside `sys-usb` came from a qube that Qubes does not
+trust, so the check that counts is the one after the build, where dom0 shows
+which qube actually receives the webcam.
 
 Apply the rule from
 [Choose the hardware-isolation path](#choose-the-hardware-isolation-path). If a
 webcam socket's controller carries none of the listed devices, use the
-dedicated-controller path with that controller and always plug the webcam into
-that socket. Otherwise, use the sequential path with the controller of the
-socket you will use for the webcam.
+dedicated-controller path with that controller, always plug the webcam into
+that socket, and plug nothing else into that controller's sockets. Otherwise,
+use the sequential path with the controller of the socket you will use for the
+webcam.
 
 Finally, confirm that `sys-usb` currently owns the chosen controller. In a dom0
 terminal, run:
@@ -338,6 +350,13 @@ QR code), `A-qr-staging` (a persistent offline qube that keeps the encrypted
 file while the computer is off), and the dom0 script
 `/usr/local/sbin/seqs-qr-sequential` that runs the scan.
 
+On the dedicated-controller path, the build takes the controller away from
+`sys-usb` immediately, and the assignment survives reboots; setting the mode
+back to `disabled` does not undo it. If you chose the wrong BDF and it carries
+your keyboard, the keyboard stops working and stays that way. Before building,
+make sure you have a second way to type in dom0, such as a built-in non-USB
+keyboard or a keyboard on another controller.
+
 If the build fails with a strict PCI attachment error, the controller cannot be
 reset safely and is unsuitable. Do not enable `no-strict-reset` to get past it.
 
@@ -356,6 +375,20 @@ qvm-prefs D-qr-display netvm
 ```
 
 Both commands must print nothing, `None`, or `none`.
+
+Having no network does not stop
+[qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
+(the Qubes service that lets qubes copy files, open links, and send input to
+each other), so SEQS also installs qrexec policies (dom0 rules deciding which
+qube may use which service). Check that the display qubes may not hand links
+to the browser qube:
+
+```bash
+sudo grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
+```
+
+You should see `deny` lines for `A-qr-display`, `@dispvm:A-qr-display`, and
+`D-qr-display`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -385,23 +418,23 @@ qvm-pci list --assignments
 
 On the dedicated-controller path, your controller must be assigned only to
 `sys-usb-webcam`. On the sequential path, it is assigned to both `sys-usb` and
-`sys-usb-webcam`; the script makes sure only one of them runs at a time.
+`sys-usb-webcam`. Qubes refuses to start a qube whose controller another
+running qube holds, and the script stops `sys-usb` before starting
+`sys-usb-webcam`.
 
 ### Receiving computer: check the qrexec policies
 
-Having no network does not stop
-[qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
-(the Qubes service that lets qubes copy files and send input to each other).
-SEQS therefore installs qrexec policies (dom0 rules deciding which qube may use
-which service) that limit the webcam side. In a dom0 terminal of the receiving
-computer, run:
+The qrexec policies on this side limit the webcam qubes. In a dom0 terminal
+of the receiving computer, run:
 
 ```bash
 sudo cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
 ```
 
 You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
-`qubes.InputTablet`, and `qubes.Filecopy` from `sys-usb-webcam`.
+`qubes.InputTablet`, `qubes.Filecopy`, and `qubes.OpenURL` from
+`sys-usb-webcam`, and for the input services and `qubes.OpenURL` from
+`@dispvm:A-qr-camera`.
 
 On the sequential path, also run:
 
@@ -435,8 +468,10 @@ of paper for the passphrase, which will look like this:
 PASSPHRASE: <26 letters and digits>
 ```
 
-From step 1 until the end, keep the paper, and any screen showing the
-passphrase, out of the webcam's view.
+Keep the webcam unplugged, and its lens covered or facing away, until step 4
+tells you to plug it in. A hostile webcam may record whenever it has power,
+even while no qube uses it. From step 1 until the end, keep the paper, and any
+screen showing the passphrase, out of its view.
 
 ### Step 1: Encrypt the file (sending computer)
 
@@ -503,11 +538,13 @@ use step 4b.
 
 1. Start the target key qube, so that it can be chosen as a copy destination.
 2. Start `sys-usb-webcam` and plug the webcam into its socket.
-3. From the Qubes menu, open a terminal in a new disposable based on
+3. Open the Qubes Devices widget (the USB icon in the system tray). The webcam
+   must be listed as `sys-usb-webcam:...`. If it is listed as `sys-usb:...`,
+   it is in a socket of the keyboard's controller: unplug it and stop.
+4. From the Qubes menu, open a terminal in a new disposable based on
    `A-qr-camera`.
-4. Attach only the webcam to that disposable with the Qubes Devices widget (the
-   USB icon in the system tray).
-5. In the disposable's terminal, run:
+5. Attach only the webcam to that disposable with the Devices widget.
+6. In the disposable's terminal, run:
 
    ```bash
    set -euo pipefail
@@ -518,12 +555,12 @@ use step 4b.
 
    Point the webcam at the QR code. `zbarcam` exits after one successful read.
    In the copy dialog, choose the target key qube.
-6. After the copy succeeds, unplug the webcam and shut down the camera
+7. After the copy succeeds, unplug the webcam and shut down the camera
    disposable and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
    Domains widget that both have stopped before you take out the paper.
 
-If `sys-usb-webcam` ever handled your keyboard, stop and do not type the
-passphrase. Otherwise, continue with step 5.
+If `sys-usb` ever handled the webcam, or `sys-usb-webcam` ever handled your
+keyboard, stop and do not type the passphrase. Otherwise, continue with step 5.
 
 ### Step 4b: Scan on the sequential path (receiving computer)
 
@@ -655,8 +692,10 @@ rm -f -- key.asc
 stat --format='%a %n' master.key
 ```
 
-When GnuPG asks for the passphrase, type it from the paper. If the passphrase
-is wrong or the file fails GnuPG's integrity check, GnuPG exits with an error,
+When GnuPG asks for the passphrase, check that the prompt window has the
+target key qube's colour border, then type the passphrase from the paper. If
+the passphrase is wrong or the file fails GnuPG's integrity check, GnuPG exits
+with an error,
 and the temporary output is removed without creating `master.key`. On success,
 the last line shows `600 master.key`.
 

@@ -266,6 +266,8 @@ export SEQS_BROWSER_SUPPRESS_POLICY="${SBX}/28-browser-suppress.policy"
 cat > "${SEQS_BROWSER_SUPPRESS_POLICY}" <<'EOF'
 # Managed by SEQS (test)
 qubes.OpenURL  *  A-keepass  @anyvm  deny
+qubes.OpenURL  *  @dispvm:A-keepass  @anyvm  deny
+qubes.OpenURL  *  D-keepass  @anyvm  deny
 qubes.OpenURL  *  A-wallet-ledger  @anyvm  deny
 EOF
 # Dry-run: announces itself, exits 0, changes nothing.
@@ -285,6 +287,8 @@ grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been re
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
 grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
 	"stale A-keepass browser deny should have been removed" || ok
+grep -q "keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
+	"stale @dispvm:A-keepass and D-keepass browser denies should have been removed" || ok
 grep -q "A-wallet-ledger" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
 	|| bad "unrelated browser deny was removed"
 # A network provider cannot be removed until consumers are detached. Preserve
