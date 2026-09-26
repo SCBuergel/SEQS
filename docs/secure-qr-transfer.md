@@ -48,10 +48,11 @@ The procedure protects the secret only if these parts behave correctly:
 - Qubes OS itself; and
 - you, following the steps in order.
 
-The webcam, the QR data, and every qube that handles them are treated as
-possibly hostile. The two-piece split is a rule about the order of the steps,
-not extra cryptography. Deleting a file afterwards also does not guarantee that
-it is gone from snapshots, swap, backups, or SSD storage.
+The webcam, the QR data, and the display, camera, staging, and USB qubes that
+handle them are treated as possibly hostile. The two-piece split is a rule
+about the order of the steps, not extra cryptography. Deleting a file
+afterwards also does not guarantee that it is gone from snapshots, swap,
+backups, or SSD storage.
 
 ## What each computer needs
 
@@ -62,10 +63,13 @@ The **sending computer** needs:
 
 - a trusted **source key qube** containing the file, called `master.key` in the
   commands below; and
-- SEQS installed with the `qr-display` qube selected. This creates the offline
-  disposable template (a template for disposables, qubes whose changes are
-  thrown away when they shut down) `A-qr-display` and the named disposable
-  `D-qr-display` started from it, which only ever shows encrypted data.
+- SEQS installed with the `qr-display` qube selected. This creates
+  `D-qr-display`, the offline qube that shows the QR code and only ever handles
+  encrypted data.
+
+`D-qr-display` is a disposable: a qube whose changes are thrown away when it
+shuts down. It starts from the template `A-qr-display`, which SEQS creates at
+the same time.
 
 No webcam or hardware check is needed on the sending computer.
 
@@ -75,10 +79,12 @@ The **receiving computer** needs:
 - a USB webcam that can read a QR code from the sending computer's screen;
 - the hardware check in the next three sections; and
 - SEQS installed with the `qr-camera` qube selected, plus `qr-staging` on the
-  sequential path described below. This creates `A-qr-camera`, an offline
-  disposable template containing `zbarcam` (the QR scanner program), and
-  `sys-usb-webcam`, a USB qube (a qube that owns USB hardware and passes
-  individual devices to other qubes) that handles only the webcam.
+  sequential path described below. This creates `A-qr-camera`, the offline
+  template for the camera disposables that run `zbarcam` (the QR scanner
+  program), and `sys-usb-webcam`, which handles only the webcam.
+
+`sys-usb-webcam` is a USB qube: a qube that owns USB hardware and passes
+individual devices to other qubes.
 
 SEQS does not create the key qubes, because their names and contents differ for
 every user.
@@ -123,8 +129,22 @@ not need: that cutting power clears anything the webcam could have left behind
 in the controller or other hardware. A restart does not qualify, and malicious
 firmware that survives power loss defeats it.
 
-If the computer only qualifies for the sequential path, you can add a PCIe USB
-card to get a dedicated controller instead.
+Before choosing the sequential path, check whether you can remove all power
+from the receiving computer after the scan. A normal power-off can leave parts
+of the computer on standby power, so the sequential path expects you to
+unplug the power cable and take out the battery. This guide does not specify a
+tested minimum time without power. If the battery is built in, the assumption
+is weaker still, and this guide cannot say how much.
+
+Even with all power removed, the sequential path remains exposed to malicious
+state that survives in controller firmware, a webcam attack that escapes
+through Qubes itself or qrexec, a compromised dom0, a webcam left plugged in at
+the next boot, and malicious keyboard or controller firmware. A dedicated
+controller avoids reusing hardware the webcam has touched.
+
+If the computer only qualifies for the sequential path and these limits are not
+acceptable for your secret, add a PCIe USB card to get a dedicated controller
+instead.
 
 ## Find the webcam's USB controller
 
@@ -502,7 +522,7 @@ use step 4b.
    Domains widget that both have stopped before you take out the paper.
 
 If `sys-usb-webcam` ever handled your keyboard, stop and do not type the
-passphrase.
+passphrase. Otherwise, continue with step 5.
 
 ### Step 4b: Scan on the sequential path (receiving computer)
 
@@ -538,19 +558,12 @@ type `START` in capital letters. After that:
 4. When told to, unplug the webcam. Do not reconnect the keyboard or mouse.
 5. The computer powers off, whether the scan worked or not.
 
-The protection now depends on the power-off clearing any state the webcam left
-in the hardware. A normal power-off can leave parts of the computer on standby
-power. Remove every power source you can before starting the computer again:
-unplug the power cable, and take out the battery if it is removable. This guide
-does not specify a tested minimum time without power.
-
-If you cannot remove all power, for example because the battery is built in,
-the assumption behind the sequential path is weaker still, and this guide
-cannot say how much. If that is not acceptable for your secret, stop here and
-use a dedicated controller instead, for example by adding a PCIe USB card.
-
-When you are ready, keep the webcam unplugged, reconnect power, keyboard, and
-mouse, and start the computer.
+Once the computer is off, remove every power source you can: unplug the power
+cable, and take out the battery if it is removable. The limits of this step are
+described under
+[Choose the hardware-isolation path](#choose-the-hardware-isolation-path).
+Then, with the webcam still unplugged, reconnect power, keyboard, and mouse,
+and start the computer.
 
 After boot, start the target key qube, then open a terminal in `A-qr-staging`
 and run:
@@ -563,12 +576,6 @@ qvm-copy key.asc
 If `cd` or `qvm-copy` reports a missing directory or file, the scan failed;
 repeat from step 3. Otherwise, choose the target key qube in the dialog. Do not
 open or decrypt the file in `A-qr-staging`.
-
-Even with complete power removal, the sequential path remains exposed to
-malicious state that survives in controller firmware, a webcam attack that
-escapes through Qubes itself or qrexec, a compromised dom0, a webcam left
-plugged in at the next boot, and malicious keyboard or controller firmware. A
-dedicated controller avoids reusing hardware the webcam has touched.
 
 ### Step 5: Compare fingerprints (both computers)
 
