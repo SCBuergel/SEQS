@@ -50,10 +50,23 @@ The procedure protects the secret only if these parts behave correctly:
 - you, following the steps in order.
 
 The webcam, the QR data, and the display, camera, staging, and USB qubes that
-handle them are treated as possibly hostile. The two-piece split is a rule
-about the order of the steps, not extra cryptography. Deleting a file
-afterwards also does not guarantee that it is gone from snapshots, swap,
-backups, or SSD storage.
+handle them are treated as possibly hostile. So is the other side: normal
+`sys-usb`, a USB keyboard, its firmware, and their controller see the
+passphrase as you type it, and Qubes does not trust them either. The secret
+stays safe only while at most one of the two sides is hostile. If both are,
+the passphrase and the encrypted file meet, the secret is lost, and nothing in
+this procedure will tell you. The two sides are not independent: they share
+the USB attack surface, the room, and possibly the attacker, and any USB
+device ever plugged into `sys-usb` could have compromised it. The two-piece
+split is a rule about the order of the steps, not extra cryptography.
+
+The best way to shrink this risk is to keep `sys-usb` out of the passphrase
+path: type the passphrase on a keyboard that does not go through a USB qube,
+such as a built-in laptop keyboard that is not internally USB, or a PS/2
+keyboard. Then the keyboard side is dom0, which you already trust.
+
+Deleting a file afterwards also does not guarantee that it is gone from
+snapshots, swap, backups, or SSD storage.
 
 ## What each computer needs
 
@@ -98,6 +111,15 @@ that controller then goes through the same USB qube. If the webcam and a USB
 keyboard share a controller, a malicious webcam that takes over that USB qube
 could also watch what you type, either immediately or the next time the
 keyboard is connected. The passphrase would then no longer travel separately.
+
+The same applies to cameras that already sit on the keyboard's USB qube. A
+laptop's built-in webcam is usually a USB device on the same controller as
+the keyboard, handled by normal `sys-usb`. If that qube is compromised, it can
+film the QR code on the sending computer's screen and the paper as you write
+or type the passphrase, and it has both halves on its own. Cover or disable
+built-in cameras on both computers for the whole transfer, for example with
+the hardware switch or by detaching them from `sys-usb` in the Devices widget,
+and treat any camera on `sys-usb` as you would the hostile webcam.
 
 <a id="start-here-determine-which-path-the-machine-qualifies-for"></a>
 
@@ -470,8 +492,9 @@ PASSPHRASE: <26 letters and digits>
 
 Keep the webcam unplugged, and its lens covered or facing away, until step 4
 tells you to plug it in. A hostile webcam may record whenever it has power,
-even while no qube uses it. From step 1 until the end, keep the paper, and any
-screen showing the passphrase, out of its view.
+even while no qube uses it. Cover the built-in cameras of both computers.
+From step 1 until the end, keep the paper, and any screen showing the
+passphrase, out of every camera's view.
 
 ### Step 1: Encrypt the file (sending computer)
 
@@ -693,7 +716,8 @@ stat --format='%a %n' master.key
 ```
 
 When GnuPG asks for the passphrase, check that the prompt window has the
-target key qube's colour border, then type the passphrase from the paper. If
+target key qube's colour border, then type the passphrase from the paper,
+using a keyboard that does not go through a USB qube if the computer has one. If
 the passphrase is wrong or the file fails GnuPG's integrity check, GnuPG exits
 with an error,
 and the temporary output is removed without creating `master.key`. On success,
