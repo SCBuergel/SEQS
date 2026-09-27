@@ -9,8 +9,8 @@ supported.
 
 ## How the transfer works
 
-The secret travels in two separate pieces, and every later step exists to keep
-them apart:
+The secret travels in two separate pieces. Most of the later steps exist to
+keep them apart; the rest check that the file arrived unchanged and clean up:
 
 ```text
                  sending computer                 receiving computer
@@ -34,10 +34,11 @@ Passphrase:      source key qube -> written on paper -> typed on the
 5. You type the paper passphrase into the target key qube, which decrypts the
    file.
 
-The webcam side only ever handles encrypted data, and the passphrase is typed
-only after the webcam side is shut down. As long as those two conditions hold,
+The camera side only ever handles encrypted data, and the passphrase is typed
+only after the camera side is shut down. As long as those two conditions hold,
 and the trusted parts listed below are not compromised, an attacker needs to
-control both the webcam side and the keyboard side to read the secret.
+control both the camera side and the keyboard side to read the secret. The
+next section says what those two sides are.
 
 ## What you must trust
 
@@ -49,21 +50,26 @@ The procedure protects the secret only if these parts behave correctly:
 - Qubes OS itself; and
 - you, following the steps in order.
 
-The webcam, the QR data, and the display, camera, staging, and USB qubes that
-handle them are treated as possibly hostile. So is the other side: normal
-`sys-usb`, a USB keyboard, its firmware, and their controller see the
-passphrase as you type it, and Qubes does not trust them either. The secret
-stays safe only while at most one of the two sides is hostile. If both are,
-the passphrase and the encrypted file meet, the secret is lost, and nothing in
-this procedure will tell you. The two sides are not independent: they share
-the USB attack surface, the room, and possibly the attacker, and any USB
-device ever plugged into `sys-usb` could have compromised it. The two-piece
-split is a rule about the order of the steps, not extra cryptography.
+Everything else is treated as possibly hostile, and it falls into two sides:
 
-The best way to shrink this risk is to keep `sys-usb` out of the passphrase
-path: type the passphrase on a keyboard that does not go through a USB qube,
-such as a built-in laptop keyboard that is not internally USB, or a PS/2
-keyboard. Then the keyboard side is dom0, which you already trust.
+- The **camera side** sees the encrypted file: the webcam, the QR data, and
+  the display, camera, staging, and webcam USB qubes that handle them.
+- The **keyboard side** sees the passphrase: normal `sys-usb`, the USB
+  keyboard, its firmware, their controller, and any camera attached to
+  `sys-usb`.
+
+The secret stays safe only while at most one side is hostile. If both are, the
+passphrase and the encrypted file meet, the secret is lost, and nothing in this
+procedure will tell you. The two-piece split is a rule about the order of the
+steps, not extra cryptography.
+
+The two sides can fail together more easily than it seems. They share the USB
+attack surface, the room, and possibly the attacker, and any USB device ever
+plugged into `sys-usb` could have compromised it. The best way to shrink this
+risk is to keep `sys-usb` out of the passphrase path: type the passphrase on a
+keyboard that does not go through a USB qube, such as a built-in laptop
+keyboard that is not internally USB. Then the keyboard side is dom0, which you
+already trust.
 
 Deleting a file afterwards also does not guarantee that it is gone from
 snapshots, swap, backups, or SSD storage.
@@ -116,17 +122,23 @@ The same applies to cameras that already sit on the keyboard's USB qube. A
 laptop's built-in webcam is usually a USB device on the same controller as
 the keyboard, handled by normal `sys-usb`. If that qube is compromised, it can
 film the QR code on the sending computer's screen and the paper as you write
-or type the passphrase, and it has both halves on its own. Cover or disable
-built-in cameras on both computers for the whole transfer, for example with
-the hardware switch or by detaching them from `sys-usb` in the Devices widget,
-and treat any camera on `sys-usb` as you would the hostile webcam.
+or type the passphrase, and it has both halves on its own.
+
+For the whole transfer, no camera on either computer other than the QR webcam
+may be able to see the sending computer's screen, the paper, or your hands on
+the keyboard. Cover the lens of every built-in camera with tape or its slider,
+or switch it off with a hardware switch that cuts its power. Detaching the
+camera in the Devices widget or disabling it in software is not enough: the
+camera stays in `sys-usb`, which is the qube you are guarding against.
 
 <a id="start-here-determine-which-path-the-machine-qualifies-for"></a>
 
 ## Choose the hardware-isolation path
 
-The receiving computer qualifies for one of two paths. Only the first separates
-the webcam and keyboard in hardware.
+This section has three possible outcomes for the receiving computer: the
+dedicated-controller path, the sequential path if its extra requirements hold,
+or neither, in which case you change the hardware before going on. Only the
+dedicated-controller path separates the webcam and keyboard in hardware.
 
 The **dedicated-controller path** is available if a webcam socket is on a
 controller that carries none of these:
@@ -149,12 +161,13 @@ over USB and do count. Before relying on a built-in keyboard, check that it
 keeps working while `sys-usb` is stopped.
 
 The **sequential path** is a weaker fallback for computers where every webcam
-socket shares a controller with required devices. It does not separate the
-devices in hardware. Instead, a dom0 script stops normal `sys-usb`, lends the
-controller to the webcam for one scan, and powers the computer off before the
-keyboard is used again. It relies on an assumption that the dedicated path does
-not need: that cutting power clears anything the webcam could have left behind
-in the controller or other hardware. A restart does not qualify, and malicious
+socket shares a controller with required devices. It has requirements of its
+own, explained below. It does not separate the devices in hardware. Instead,
+a dom0 script stops normal `sys-usb`, lends the controller to the webcam for
+one scan, and powers the computer off before the keyboard is used again. It
+relies on an assumption that the dedicated path does not need: that cutting
+power clears anything the webcam could have left behind in the controller or
+other hardware. A restart does not qualify, and malicious
 firmware that survives power loss defeats it. The path also requires that every
 other device on that controller can be unplugged: a built-in keyboard that is
 internally wired to the shared controller cannot, and the script then refuses
@@ -173,14 +186,17 @@ through Qubes itself or qrexec, a compromised dom0, a webcam left plugged in at
 the next boot, and malicious keyboard or controller firmware. A dedicated
 controller avoids reusing hardware the webcam has touched.
 
-If the computer only qualifies for the sequential path and these limits are not
-acceptable for your secret, add a PCIe USB card to get a dedicated controller
-instead.
+If the computer qualifies for neither path, or the sequential path's limits
+are not acceptable for your secret, stop here and add a PCIe USB card to get a
+dedicated controller.
 
 ## Find the webcam's USB controller
 
-To apply the rule above, you need to know which controller each webcam socket
-and each required device uses. Linux, `sys-usb`, and dom0 each name the same
+To apply the rule above, you need to know which controller each candidate
+socket and each required device uses. Do not use the webcam for this: it would
+be handled by `sys-usb`, the keyboard's qube, which is what the whole setup
+avoids. Use a small USB device you already trust, such as your mouse or a USB
+stick, as the test device. Linux, `sys-usb`, and dom0 each name the same
 hardware differently, so this takes four short lookups.
 
 ### Record the device paths
@@ -204,18 +220,18 @@ not mean a different controller. Hubs, extension cables, Bluetooth dongles, and
 USB-to-PS/2 adapters never add a controller. Port numbers do not match the
 labels printed on the case.
 
-Leave the keyboard, mouse, boot drive, and other required USB devices plugged
-in. Plug the webcam into one socket you might use, and in a dom0 terminal of the
-receiving computer run:
+Leave the keyboard, boot drive, and other required USB devices plugged in.
+Plug the test device into one socket you might use for the webcam, and in a
+dom0 terminal of the receiving computer run:
 
 ```bash
 qvm-usb
 ```
 
 The output lists each device with an identifier such as `sys-usb:4-3`, meaning
-device path `4-3` in `sys-usb`. Write down the path of the webcam and of every
-required device. Move only the webcam to the next socket and run `qvm-usb`
-again, until you have tried every candidate socket.
+device path `4-3` in `sys-usb`. Write down the path of the test device and of
+every required device. Move only the test device to the next socket and run
+`qvm-usb` again, until you have tried every candidate socket.
 
 ### Find which controller each bus uses inside `sys-usb`
 
@@ -289,13 +305,17 @@ Everything you read inside `sys-usb` came from a qube that Qubes does not
 trust, so the check that counts is the one after the build, where dom0 shows
 which qube actually receives the webcam.
 
-Apply the rule from
-[Choose the hardware-isolation path](#choose-the-hardware-isolation-path). If a
-webcam socket's controller carries none of the listed devices, use the
-dedicated-controller path with that controller, always plug the webcam into
-that socket, and plug nothing else into that controller's sockets. Otherwise,
-use the sequential path with the controller of the socket you will use for the
-webcam.
+Now decide, using the full conditions in
+[Choose the hardware-isolation path](#choose-the-hardware-isolation-path):
+
+- If a candidate socket's controller carries none of the listed devices, use
+  the dedicated-controller path with that controller. From now on, plug the
+  webcam only into that socket, and nothing else into that controller's
+  sockets.
+- Otherwise, if every other device on the controller of the socket you will
+  use can be unplugged and the power-removal requirement holds, use the
+  sequential path with that controller.
+- Otherwise, stop and change the hardware, as that section describes.
 
 Finally, confirm that `sys-usb` currently owns the chosen controller. In a dom0
 terminal, run:
@@ -356,6 +376,14 @@ user.name` and `git config user.email` and commit again. If the repository qube
 is a disposable, the commit disappears when it shuts down, and you must repeat
 the edit before any later SEQS run on this computer.
 
+Before you build on the dedicated-controller path, arrange a second way to
+type in dom0, such as a built-in non-USB keyboard or a keyboard on another
+controller. The build takes the controller away from `sys-usb` immediately,
+and the assignment survives reboots; setting the mode back to `disabled` does
+not undo it. If you chose the wrong BDF and it carries your keyboard, the
+keyboard stops working and stays that way until the assignment is undone by
+hand.
+
 Then run SEQS from dom0 as usual, choosing the qubes with `--qubes`:
 
 - For a first SEQS install, follow the [README](../README.md).
@@ -371,13 +399,6 @@ sequential path it also creates `seqs-qr-scanner` (a disposable that scans the
 QR code), `A-qr-staging` (a persistent offline qube that keeps the encrypted
 file while the computer is off), and the dom0 script
 `/usr/local/sbin/seqs-qr-sequential` that runs the scan.
-
-On the dedicated-controller path, the build takes the controller away from
-`sys-usb` immediately, and the assignment survives reboots; setting the mode
-back to `disabled` does not undo it. If you chose the wrong BDF and it carries
-your keyboard, the keyboard stops working and stays that way. Before building,
-make sure you have a second way to type in dom0, such as a built-in non-USB
-keyboard or a keyboard on another controller.
 
 If the build fails with a strict PCI attachment error, the controller cannot be
 reset safely and is unsuitable. Do not enable `no-strict-reset` to get past it.
@@ -469,7 +490,8 @@ by a `deny` for every other destination.
 
 ### Receiving computer: check the dedicated controller with the webcam
 
-On the dedicated-controller path only, start `sys-usb-webcam` from the Qubes
+On the dedicated-controller path only. This is the first time the webcam is
+plugged into the receiving computer. Start `sys-usb-webcam` from the Qubes
 menu, plug the webcam into its socket, and in a dom0 terminal run:
 
 ```bash
@@ -480,6 +502,17 @@ The webcam must be listed under `sys-usb-webcam`. Every keyboard, mouse, and
 other required device must still be listed under another USB qube. If any of
 them moved to `sys-usb-webcam`, stop: the controller is not dedicated. Shut
 down `sys-usb-webcam` and unplug the webcam when you are done.
+
+If the webcam is instead listed under `sys-usb`, it is in a socket of the
+keyboard's controller and the keyboard side has now been exposed to it. Unplug
+it and reboot the receiving computer with only the keyboard attached. If
+`sys-usb` is a disposable (in dom0, `qvm-prefs sys-usb klass` prints
+`DispVM`), the reboot discards its state, and what remains is the same
+residual risk the sequential path accepts: malicious firmware surviving in the
+keyboard or controller. Continue only if you accept that; otherwise use a
+different keyboard. If `sys-usb` is not a disposable, treat it as compromised
+and do not continue. The same rule applies whenever this happens during a
+transfer.
 
 ## Transfer a file
 
@@ -492,7 +525,9 @@ PASSPHRASE: <26 letters and digits>
 
 Keep the webcam unplugged, and its lens covered or facing away, until step 4
 tells you to plug it in. A hostile webcam may record whenever it has power,
-even while no qube uses it. Cover the built-in cameras of both computers.
+even while no qube uses it. Cover the lens of every built-in camera on both
+computers, as described under
+[Why the webcam must not share a USB controller with the keyboard](#why-the-webcam-must-not-share-a-usb-controller-with-the-keyboard).
 From step 1 until the end, keep the paper, and any screen showing the
 passphrase, out of every camera's view.
 
@@ -582,8 +617,11 @@ use step 4b.
    disposable and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
    Domains widget that both have stopped before you take out the paper.
 
-If `sys-usb` ever handled the webcam, or `sys-usb-webcam` ever handled your
-keyboard, stop and do not type the passphrase. Otherwise, continue with step 5.
+If `sys-usb` handled the webcam at any point since the receiving computer last
+booted, or `sys-usb-webcam` handled your keyboard, stop and do not type the
+passphrase; follow the recovery in
+[check the dedicated controller with the webcam](#receiving-computer-check-the-dedicated-controller-with-the-webcam).
+Otherwise, continue with step 5.
 
 ### Step 4b: Scan on the sequential path (receiving computer)
 
@@ -634,11 +672,11 @@ cd ~/QubesIncoming/seqs-qr-scanner
 qvm-copy key.asc
 ```
 
-If `cd` or `qvm-copy` reports a missing directory or file, the scan failed;
-repeat from
-[Step 3: Show the QR code](#step-3-show-the-qr-code-sending-computer).
-Otherwise, choose the target key qube in the dialog. Do not open or decrypt the
-file in `A-qr-staging`.
+If `cd` or `qvm-copy` reports a missing directory or file, the scan failed.
+Shut down `D-qr-display` if it is still running, then repeat from
+[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
+the source `key.asc` can be reused. Otherwise, choose the target key qube in
+the dialog. Do not open or decrypt the file in `A-qr-staging`.
 
 ### Step 5: Compare fingerprints (both computers)
 
@@ -687,10 +725,10 @@ given source code, producing a different file with the same code would take
 about 2^80 attempts.
 
 If any character differs, do not run GnuPG. Delete the received `key.asc` in
-the target key qube, and on the sequential path also in `A-qr-staging`, then
-repeat from
-[Step 3: Show the QR code](#step-3-show-the-qr-code-sending-computer).
-The source `key.asc` can be reused.
+the target key qube, and on the sequential path also in `A-qr-staging`. Shut
+down `D-qr-display` if it is still running, then repeat from
+[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
+the source `key.asc` can be reused.
 
 ### Step 6: Decrypt (receiving computer)
 
