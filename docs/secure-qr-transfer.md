@@ -95,8 +95,9 @@ point of failure, not an independent second side.
 The two-side protection therefore holds in full only if you type on keyboards
 that do not go through a USB qube, such as a built-in laptop keyboard that is
 not internally USB; the setup shows how to
-[check this](#check-whether-the-built-in-keyboard-uses-usb). Its key presses reach dom0 directly, so the keyboard side
-becomes dom0, which you already trust. With a USB keyboard, the split still
+[check this](#check-whether-the-built-in-keyboard-uses-usb). Its key presses
+reach dom0 directly, so the keyboard side becomes dom0, which you already
+trust. With a USB keyboard, the split still
 protects against parts that can only watch: for example, a camera that sees the
 paper but never the encrypted file, or a camera-side qube that gets the
 encrypted file but never the passphrase. The secret, like the rest of your
@@ -347,6 +348,10 @@ check. If the repeated check lists nothing, you are done here. Any device that
 remains, such as a built-in keyboard that uses USB, must be on a different
 controller from the webcam's, which the next subsection checks; if it is on
 the same controller, the sequential path is not possible with that socket.
+If a built-in camera that cannot be switched off shares the controller of the
+USB-A sockets, a USB 3 webcam in a USB-C socket may still work: on many Intel
+laptops, the USB 3 wires of the USB-C sockets lead to the other controller,
+which the next subsection shows with a USB 3 test device.
 
 The devices must stay switched off for every later transfer. The scan script
 shows the devices in `sys-usb` before every scan, so that you notice one that
@@ -396,9 +401,11 @@ description to a line of the dom0 controller list: that line's BDF is the
 webcam's controller. Internal devices that remained switched on must lead to a
 different description.
 
-If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`,
-or two controllers in the dom0 list have the same description, match by
-hardware ID instead. In a dom0 terminal, run:
+If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`.
+In that case, or if no line of the dom0 list has the same description, which
+can happen because `sys-usb` and dom0 may use different versions of the
+device database, or if two controllers in the dom0 list have the same
+description, match by hardware ID instead. In a dom0 terminal, run:
 
 ```bash
 lspci -nn | grep -i usb
@@ -411,17 +418,19 @@ controllers have the same ID as well, which happens on some AMD laptops, do
 not guess; use the test in the next subsection.
 
 These results come from `sys-usb`, a qube that Qubes does not trust. On the
-sequential path, a wrong result cannot expose the keyboard side: if the
-configured controller is not the webcam's, the script finds no device during
-the scan and powers off without scanning. The same happens if you plug the
+sequential path, if no internal device remained switched on, a wrong result
+cannot expose the keyboard side: if the configured controller is not the
+webcam's, the script finds no device during the scan and powers off without
+scanning. The same happens if you plug the
 webcam into a different socket later.
 
 ### Tell identical controllers apart
 
 Skip this subsection unless two controllers showed the same hardware ID. This
 test takes one of them away from `sys-usb` for 30 seconds and shows which
-devices disappear. It relies only on dom0, so it is also more trustworthy than
-the lookups inside `sys-usb`.
+devices disappear. Dom0 decides which controller `sys-usb` gets, so the test
+is more trustworthy than the lookups inside `sys-usb`, although the device
+list it shows is still reported by `sys-usb`.
 
 In the dom0 controller list, check whether the line of the controller you will
 test shows `no-strict-reset=True` next to `sys-usb`. Plug the test device into
@@ -647,12 +656,13 @@ path, the build stops with `Configured controller is not assigned to sys-usb`
 if the configured BDF is not a controller `sys-usb` currently owns; recheck
 the BDF.
 
-If `sys-usb-webcam` later fails to start because the controller cannot be
-reset, the reset check was wrong for this controller. On the
-dedicated-controller path, the controller is then unsuitable. On the
-sequential path, the scan script says so and powers off after 60 seconds
-without scanning; set `webcam_usb_no_strict_reset` to `True`, commit, build
-again, and repeat the transfer from
+If the build, or a later start of `sys-usb-webcam`, fails because the
+controller cannot be reset, the reset check was wrong for this controller. On
+the dedicated-controller path, the controller is then unsuitable. On the
+sequential path, a failed start makes the scan script say so and power off
+after 60 seconds without scanning; in either case, set
+`webcam_usb_no_strict_reset` to `True`, commit, build again, and repeat the
+transfer from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer).
 
 ## Check the setup
@@ -957,10 +967,11 @@ run the script again. Otherwise, type `START` in capital letters. After that:
    one USB device is present, and scans for up to 3 minutes. If
    `sys-usb-webcam` does not start, the script shows an error and powers off
    after 60 seconds without scanning; see the end of
-   [Configure and build the QR qubes](#configure-and-build-the-qr-qubes). Point the webcam at
-   the QR code. The received file may be at most 16 KiB and is copied only to
-   `A-qr-staging`. A webcam that itself shows up as several USB devices is
-   refused every time; use a webcam that shows up as a single device.
+   [Configure and build the QR qubes](#configure-and-build-the-qr-qubes).
+   Point the webcam at the QR code. The received file may be at most 16 KiB
+   and is copied only to `A-qr-staging`. A webcam that itself shows up as
+   several USB devices is refused every time; use a webcam that shows up as a
+   single device.
 4. When told to, unplug the webcam. Do not reconnect the keyboard or mouse.
 5. The computer powers off, whether the scan worked or not.
 

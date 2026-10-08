@@ -63,7 +63,7 @@ for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
 	esac
 done
 # Device descriptions originate in the USB backend; strip control characters.
-normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\n')" || {
+normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\t\n')" || {
 	echo "ERROR: cannot list the USB devices of $NORMAL_USB_QUBE" >&2; exit 1;
 }
 
