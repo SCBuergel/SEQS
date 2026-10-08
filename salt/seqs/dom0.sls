@@ -112,9 +112,6 @@
 {% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
 {%   do errors.append("sequential webcam mode requires qr-staging to be offline with preserve_incoming enabled") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and webcam_no_strict_reset %}
-{%   do errors.append("sequential webcam mode forbids webcam_usb_no_strict_reset -- safe controller reuse requires strict reset") %}
-{% endif %}
 {% if webcam_mode == 'sequential' and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_normal_usb_qube) != 0 %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
@@ -736,9 +733,12 @@ seqs-webcam-usb-backend:
 {% endif %}
         qvm-shutdown --wait {{ webcam_usb_qube }} || true
 {% if webcam_mode == 'sequential' %}
-        # Remove any prior weak attachment options, then recreate the webcam
-        # assignment with Qubes' strict-reset default. The normal sys-usb
-        # assignment remains; only one owner may run at a time.
+        # Remove any prior attachment options, then recreate the webcam
+        # assignment: strict reset by default, or no-strict-reset only when
+        # webcam_usb_no_strict_reset is set for a controller without a reset
+        # method. Either way the ceremony ends in a power-off, so sys-usb
+        # receives the controller back only after a cold boot. The normal
+        # sys-usb assignment remains; only one owner may run at a time.
         qvm-pci detach --persistent {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
 {% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}

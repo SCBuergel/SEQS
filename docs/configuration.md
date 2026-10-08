@@ -157,8 +157,10 @@ unchanged with a warning for manual review.
 test in [secure QR transfer](secure-qr-transfer.md#choose-the-hardware-isolation-path),
 select `dedicated` for a webcam-only physical controller or `sequential` for
 the reduced-assurance shared-controller ceremony. Both require a verified
-physical `webcam_usb_controller` BDF. Sequential mode requires strict PCI reset
-and intentionally powers off rather than restoring normal USB input in place.
+physical `webcam_usb_controller` BDF. `webcam_usb_no_strict_reset` stays
+`False` unless the sequential-mode controller has no PCI reset method; sequential
+mode intentionally powers off rather than restoring normal USB input in place,
+so the controller returns to `sys-usb` only after a cold boot.
 
 ## `brave_extensions`
 

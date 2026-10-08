@@ -82,8 +82,9 @@ qvm-shutdown --wait -- "$NORMAL_USB_QUBE"
 echo "NORMAL USB BACKEND STOPPED. Connect only the webcam now; waiting 30 seconds."
 sleep 30
 
-# From this point every failure reaches the poweroff trap. Strict PCI reset is
-# enforced by setup: sequential mode cannot be rendered with no-strict-reset.
+# From this point every failure reaches the poweroff trap. Whether the
+# controller moves with a strict PCI reset is fixed by setup; with or without
+# it, sys-usb gets the controller back only after the power-off.
 qvm-start -- "$WEBCAM_USB_QUBE"
 qvm-start -- "$SCANNER_QUBE"
 sleep 5

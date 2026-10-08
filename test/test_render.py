@@ -283,7 +283,7 @@ def test_dom0_sequential_qr_mode():
     check("qubes.InputKeyboard  *  @dispvm:A-qr-camera  @adminvm  deny" in deny,
           "camera disposables must be denied dom0 input")
     check("no-strict-reset=true" not in text,
-          "sequential mode must never render no-strict-reset")
+          "sequential mode must keep strict reset unless explicitly disabled")
     backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
     check("qvm-pci list sys-usb" in backend,
           "sequential mode must verify the controller through qvm-pci")
@@ -291,8 +291,8 @@ def test_dom0_sequential_qr_mode():
           "PCI ownership is not a qvm-prefs property")
 
 
-def test_dom0_sequential_qr_rejects_weak_reset():
-    case("dom0.sls: sequential QR mode rejects no-strict-reset")
+def test_dom0_sequential_qr_allows_explicit_weak_reset():
+    case("dom0.sls: sequential QR mode accepts an explicit no-strict-reset")
     pillar = copy.deepcopy(render_pillar("dom0"))
     pillar.update({
         "webcam_usb_mode": "sequential",
@@ -301,8 +301,16 @@ def test_dom0_sequential_qr_rejects_weak_reset():
     })
     _, parsed = render_state(
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
-    check("seqs-validation-failed" in parsed,
-          "sequential + no-strict-reset must fail pre-flight")
+    check("seqs-validation-failed" not in parsed,
+          "sequential + no-strict-reset must pass pre-flight")
+    backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
+    check("qvm-pci attach --persistent --option no-strict-reset=true "
+          "sys-usb-webcam dom0:00_14.0" in backend,
+          "the option must apply to the webcam backend's assignment")
+    check(backend.count("--option no-strict-reset") == 1,
+          "no other assignment may be weakened")
+    check("qvm-pci list sys-usb" in backend,
+          "sequential mode must still require sys-usb to own the controller")
 
 
 def test_dom0_dedicated_qr_uses_device_api():

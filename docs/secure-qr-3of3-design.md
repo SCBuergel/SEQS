@@ -267,7 +267,7 @@ names may change during implementation, but the boundaries may not.
    selection.
 2. Extend `salt/seqs/dom0.sls` to create minimal offline disposable backends and
    phase-specific qrexec policies. Validate the shared controller BDF and reject
-   `no-strict-reset` exactly as sequential camera mode does.
+   `no-strict-reset`.
 3. Add the `qr-mouse-entry` component under
    `install-scripts/components/qr-mouse-entry/`, with the trusted application,
    a narrowly scoped launcher, and distribution-pinned dependencies recorded in
