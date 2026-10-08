@@ -275,7 +275,7 @@ power-off-based fallback:
 ```jinja
 {%- set webcam_usb_mode = 'sequential' %}
 {%- set webcam_usb_controller = '00_14.0' %}  {# use the verified BDF #}
-{%- set webcam_usb_no_strict_reset = False %}
+{%- set webcam_usb_no_strict_reset = False %}  {# True only without a reset method #}
 ```
 
 Then perform the normal upgrade steps above: verify and check out the reviewed

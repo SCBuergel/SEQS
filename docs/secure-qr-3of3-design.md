@@ -266,8 +266,10 @@ names may change during implementation, but the boundaries may not.
    staging, and target roles. Keep the catalogue independent of runtime
    selection.
 2. Extend `salt/seqs/dom0.sls` to create minimal offline disposable backends and
-   phase-specific qrexec policies. Validate the shared controller BDF and reject
-   `no-strict-reset`.
+   phase-specific qrexec policies. Validate the shared controller BDF. Accept
+   `no-strict-reset` only if every hand-over of the controller in this mode
+   goes through complete power removal, the argument sequential camera mode
+   relies on.
 3. Add the `qr-mouse-entry` component under
    `install-scripts/components/qr-mouse-entry/`, with the trusted application,
    a narrowly scoped launcher, and distribution-pinned dependencies recorded in
@@ -343,7 +345,8 @@ when all of the following are true:
   residual risks;
 - the camera, keyboard, and mouse phases are mutually exclusive and separated
   by complete power removal;
-- strict reset cannot be disabled in this mode;
+- no controller hand-over in this mode happens without either a strict reset
+  or complete power removal;
 - each backend is fresh, offline, minimal, and denied unrelated qrexec
   services;
 - the randomized mapping and both passphrase components exist only in trusted

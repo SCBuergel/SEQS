@@ -32,10 +32,10 @@ Receiving computer, one of:
       `sys-usb-webcam`, as a single device; accept exactly one copy dialog;
       afterwards unplug the webcam and confirm the camera qubes have stopped.
 - [ ] [Step 4b](secure-qr-transfer.md#step-4b-scan-on-the-sequential-path-receiving-computer),
-      sequential path: confirm with `sleep 20; qvm-usb` that the internal
-      USB devices are still switched off, run the dom0 script, unplug every
-      USB keyboard and mouse within 10 seconds of `START`, remove all power
-      after the power-off, then copy `key.asc` from `A-qr-staging`.
+      sequential path: run the dom0 script, check that it lists only your
+      USB keyboard and mouse in `sys-usb`, unplug them within 10 seconds of
+      `START`, remove all power after the power-off, then copy `key.asc` from
+      `A-qr-staging`.
 
 Both computers:
 

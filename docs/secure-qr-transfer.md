@@ -94,7 +94,8 @@ point of failure, not an independent second side.
 
 The two-side protection therefore holds in full only if you type on keyboards
 that do not go through a USB qube, such as a built-in laptop keyboard that is
-not internally USB. Its key presses reach dom0 directly, so the keyboard side
+not internally USB; the setup shows how to
+[check this](#check-whether-the-built-in-keyboard-uses-usb). Its key presses reach dom0 directly, so the keyboard side
 becomes dom0, which you already trust. With a USB keyboard, the split still
 protects against parts that can only watch: for example, a camera that sees the
 paper but never the encrypted file, or a camera-side qube that gets the
@@ -138,7 +139,7 @@ The **receiving computer** needs:
 - a trusted **target key qube** that does not yet contain a `master.key`;
 - a USB webcam that can read a QR code from the sending computer's screen and
   shows up as a single USB device, which the setup checks confirm;
-- the hardware check in the next three sections; and
+- the hardware lookups described below; and
 - SEQS installed with the `qr-camera` qube selected, plus `qr-staging` if the
   hardware check leads you to the weaker of its two setups. This creates
   `A-qr-camera`, the offline disposable template for the camera disposables
@@ -182,128 +183,86 @@ camera stays in `sys-usb`, which is the qube you are guarding against.
 
 ## Choose the hardware-isolation path
 
-This section has three possible outcomes for the receiving computer: the
-dedicated-controller path, the sequential path if its extra requirements hold,
-or neither, in which case you change the hardware before going on. Only the
-dedicated-controller path separates the webcam and keyboard in hardware.
+The receiving computer can keep the webcam away from the keyboard's
+controller in two ways. Most laptops and NUCs can use only the second.
 
-The **dedicated-controller path** is available if a webcam socket is on a
-controller that carries none of these:
+The **dedicated-controller path** gives the webcam a USB controller of its own
+that `sys-usb-webcam` owns permanently. It is the only path that separates the
+webcam and the keyboard in hardware. It needs a controller that carries no
+device you need, and a webcam socket whose wires lead to no other controller.
+On Intel laptops and NUCs, one controller usually serves the USB-A sockets, the
+internal USB devices, and any USB keyboard, while the USB-C sockets are split
+between two controllers. This path then needs an added controller: a PCIe USB
+card in a desktop, or an M.2 USB controller card in a free M.2 slot of a NUC;
+most laptops have no slot for one. AMD laptops often have two or three USB
+controllers in the processor and sometimes offer a dedicated controller
+without extra hardware.
+[Look for a dedicated controller](#look-for-a-dedicated-controller) describes
+its requirements.
 
-- a keyboard or mouse;
-- the disk or USB device Qubes boots from or stores data on;
-- a USB anti-evil-maid (AEM, a Qubes boot-integrity check) or boot device;
-- a hardware wallet, security key, phone, or backup drive; or
-- any other device you need to operate or recover the computer.
+The **sequential path** lends the controller that `sys-usb` normally owns to
+the webcam for a single scan. A dom0 script stops `sys-usb`, gives the
+controller to `sys-usb-webcam`, scans, and powers the computer off before the
+keyboard is used again. You then remove all power, which is assumed to clear
+anything the webcam left in the controller, and `sys-usb` gets the controller
+back only at the next cold boot. The path has three requirements:
 
-The socket must also lead only to that controller. A USB 3 socket has separate
-wires for USB 2 and USB 3, and on some computers they lead to different
-controllers; the USB-C sockets of recent Intel computers typically send USB 3
-to one controller and USB 2 to the controller that also serves the keyboard.
-On such a split socket the webcam, not you, chooses which wires it uses. A
-hostile webcam can connect over the USB 2 wires as well, and that connection
-lands in `sys-usb`. The check after the build does not reveal this, because
-it shows only the connection the webcam chooses to present. A split socket
-therefore never qualifies for this path.
+- **`sys-usb` must own the controller.** The build checks this.
+- **During the scan, the webcam must be the only device on the controller.**
+  You unplug external devices. Internal USB devices, such as a built-in webcam,
+  Bluetooth, a fingerprint reader, or a card reader, must be switched off in
+  the firmware settings (the BIOS or UEFI setup) and stay off. Switching a
+  device off in Qubes or Linux, for example with `rfkill`, is not enough,
+  because the device stays on the controller. If a device remains, the script
+  finds more than one USB device only after it has shared a qube with the
+  webcam; it then refuses to scan and powers off.
+- **You must be able to remove all power after the scan.** A normal power-off
+  leaves parts of the computer on standby power, so you unplug the power cable
+  and take out the battery. On a laptop with a built-in battery, this is the
+  weakest point of the sequential path, and this guide cannot say how much it
+  weakens it; it also does not specify a tested minimum time without power.
+  Two firmware settings may help, although this guide has not tested whether
+  they cut all power: switch off every option that keeps USB powered while
+  the computer is off, often called "Always On USB" or "USB charging", and use
+  a battery-disconnect setting where the firmware offers one, such as "Disable
+  built-in battery" on Lenovo ThinkPads, which disconnects the battery until a
+  charger is connected.
 
-`sys-usb-webcam` then owns that controller permanently, so anything plugged
-into any of that controller's sockets from then on, and any internal device on
-it, is handled by the qube this guide treats as hostile, or is unusable while
-that qube is stopped. The separation also relies on the IOMMU (the VT-d or
-AMD-Vi feature Qubes needs to assign PCI devices); leave it enabled in the
-firmware settings. The controller must also support a strict reset, which
-clears its state when it moves between qubes; the lookups check this first.
+The sequential path accepts two things that the dedicated-controller path
+does not. A socket may be split, because `sys-usb` is stopped during the scan,
+so no qube drives the other controller. And the controller need not support a
+strict reset (a reset that clears its state when it moves between qubes),
+which the chipset controller of Intel computers often does not. Without it,
+the controller reaches `sys-usb-webcam` still holding state that `sys-usb`
+left in it, possibly traces of earlier keyboard input. The camera side has no
+network; it could pass such traces on only through the scanned file, which
+stays in offline qubes, or to the webcam itself.
 
-A built-in keyboard that is genuinely not connected over USB does not rule out a
-controller, because it uses no USB controller. Some built-in keyboards are
-wired internally over USB and do rule it out. Before relying on a built-in
-keyboard, check that it does not use USB, as described in
-[Check whether a built-in keyboard uses USB](#check-whether-a-built-in-keyboard-uses-usb).
-
-The **sequential path** is a weaker fallback for computers where no socket
-qualifies for the dedicated-controller path. It has requirements of its own,
-explained below. It does not separate the devices in hardware. Instead, a dom0
-script stops normal `sys-usb`, lends the controller to the webcam for one scan,
-and powers the computer off before the keyboard is used again. It relies on an
-assumption that the dedicated path does not need: that cutting power clears
-anything the webcam could have left behind in the controller or other
-hardware. A restart does not qualify, and malicious firmware that survives
-power loss defeats it. A split socket is acceptable on this path if `sys-usb`
-owns both of its controllers, which the lookups below show: `sys-usb` is
-stopped during the scan, so no qube drives the other controller.
-
-Unlike the dedicated path, it can use a controller that does not support a
-strict reset, which is common for the chipset controller of Intel computers.
-Without a strict reset, the controller reaches `sys-usb-webcam` still holding
-state that `sys-usb` left in it, possibly traces of earlier keyboard input.
-The camera side has no network; it could pass such traces on only through the
-scanned file, which stays in offline qubes, or to the webcam itself. The
-reverse direction needs no reset, because the controller returns to `sys-usb`
-only after the power-off.
-
-The path also requires that every device on that controller other than the
-webcam can be unplugged or switched off in the firmware settings (the BIOS or
-UEFI setup). This includes internal USB devices such as a built-in webcam,
-Bluetooth, a fingerprint reader, or a card reader, and a built-in keyboard that
-is internally wired over USB. Switching a device off in Qubes or Linux, for
-example with `rfkill`, is not enough, because the device stays on the
-controller. If such a device remains, the script finds more than one USB device
-only after the device has shared a qube with the webcam; it then refuses to
-scan and powers off. The next section shows how to find these devices before
-you build.
-
-Before choosing the sequential path, check whether you can remove all power
-from the receiving computer after the scan. A normal power-off can leave parts
-of the computer on standby power, so the sequential path expects you to
-unplug the power cable and take out the battery. This guide does not specify a
-tested minimum time without power. If the battery is built in, the assumption
-is weaker still, and this guide cannot say how much. Some laptops have a
-firmware setting that disconnects the built-in battery until a charger is
-connected, such as "Disable built-in battery" on Lenovo ThinkPads. Such a
-setting may allow full power removal, but this guide has not tested whether it
-cuts all power.
-
-Even with all power removed, the sequential path remains exposed to malicious
-state that survives in controller firmware, a webcam attack that escapes
-through Qubes itself or qrexec, a compromised dom0, a webcam left plugged in at
-the next boot, and malicious keyboard or controller firmware. Because the
-webcam uses a controller that `sys-usb` owns at all other times, anything it
-leaves behind that survives the power-off reaches `sys-usb`, which with a USB
-keyboard can type into dom0.
-The worst case is therefore control of the whole receiving computer, not only
-a leaked passphrase. A dedicated controller avoids reusing hardware the webcam
-has touched.
-
-The lookups in the next section decide for each computer, but some layouts are
-typical. On Intel laptops and NUCs, one controller usually serves the USB-A
-sockets, the internal USB devices such as a built-in webcam, Bluetooth, or a
-fingerprint reader, and often your USB keyboard, while the USB-C sockets are
-split. The dedicated-controller path then needs an added controller: a PCIe
-USB card in a desktop, or an M.2 USB controller card in a free M.2 slot of a
-NUC; most laptops have no slot for one. AMD laptops often have two or three USB
-controllers in the processor and sometimes offer a dedicated controller without
-extra hardware. The sequential path is usually possible on a NUC, which has no
-battery, if its internal USB devices can be switched off; on a laptop, the
-built-in battery weakens it. Whether a controller supports a strict reset
-varies, and the chipset controller of Intel computers often does not; such a
-controller cannot serve the dedicated-controller path but can still serve the
-sequential path.
+The sequential path cannot protect against malicious state that survives power
+removal in the controller, keyboard, or webcam firmware, a webcam attack that
+escapes through Qubes itself or qrexec, a compromised dom0, or a webcam left
+plugged in at the next boot. Anything the webcam leaves behind that survives
+the power-off reaches `sys-usb`, which with a USB keyboard can type into dom0,
+as described under [What you must trust](#what-you-must-trust). The worst case
+is therefore control of the whole receiving computer, not only a leaked
+passphrase.
 
 If the computer qualifies for neither path, or the sequential path's limits
-are not acceptable for your secret, stop here and add a USB controller card to
-get a dedicated controller.
+are not acceptable for your secret, add a USB controller card and use the
+dedicated-controller path.
 
 ## Find the webcam's USB controller
 
-To apply the rules above, you need to know which controller the webcam's
-socket uses, whether that controller supports a strict reset, which
-controllers carry required and internal devices, and, for the
-dedicated-controller path, whether a socket is split. Do not use the webcam
-for this: it would be handled by `sys-usb`, the keyboard's qube, which is what
-the whole setup avoids. Instead, use small USB devices you already trust as
-test devices: a USB 2 device, such as most mice, and, for one check, a USB 3
-device, such as most recent USB sticks. For USB-C sockets, use USB-C devices or
-simple USB-C adapters.
+The lookups in this section find the controller of the socket you will use for
+the webcam, make sure nothing else will share it during the scan, and show
+whether your built-in keyboard bypasses `sys-usb`. They are all the sequential
+path needs. If you want a dedicated controller, run them too;
+[Look for a dedicated controller](#look-for-a-dedicated-controller) adds the
+checks that path needs.
+
+Do not use the webcam for these lookups: it would be handled by `sys-usb`, the
+keyboard's qube, which is what the whole setup avoids. Use a small USB device
+you already trust instead, such as a USB mouse, as the test device.
 
 ### List the USB controllers
 
@@ -326,125 +285,27 @@ dom0:00_14.0  0000:00:14.0  PCI_USB: Intel ... PCH USB 3.2 xHCI Host Controller 
 The first column is the controller's BDF (bus-device-function), its real PCI
 address. SEQS needs it without `dom0:`, such as `00_14.0`. The second column
 is the same address in the form Linux uses in dom0. The last column shows which
-qube uses the controller. `no-strict-reset=True` there is how the Qubes
-installer assigns USB controllers to `sys-usb`; it says nothing about whether
-a controller supports a strict reset, which the next subsection checks.
+qube uses the controller; `no-strict-reset=True` there is how the Qubes
+installer assigns USB controllers to `sys-usb`.
 
 Lines whose description contains `NHI` are Thunderbolt host interfaces, not
 USB controllers with sockets of their own; leave them out when you count
-controllers. A USB-C socket with Thunderbolt can also reach the NHI, which is
-one more reason such a socket never qualifies for the dedicated-controller
-path. On the sequential path it does not matter, because `sys-usb`, which owns
-the NHI, is stopped during the scan. The example therefore shows two USB
-controllers: a Thunderbolt USB controller and the chipset (PCH) controller.
+controllers. The example therefore shows two USB controllers: a Thunderbolt
+USB controller and the chipset (PCH) controller. Keep this output for the
+lookups below.
 
-If every line shows `sys-usb`, a split socket is acceptable on the sequential
-path, as explained above, without further checks.
+### Check whether the built-in keyboard uses USB
 
-### Check which controllers support a strict reset
+Skip this check if the receiving computer has no built-in keyboard. Otherwise,
+its result decides how much the transfer protects on this computer. A built-in
+keyboard that does not use USB sends its key presses straight to dom0, so
+`sys-usb` cannot read or invent them: if you type the passphrase on it, the
+two-side protection described under [What you must trust](#what-you-must-trust)
+holds in full on this computer. A built-in keyboard that uses USB goes through
+`sys-usb` like any USB keyboard, and it counts as an internal device in the
+next check.
 
-The dedicated-controller path needs a controller that supports a strict
-reset. The sequential path does not, but the configuration must say whether to
-use one, because a controller that cannot be reset fails only when
-`sys-usb-webcam` starts. Check every USB controller now, before you invest in
-the other lookups. For each USB controller in the list, not the NHI lines, run
-this in dom0 with the address from the second column:
-
-```bash
-cat /sys/bus/pci/devices/0000:00:14.0/reset_method
-```
-
-If it prints one or more reset methods, such as `flr` or `pm`, the controller
-probably supports a strict reset. If it reports `No such file or directory` or
-prints nothing, it does not, and that controller cannot serve the
-dedicated-controller path. Write down the result for each controller; on the
-sequential path, the configuration uses it. This file is a good indication but
-not a guarantee; a check after the build confirms the hand-over before you use
-a secret.
-
-### Choose how far to look
-
-How many of the following lookups you need depends on the list:
-
-- **One USB controller.** If the list shows exactly one USB controller, used by
-  `sys-usb`, and you need at least one USB device for normal use, such as a USB
-  keyboard, mouse, security key, or drive, the dedicated-controller path is
-  impossible without adding a controller card. If the sequential path's limits
-  are acceptable for your secret, it is your path, and its controller is that
-  BDF. Run only
-  [Find the internal USB devices](#find-the-internal-usb-devices), then
-  [Decide which path applies](#decide-which-path-applies).
-- **Several USB controllers, all used by `sys-usb`.** You can either look for
-  a dedicated controller with the full route, or take the short route straight
-  to the sequential path. On laptops like the example, a dedicated controller
-  is rare: the USB-C sockets are usually split, and the chipset controller
-  usually carries the internal devices and any USB keyboard or mouse. The
-  short route accepts the sequential path's weaker protection without checking
-  whether this computer could do better, so take the full route if you would
-  do without USB devices on a controller, or add a controller card, to get a
-  dedicated one. On the short route, run
-  [Find the internal USB devices](#find-the-internal-usb-devices); then run
-  [Record the device paths](#record-the-device-paths) and the three lookups
-  after it for the one socket you will use for the webcam only; skip
-  [Check candidate sockets for a split](#check-candidate-sockets-for-a-split);
-  and finish with [Decide which path applies](#decide-which-path-applies).
-- **Otherwise,** take the full route: run every subsection below.
-
-On the short and full routes, record the results in a table like the
-following, on paper or in a text file; none of it is secret. The lookups fill
-in the columns from left to right: the device path (where a device sits on a
-controller), the bus speed, the virtual address (the name `sys-usb` uses for
-the controller), and the BDF. Each is explained where you look it up. In this
-full-route example, the rear USB-A socket shares controller `00_14.0` with the
-USB keyboard and the internal Bluetooth, while the socket on an added PCIe card
-has controller `03_00.0` to itself and is not split:
-
-| Socket or device                    | Device path | Bus speed | Virtual address | BDF       |
-|-------------------------------------|-------------|-----------|-----------------|-----------|
-| Rear USB-A, USB 2 test device       | `4-1`       | `480`     | `0000:00:09.0`  | `00_14.0` |
-| USB keyboard                        | `4-2`       | `480`     | `0000:00:09.0`  | `00_14.0` |
-| Internal: Bluetooth                 | `4-10`      | `480`     | `0000:00:09.0`  | `00_14.0` |
-| PCIe card socket, USB 2 test device | `8-1`       | `480`     | `0000:00:0b.0`  | `03_00.0` |
-| PCIe card socket, USB 3 test device | `9-1`       | `5000`    | `0000:00:0b.0`  | `03_00.0` |
-
-### Find the internal USB devices
-
-Internal USB devices, such as a built-in webcam, Bluetooth, a fingerprint
-reader, or a card reader, cannot be unplugged. Find them first with all
-external USB devices removed. In a dom0 terminal, run:
-
-```bash
-sleep 20; qvm-usb
-```
-
-During the 20 seconds, unplug every external USB device, including the
-keyboard and mouse. Every device that is still listed when the output appears
-is internal. Its identifier, such as `sys-usb:4-10`, contains its device path
-`4-10`, explained under
-[Record the device paths](#record-the-device-paths). Write down its path and
-name, then reconnect the keyboard and mouse.
-
-On the sequential path, every internal device on the controller you will use
-must be switched off in the firmware settings, and must stay switched off for
-every later transfer: the script counts the devices at each scan, but only
-after they have shared a qube with the webcam. Switch off every internal USB
-device that you can do without, then repeat the check. If the repeated check
-lists nothing at all, you do not need to place any internal device on a
-controller. Otherwise, the remaining devices must be on a controller other
-than the one you will use; on the short route, include their bus numbers in
-the bus lookups.
-
-### Check whether a built-in keyboard uses USB
-
-This check decides whether a built-in keyboard rules out a controller for the
-dedicated-controller path, and whether the keyboard bypasses `sys-usb`, which
-[What you must trust](#what-you-must-trust) explains. Skip it if the receiving
-computer has no built-in keyboard. On the short route it is optional: a
-built-in keyboard that uses USB stays listed by the internal-device check and
-rules out its controller there.
-
-To check, confirm that the built-in keyboard keeps working while `sys-usb` is
-stopped. Your USB mouse and keyboard stop working during this check, so save
+The check stops `sys-usb`, so your USB keyboard and mouse stop working; save
 your work first. In a dom0 terminal, run:
 
 ```bash
@@ -452,128 +313,108 @@ qvm-shutdown --wait sys-usb
 ```
 
 When the command returns, type a few characters into the same terminal with
-the built-in keyboard. If they appear, the keyboard does not use USB and does
-not rule out any controller; restart the USB qube with:
+the built-in keyboard, and move the pointer with the built-in touchpad. If the
+characters appear, the keyboard does not use USB; write that down, and restart
+the USB qube with:
 
 ```bash
 qvm-start sys-usb
 ```
 
-If nothing appears, the built-in keyboard goes through `sys-usb`. It is one of
-the internal devices you recorded; treat it as a required device on its
-controller. You now have no way to type. Press the power button briefly to
-shut the computer down, or hold it if that does nothing. `sys-usb` starts
-automatically at the next boot.
+The same applies to the touchpad: if the pointer moved, it does not use USB
+either. If no characters appear, the built-in keyboard goes through
+`sys-usb`; write that down. You now have no way to type. Press the power
+button briefly to shut the computer down, or hold it if that does nothing.
+`sys-usb` starts automatically at the next boot.
 
-### Record the device paths
+### Find the internal USB devices
 
-Linux names each USB device by its position, called the USB device path:
+Internal USB devices cannot be unplugged, so the sequential path needs them
+switched off. In a dom0 terminal, run:
 
-```text
-PCI USB controller 00_14.0             <- Qubes assigns this whole unit
-|-- root USB bus 4 (USB 2)
-|   |-- port 2 -> device                <- device path 4-2
-|   `-- port 3 -> hub -> port 1 -> device
-|                                        <- device path 4-3.1
-`-- root USB bus 5 (USB 3)
-    `-- port 1 -> device                <- device path 5-1
+```bash
+sleep 20; qvm-usb
 ```
 
-The number before the dash is the root USB bus (one tree of sockets inside a
-controller), and each number after it is a port. A controller usually has a USB
-2 bus and a USB 3 bus sharing the same sockets, so a different bus number does
-not mean a different controller. Hubs, extension cables, Bluetooth dongles, and
-USB-to-PS/2 adapters never add a controller. Port numbers do not match the
-labels printed on the case.
+During the 20 seconds, unplug every external USB device, including the
+keyboard and mouse. Every device that is still listed when the output appears
+is internal. Its identifier, such as `sys-usb:3-10`, names its position in
+`sys-usb`; write it down with the device's name. Then reconnect the keyboard
+and mouse.
 
-Leave the keyboard, boot drive, and other required USB devices plugged in.
-Plug the USB 2 test device into one socket you might use for the webcam, and in
-a dom0 terminal of the receiving computer run:
+Switch off every listed device in the firmware settings, then repeat the
+check. If the repeated check lists nothing, you are done here. Any device that
+remains, such as a built-in keyboard that uses USB, must be on a different
+controller from the webcam's, which the next subsection checks; if it is on
+the same controller, the sequential path is not possible with that socket.
+
+The devices must stay switched off for every later transfer. The scan script
+shows the devices in `sys-usb` before every scan, so that you notice one that
+has been switched back on, for example by a firmware update.
+
+### Find the controller of the webcam's socket
+
+If the controller list showed only one USB controller and no internal device
+remained switched on, skip this subsection: that controller is the webcam's.
+
+Choose the socket you will always use for the webcam. Most webcams are USB 2,
+which their packaging or specifications state; if yours is USB 3, use a USB 3
+test device, such as a recent USB stick, in this subsection. With the keyboard
+and mouse plugged in, plug the test device into that socket, and in a dom0
+terminal run:
 
 ```bash
 qvm-usb
 ```
 
-The output lists each device with an identifier such as `sys-usb:4-1`, meaning
-device path `4-1` in `sys-usb`. Write down the path of the test device and of
-every required device. Move the test device to the next candidate socket and
-run `qvm-usb` again, until you have tried every candidate socket. On the short
-route, try only the socket you will use for the webcam, with the USB 3 test
-device instead if your webcam is USB 3. On the full route, you need the USB 3
-test device only later, for sockets that turn out to be candidates for the
-dedicated-controller path.
+Find the test device by its name. Its identifier, such as `sys-usb:3-1`,
+starts with its root USB bus number (`3`), the number before the dash: one
+controller has one or more such buses, each serving its sockets. Note this
+number, and the bus number of every internal device that remained switched on.
 
-### Find which controller each bus uses inside `sys-usb`
-
-Open a terminal in `sys-usb`. For each different bus number you recorded, run
-this with that number, for example bus `4`:
+Then open a terminal in `sys-usb` and run this, which prints one line for each
+bus:
 
 ```bash
-readlink -f /sys/bus/usb/devices/usb4
-cat /sys/bus/usb/devices/usb4/speed
+for u in /sys/bus/usb/devices/usb*; do p=$(readlink -f "$u/.."); echo "${u##*/} $(cat "$u/speed") $(cat "$p/vendor" "$p/device" | tr '\n' ' ')$(lspci -s "${p##*/}" 2>/dev/null)"; done
 ```
 
-The output looks like this:
+The output looks like this (example values, with the descriptions shortened):
 
 ```text
-/sys/devices/pci0000:00/0000:00:09.0/usb4
-480
+usb1 480 0x8086 0x51ed 00:09.0 USB controller: Intel Corporation ... PCH USB 3.2 xHCI Host Controller
+usb2 10000 0x8086 0x51ed 00:09.0 USB controller: Intel Corporation ... PCH USB 3.2 xHCI Host Controller
+usb3 480 0x8086 0x461e 00:0a.0 USB controller: Intel Corporation ... Thunderbolt 4 USB Controller
+usb4 10000 0x8086 0x461e 00:0a.0 USB controller: Intel Corporation ... Thunderbolt 4 USB Controller
 ```
 
-The address just before `/usb4`, here `0000:00:09.0`, is the controller as
-`sys-usb` sees it. This is a virtual address that exists only inside `sys-usb`;
-never put it into the SEQS configuration. Write down which bus numbers lead to
-which virtual address. Several buses often lead to the same one. The second
-line is the bus speed in Mbit/s: `480` is a USB 2 bus, and `5000` or more is a
-USB 3 bus.
+Each line shows the bus, its speed in Mbit/s (`480` is USB 2, and `5000` or
+more is USB 3), the controller's hardware ID, and its description. The
+addresses such as `00:09.0` exist only inside `sys-usb`; never put them into
+the SEQS configuration. Find the line of the test device's bus, and match its
+description to a line of the dom0 controller list: that line's BDF is the
+webcam's controller. Internal devices that remained switched on must lead to a
+different description.
 
-### Read each controller's hardware ID
-
-The hardware ID lets you find the same controller in dom0. In the same
-`sys-usb` terminal, run this for each virtual address, replacing
-`0000:00:09.0`:
+If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`,
+or two controllers in the dom0 list have the same description, match by
+hardware ID instead. In a dom0 terminal, run:
 
 ```bash
-p=/sys/bus/pci/devices/0000:00:09.0
-printf 'vendor='; cat "$p/vendor"
-printf 'device='; cat "$p/device"
+lspci -nn | grep -i usb
 ```
 
-The output looks like this:
+Each line starts with a BDF, written with a colon in place of the underscore,
+and ends with a hardware ID in square brackets, such as `[8086:51ed]`. Find
+the ID that the test device's bus showed, written without `0x`. If two
+controllers have the same ID as well, which happens on some AMD laptops, do
+not guess; use the test in the next subsection.
 
-```text
-vendor=0x8086
-device=0xa36d
-```
-
-Write the pair as `8086:a36d`, without `0x`.
-
-### Find the real controller address in dom0
-
-For each controller from
-[List the USB controllers](#list-the-usb-controllers), run `lspci` in a dom0
-terminal with the BDF's underscore changed to a colon:
-
-```bash
-lspci -nn -s 00:14.0
-```
-
-Look for a recorded hardware ID in square brackets at the end:
-
-```text
-00:14.0 USB controller: Intel Corporation ... [8086:a36d]
-```
-
-You now know which BDF serves each socket, each required device, and each
-internal device, unless two controllers show the same hardware ID. Some
-computers, AMD laptops in particular, have two identical controllers. Do not
-guess between them; use the test in the next subsection instead.
-
-Everything you read inside `sys-usb` came from a qube that Qubes does not
-trust. The check after the build, where dom0 shows which qube actually
-receives the webcam, confirms the controller, but it cannot detect a split
-socket. For that you rely on the two test devices, whose results also come
-from `sys-usb`.
+These results come from `sys-usb`, a qube that Qubes does not trust. On the
+sequential path, a wrong result cannot expose the keyboard side: if the
+configured controller is not the webcam's, the script finds no device during
+the scan and powers off without scanning. The same happens if you plug the
+webcam into a different socket later.
 
 ### Tell identical controllers apart
 
@@ -582,15 +423,9 @@ test takes one of them away from `sys-usb` for 30 seconds and shows which
 devices disappear. It relies only on dom0, so it is also more trustworthy than
 the lookups inside `sys-usb`.
 
-First, in a dom0 terminal, check how `sys-usb` holds the controller you will
-test, replacing `00_14.0` with one of the two BDFs:
-
-```bash
-qvm-pci list | grep 00_14.0
-```
-
-Note whether the line shows `no-strict-reset=True` next to `sys-usb`. Plug a
-test device into the socket you are checking. Then run this as a single line,
+In the dom0 controller list, check whether the line of the controller you will
+test shows `no-strict-reset=True` next to `sys-usb`. Plug the test device into
+the socket you are checking. Then run this in a dom0 terminal as a single line,
 with your BDF in both places, and add `--option no-strict-reset=true` after
 `--persistent` in the second `qvm-pci` command if the line showed that option:
 
@@ -602,129 +437,118 @@ Your USB keyboard and mouse may stop working while the line runs, because the
 controller you took away may carry them; the line gives the controller back by
 itself. The `qvm-usb` output in the middle lists only devices that are not on
 the tested controller. It must still list at least one device that you know is
-on another controller, for example a keyboard or internal device that the
-lookups placed there. If it lists nothing at all, `sys-usb` did not start and
-the test proves nothing. Otherwise, if the test device is missing from it, the
-socket belongs to that BDF. Repeat for each socket you need to place.
+on the other controller, such as a keyboard or internal device. If it lists
+nothing at all, `sys-usb` did not start and the test proves nothing.
+Otherwise, if the test device is missing from it, the socket belongs to that
+BDF.
 
 This test has not been tried on every Qubes version. If `sys-usb` fails to
 start at the end and your keyboard stays dead, use the recovery steps under
-[Configure and build the QR qubes](#configure-and-build-the-qr-qubes): skip the
-`sys-usb-webcam` command there, and run only the `sys-usb` commands.
+[Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path):
+skip the `sys-usb-webcam` command there, and run only the `sys-usb` commands.
 
-### Check candidate sockets for a split
+### Check whether the controller supports a strict reset
 
-A socket is a candidate for the dedicated-controller path if its USB 2 test
-device reached a controller that carries none of the devices listed under
-[Choose the hardware-isolation path](#choose-the-hardware-isolation-path).
-Skip this subsection if no socket is a candidate. Otherwise, plug the USB 3
-test device into each candidate socket, run `qvm-usb` in dom0, and look up any
-new bus number inside `sys-usb` as described above. If the USB 3 test device
-leads to a different virtual address than the USB 2 test device in the same
-socket, that socket is split and does not qualify.
-
-The split check works only if the USB 3 test device really connects at USB 3.
-For each kind of socket you checked, USB-A and USB-C, it must have reached a
-bus with speed `5000` or more in at least one socket, using the adapter you
-used for that kind. If it never did, the device or adapter is USB 2 only, and
-its results cannot show whether a socket is split; repeat the check with a
-real USB 3 device. If a test device that is known to work at USB 3 landed on a
-USB 2 bus in some socket, that socket has no USB 3 connection. Only the
-controller of its USB 2 bus then matters.
-
-On the sequential path, you need this check only in two cases. If some USB
-controller in the list is not used by `sys-usb`, check the socket you will use
-and make sure both test devices appear under `sys-usb`. If your webcam is USB
-3, use the controller that the USB 3 test device reaches in that socket.
-
-### Decide which path applies
-
-Decide, using the full conditions in
-[Choose the hardware-isolation path](#choose-the-hardware-isolation-path):
-
-- If a candidate socket is not split and its controller supports a strict
-  reset, use the dedicated-controller path with that controller. From now on,
-  plug the webcam only into that socket, and nothing else into that
-  controller's sockets.
-- Otherwise, the sequential path's controller is the only USB controller, or
-  the controller that the USB 2 test device reached in the socket you will use
-  for the webcam (the USB 3 test device, if your webcam is USB 3; most webcams
-  are USB 2, which their packaging or specifications state). Use the
-  sequential path with that controller if three conditions hold: `sys-usb`
-  uses it; every device on it other than the webcam can be unplugged or is
-  switched off, so that the repeated internal-device check lists nothing on
-  it; and the power-removal requirement holds. If you picked the wrong
-  controller of a split socket, the script finds no device during the scan and
-  powers off without scanning.
-- Otherwise, stop and change the hardware, as that section describes.
-
-On the sequential path, skip the parts of this guide written only for the
-dedicated-controller path: the keyboard-lockout recovery under
-[Configure and build the QR qubes](#configure-and-build-the-qr-qubes), the
-check
-[Receiving computer: check the dedicated controller with the webcam](#receiving-computer-check-the-dedicated-controller-with-the-webcam),
-and
-[Step 4a](#step-4a-scan-on-the-dedicated-controller-path-receiving-computer).
-
-## Configure and build the QR qubes
-
-SEQS builds qubes from a Git checkout in the repository qube (the qube holding
-your SEQS clone, such as the disposable used in the
-[README](../README.md) install). Never edit SEQS files in dom0.
-
-On the sending computer, no configuration change is needed: select
-`qr-display` when you run SEQS, as described at the end of this section.
-
-On the receiving computer, edit `salt/pillar/seqs/config.sls` in the repository
-qube. For the dedicated-controller path:
-
-```jinja
-{%- set webcam_usb_mode = 'dedicated' %}
-{%- set webcam_usb_controller = '03_00.0' %}
-{%- set webcam_usb_no_strict_reset = False %}
-```
-
-For the sequential path:
-
-```jinja
-{%- set webcam_usb_mode = 'sequential' %}
-{%- set webcam_usb_controller = '00_14.0' %}
-{%- set webcam_usb_no_strict_reset = False %}
-```
-
-Replace the example BDF with your own, without the `dom0:` prefix.
-`webcam_usb_no_strict_reset = True` lets Qubes hand the controller to
-`sys-usb-webcam` without a strict reset, so the controller can carry state from
-one qube to the next. On the dedicated-controller path, leave it at `False`,
-because that path needs a strict reset. On the sequential path, leave it at
-`False` if the
-[strict-reset check](#check-which-controllers-support-a-strict-reset) found a
-reset method for the controller, and set it to `True` only if it found none;
-the risk this leaves is described under
-[Choose the hardware-isolation path](#choose-the-hardware-isolation-path).
-
-The SEQS runner builds only the committed state of the checkout, so an
-uncommitted edit is silently ignored. In a terminal in the repository qube,
-review and commit the change:
+This check decides one setting in the configuration. In a dom0 terminal, run
+this with the webcam's controller address from the second column of the
+controller list:
 
 ```bash
-cd ~/SEQS
-git diff salt/pillar/seqs/config.sls
-git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
+cat /sys/bus/pci/devices/0000:00:14.0/reset_method
 ```
 
-The diff should show only the lines you changed. If Git refuses to commit
-because it does not know your name and email, set them with `git config
-user.name` and `git config user.email` and commit again. If the repository qube
-is a disposable, the commit disappears when it shuts down, and you must repeat
-the edit before any later SEQS run on this computer.
+If it prints one or more reset methods, such as `flr` or `pm`, the controller
+supports a strict reset. If it reports `No such file or directory` or prints
+nothing, it does not. Write down the result.
 
-Before you build on the dedicated-controller path, arrange a second way to
-type in dom0, such as a built-in non-USB keyboard or a keyboard on another
-controller. The build takes the controller away from `sys-usb` immediately,
-and the assignment survives reboots; setting the mode back to `disabled` does
-not undo it. If you chose the wrong BDF and it carries your only keyboard, the
-keyboard stops working until you undo the assignment as follows:
+You now have everything the sequential path needs: the controller's BDF, which
+`sys-usb` must own in the controller list, and the reset result. Continue with
+[Configure and build the QR qubes](#configure-and-build-the-qr-qubes), unless
+you want to look for a dedicated controller.
+
+## Look for a dedicated controller
+
+Skip this section on the sequential path. The dedicated-controller path needs
+a controller and socket with these properties, which the lookups below check.
+
+The controller must carry none of these:
+
+- a keyboard or mouse;
+- the disk or USB device Qubes boots from or stores data on;
+- a USB anti-evil-maid (AEM, a Qubes boot-integrity check) or boot device;
+- a hardware wallet, security key, phone, or backup drive; or
+- any other device you need to operate or recover the computer.
+
+A built-in keyboard that does not use USB, as the earlier check showed, does
+not count, because it uses no USB controller. Internal devices on the
+controller may stay switched on, but they are then handled by the camera side.
+
+The socket must lead only to that controller. A USB 3 socket has separate
+wires for USB 2 and USB 3, and on some computers they lead to different
+controllers; the USB-C sockets of recent Intel computers typically send USB 3
+to one controller and USB 2 to the controller that also serves the keyboard.
+On such a split socket the webcam, not you, chooses which wires it uses. A
+hostile webcam can connect over the USB 2 wires as well, and that connection
+lands in `sys-usb`. The check after the build does not reveal this, because it
+shows only the connection the webcam chooses to present. A USB-C socket with
+Thunderbolt can also reach the Thunderbolt host interface (`NHI`) that
+`sys-usb` owns. A split or Thunderbolt socket therefore never qualifies.
+
+The controller must support a strict reset, as checked under
+[Check whether the controller supports a strict reset](#check-whether-the-controller-supports-a-strict-reset).
+Transfers on this path are not separated by a power-off; with a strict reset,
+Qubes resets the controller each time `sys-usb-webcam` starts, so state a
+hostile webcam left in it does not carry into the next transfer. SEQS refuses
+to build this path with `webcam_usb_no_strict_reset = True`.
+
+`sys-usb-webcam` then owns the controller permanently, so anything plugged
+into any of that controller's sockets from then on is handled by the camera
+side, or is unusable while `sys-usb-webcam` is stopped. The separation also
+relies on the IOMMU (the VT-d or AMD-Vi feature Qubes needs to assign PCI
+devices); leave it enabled in the firmware settings.
+
+### Find a candidate socket
+
+A socket is a candidate if its controller carries none of the devices listed
+above. To place them, plug in every required USB device, such as the keyboard,
+mouse, and boot drive, plug the USB 2 test device into the socket, and repeat
+the `qvm-usb` and `sys-usb` lookups from
+[Find the controller of the webcam's socket](#find-the-controller-of-the-webcams-socket).
+The test device's bus must lead to a controller that no required device's bus
+leads to. Try each socket you might use.
+
+### Check a candidate socket for a split
+
+Plug a USB 3 test device, such as a recent USB stick, into the candidate
+socket, and repeat the same lookups. If it leads to a different controller
+than the USB 2 test device in the same socket, the socket is split and does
+not qualify.
+
+The split check works only if the USB 3 test device really connects at USB 3:
+its bus must show a speed of `5000` or more, in this socket or another socket
+of the same kind (USB-A or USB-C) with the same adapter. If it never does, the
+device or adapter is USB 2 only, and its results cannot show whether a socket
+is split; repeat the check with a real USB 3 device.
+
+Everything you read inside `sys-usb` came from a qube that Qubes does not
+trust. The check after the build, where dom0 shows which qube actually
+receives the webcam, confirms the controller, but it cannot detect a split
+socket. For that you rely on the two test devices.
+
+If a candidate socket is not split and its controller supports a strict reset,
+use the dedicated-controller path with that controller. From now on, plug the
+webcam only into that socket, and nothing else into that controller's sockets.
+Otherwise, use the sequential path if its requirements hold, or add a
+controller card.
+
+### Before you build on the dedicated-controller path
+
+Arrange a second way to type in dom0, such as a built-in keyboard that does
+not use USB or a keyboard on another controller. The build takes the
+controller away from `sys-usb` immediately, and the assignment survives
+reboots; setting the mode back to `disabled` does not undo it. If you chose
+the wrong BDF and it carries your only keyboard, the keyboard stops working
+until you undo the assignment as follows:
 
 1. Unplug every USB device except the keyboard, then restart the computer by
    pressing the power button.
@@ -754,6 +578,56 @@ Then correct `webcam_usb_controller` in the configuration, or set
 `webcam_usb_mode` to `disabled` and clear the controller, and commit before the
 next SEQS run.
 
+## Configure and build the QR qubes
+
+SEQS builds qubes from a Git checkout in the repository qube (the qube holding
+your SEQS clone, such as the disposable used in the
+[README](../README.md) install). Never edit SEQS files in dom0.
+
+On the sending computer, no configuration change is needed: select
+`qr-display` when you run SEQS, as described at the end of this section.
+
+On the receiving computer, edit `salt/pillar/seqs/config.sls` in the repository
+qube. For the sequential path:
+
+```jinja
+{%- set webcam_usb_mode = 'sequential' %}
+{%- set webcam_usb_controller = '00_14.0' %}
+{%- set webcam_usb_no_strict_reset = True %}
+```
+
+For the dedicated-controller path:
+
+```jinja
+{%- set webcam_usb_mode = 'dedicated' %}
+{%- set webcam_usb_controller = '03_00.0' %}
+{%- set webcam_usb_no_strict_reset = False %}
+```
+
+Replace the example BDF with your own, without the `dom0:` prefix.
+`webcam_usb_no_strict_reset = True` lets Qubes hand the controller to
+`sys-usb-webcam` without a strict reset. On the sequential path, set it to
+`True` only if the
+[strict-reset check](#check-whether-the-controller-supports-a-strict-reset)
+found no reset method, and to `False` otherwise. The dedicated-controller path
+requires `False`.
+
+The SEQS runner builds only the committed state of the checkout, so an
+uncommitted edit is silently ignored. In a terminal in the repository qube,
+review and commit the change:
+
+```bash
+cd ~/SEQS
+git diff salt/pillar/seqs/config.sls
+git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
+```
+
+The diff should show only the lines you changed. If Git refuses to commit
+because it does not know your name and email, set them with `git config
+user.name` and `git config user.email` and commit again. If the repository qube
+is a disposable, the commit disappears when it shuts down, and you must repeat
+the edit before any later SEQS run on this computer.
+
 Then run SEQS from dom0 as usual, choosing the qubes with `--qubes`:
 
 - For a first SEQS install, follow the [README](../README.md).
@@ -768,16 +642,18 @@ On the receiving computer, the build creates `sys-usb-webcam`. On the
 sequential path it also creates `seqs-qr-scanner` (a disposable that scans the
 QR code), `A-qr-staging` (a persistent offline qube that keeps the encrypted
 file while the computer is off), and the dom0 script
-`/usr/local/sbin/seqs-qr-sequential` that runs the scan.
+`/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential
+path, the build stops with `Configured controller is not assigned to sys-usb`
+if the configured BDF is not a controller `sys-usb` currently owns; recheck
+the BDF.
 
-If the build, or the first start of `sys-usb-webcam` in the checks below,
-fails because the controller cannot be reset, the controller is unsuitable for
-the dedicated-controller path; do not set `webcam_usb_no_strict_reset` to get
-past it. On the sequential path, set it to `True`, commit, and run the build
-again.
-On the sequential path, the build also stops with `Configured controller is not
-assigned to sys-usb` if the configured BDF is not a controller `sys-usb`
-currently owns; recheck the BDF you recorded.
+If `sys-usb-webcam` later fails to start because the controller cannot be
+reset, the reset check was wrong for this controller. On the
+dedicated-controller path, the controller is then unsuitable. On the
+sequential path, the scan script says so and powers off after 60 seconds
+without scanning; set `webcam_usb_no_strict_reset` to `True`, commit, build
+again, and repeat the transfer from
+[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer).
 
 ## Check the setup
 
@@ -800,7 +676,7 @@ qube may use which service). Check that the display qubes may not hand links
 to the browser qube. In a dom0 terminal of the sending computer, run:
 
 ```bash
-sudo grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
+grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
 You should see `deny` lines for `A-qr-display`, `@dispvm:A-qr-display`, and
@@ -811,20 +687,16 @@ You should see `deny` lines for `A-qr-display`, `@dispvm:A-qr-display`, and
 The `Air gap verified:` line of the SEQS run covers `A-qr-camera` and, on the
 sequential path, `A-qr-staging`, in the same way. If you no longer have that
 output, check them with `qvm-prefs <qube> netvm` as on the sending computer.
-The line does not cover `sys-usb-webcam` and `seqs-qr-scanner`, which SEQS
-creates separately. In a dom0 terminal of the receiving computer, run:
+On the sequential path, the scan script also refuses to start if
+`sys-usb-webcam`, `seqs-qr-scanner`, or `A-qr-staging` has a NetVM, at every
+transfer. On the dedicated-controller path, check `sys-usb-webcam` yourself;
+in a dom0 terminal of the receiving computer, run:
 
 ```bash
 qvm-prefs sys-usb-webcam netvm
 ```
 
-On the sequential path, also run:
-
-```bash
-qvm-prefs seqs-qr-scanner netvm
-```
-
-Each command must print nothing, `None`, or `none`.
+It must print nothing, `None`, or `none`.
 
 ### Receiving computer: check the controller assignment
 
@@ -840,34 +712,13 @@ On the dedicated-controller path, your controller must be assigned only to
 running qube holds, and the script stops `sys-usb` before starting
 `sys-usb-webcam`.
 
-### Receiving computer: check the hand-over on the sequential path
-
-On the sequential path only. This check confirms, with no webcam involved,
-that `sys-usb-webcam` can take the controller as configured: with a strict
-reset, which the earlier `reset_method` check could only indicate, or without
-one if you set `webcam_usb_no_strict_reset` to `True`. Nothing hostile touches the
-controller during the check, so it exposes nothing. Make sure the webcam is
-unplugged. A USB keyboard and mouse on that controller stop working while the
-check runs; it gives the controller back by itself. In a dom0 terminal of the
-receiving computer, run this as a single line:
-
-```bash
-qvm-shutdown --wait sys-usb; qvm-start sys-usb-webcam && echo HAND-OVER-OK; qvm-shutdown --wait sys-usb-webcam; qvm-start sys-usb
-```
-
-The output must contain `HAND-OVER-OK`. If `qvm-start` instead reports that
-the device cannot be reset, set `webcam_usb_no_strict_reset` to `True`, commit,
-build again as described under
-[Configure and build the QR qubes](#configure-and-build-the-qr-qubes), and
-repeat this check.
-
 ### Receiving computer: check the qrexec policies
 
 The qrexec policies on this side limit the webcam qubes. In a dom0 terminal
 of the receiving computer, run:
 
 ```bash
-sudo cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
+cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
 ```
 
 You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
@@ -878,7 +729,7 @@ You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
 On the sequential path, also run:
 
 ```bash
-sudo cat /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
+cat /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
 ```
 
 You should see one `allow` from `seqs-qr-scanner` to `A-qr-staging`, followed
@@ -895,16 +746,16 @@ qvm-usb
 ```
 
 The webcam must be listed under `sys-usb-webcam`, as a single device. Apart
-from it, only the internal devices you recorded for this controller may appear
-there. If any other device appears under `sys-usb-webcam`, unplug the webcam
-and stop. Either the controller carries something you did not record, in which
-case repeat the lookups, or the webcam itself shows up as several devices.
-Some webcams contain a small hub and do this legitimately, but you cannot tell
-their extra devices from an attack, and the sequential script refuses them
-too; use a webcam that shows up as a single device. Every keyboard, mouse, and
-other required device must still be listed under another USB qube. If any of
-them moved to `sys-usb-webcam`, stop: the controller is not dedicated. Shut
-down `sys-usb-webcam` and unplug the webcam when you are done.
+from it, only internal devices of this controller may appear there. If any
+other device appears under `sys-usb-webcam`, unplug the webcam and stop.
+Either the controller carries something you did not place, in which case
+repeat the lookups, or the webcam itself shows up as several devices. Some
+webcams contain a small hub and do this legitimately, but you cannot tell
+their extra devices from an attack; use a webcam that shows up as a single
+device. Every keyboard, mouse, and other required device must still be listed
+under another USB qube. If any of them moved to `sys-usb-webcam`, stop: the
+controller is not dedicated. Shut down `sys-usb-webcam` and unplug the webcam
+when you are done.
 
 If the webcam is instead listed under `sys-usb`, it is in a socket of the
 keyboard's controller and the keyboard side has now been exposed to it. Unplug
@@ -914,13 +765,10 @@ the sequential path under
 restart is not enough. Then start the computer with only the keyboard
 attached. If `sys-usb` is a disposable (in dom0, `qvm-prefs sys-usb klass`
 prints `DispVM`), this discards its state, and what remains is the residual
-risk the sequential path accepts: hostile state that survives power removal in
-the keyboard or controller. With a USB keyboard, its worst case is control of
-the whole receiving computer. Continue only if you accept that; otherwise
-replace the keyboard. If `sys-usb` is not a disposable, treat it as
-compromised, and with a USB keyboard the whole receiving computer as well, and
-do not continue. The same rule applies whenever this happens during a
-transfer.
+risk the sequential path accepts. Continue only if you accept that; otherwise
+replace the keyboard. If `sys-usb` is not a disposable, treat it, and with a
+USB keyboard the whole receiving computer, as compromised, and do not
+continue. The same rule applies whenever this happens during a transfer.
 
 ## Transfer a file
 
@@ -1073,14 +921,9 @@ Prepare:
 1. Put away the paper and close every window that shows a secret.
 2. Unplug the webcam.
 3. Save and close all unrelated work.
-4. Check that the internal USB devices you switched off are still off. In a
-   dom0 terminal, run `sleep 20; qvm-usb`, unplug every external USB device
-   during the 20 seconds, as under
-   [Find the internal USB devices](#find-the-internal-usb-devices), and check
-   that nothing is listed on the controller the script uses. Then reconnect
-   the keyboard and mouse.
-5. Be ready to unplug every USB keyboard and mouse quickly. A built-in keyboard
-   or touchpad that does not use USB can stay as it is.
+4. Be ready to unplug every USB keyboard and mouse quickly. A built-in keyboard
+   or touchpad that does not use USB, as the setup check showed, can stay as it
+   is.
 
 In a dom0 terminal of the receiving computer, run:
 
@@ -1088,9 +931,15 @@ In a dom0 terminal of the receiving computer, run:
 sudo /usr/local/sbin/seqs-qr-sequential
 ```
 
-The script checks that the required qubes exist and that `A-qr-staging` holds
-no old `key.asc`, then shows the controller and qube names. Check them, then
-type `START` in capital letters. After that:
+The script checks that the required qubes exist, that the camera-side qubes
+have no NetVM, and that `A-qr-staging` holds no old `key.asc`. It then shows
+the controller, the qube names, and the USB devices now in `sys-usb`. Only
+your USB keyboard and mouse, and internal devices you found on another
+controller, may be listed. If anything else is listed, an internal device may
+have been switched back on, for example by a firmware update: do not type
+`START`; press `Enter` to end the script, switch the device off as described
+under [Find the internal USB devices](#find-the-internal-usb-devices), and
+run the script again. Otherwise, type `START` in capital letters. After that:
 
 1. Unplug every USB keyboard and mouse right away. After 10 seconds the
    script stops normal `sys-usb`. If you cannot unplug them in time, press
@@ -1105,7 +954,10 @@ type `START` in capital letters. After that:
 2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the webcam.
    You have 30 seconds.
 3. The script starts `sys-usb-webcam` and `seqs-qr-scanner`, checks that exactly
-   one USB device is present, and scans for up to 3 minutes. Point the webcam at
+   one USB device is present, and scans for up to 3 minutes. If
+   `sys-usb-webcam` does not start, the script shows an error and powers off
+   after 60 seconds without scanning; see the end of
+   [Configure and build the QR qubes](#configure-and-build-the-qr-qubes). Point the webcam at
    the QR code. The received file may be at most 16 KiB and is copied only to
    `A-qr-staging`. A webcam that itself shows up as several USB devices is
    refused every time; use a webcam that shows up as a single device.
@@ -1238,8 +1090,10 @@ stat --format='%a %n' master.key
 When GnuPG asks for the passphrase, check that the prompt window has the
 target key qube's colour border. Qubes draws that border in dom0, so another
 qube cannot fake it; a prompt with a different colour belongs to another qube
-and must not receive the passphrase. Then type the passphrase from the paper,
-using a keyboard that does not go through a USB qube if the computer has one.
+and must not receive the passphrase. Then type the passphrase from the paper.
+If the [built-in keyboard check](#check-whether-the-built-in-keyboard-uses-usb)
+showed that the built-in keyboard does not use USB, type it there rather than
+on a USB keyboard.
 
 On success, the last line shows `600 master.key`. If the passphrase is wrong
 or the file fails GnuPG's integrity check, GnuPG prints an error, the

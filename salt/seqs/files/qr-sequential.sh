@@ -52,6 +52,20 @@ qvm-run --pass-io "$STAGING_QUBE" \
 	echo "ERROR: staging already contains an incoming key.asc; inspect and remove it before a new ceremony" >&2
 	exit 1
 }
+# The camera side must stay offline at every ceremony, not only after setup.
+for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
+	netvm="$(qvm-prefs -- "$vm" netvm 2>/dev/null)" || {
+		echo "ERROR: cannot read the NetVM of '$vm'" >&2; exit 1;
+	}
+	case "$netvm" in
+		''|None|none) ;;
+		*) echo "ERROR: '$vm' has a NetVM; the camera side must be offline" >&2; exit 1 ;;
+	esac
+done
+# Device descriptions originate in the USB backend; strip control characters.
+normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\n')" || {
+	echo "ERROR: cannot list the USB devices of $NORMAL_USB_QUBE" >&2; exit 1;
+}
 
 cat <<EOF
 REDUCED-ASSURANCE SEQUENTIAL USB CEREMONY
@@ -61,6 +75,13 @@ Normal backend:   $NORMAL_USB_QUBE
 Webcam backend:   $WEBCAM_USB_QUBE
 Scanner:          $SCANNER_QUBE
 Offline staging:  $STAGING_QUBE
+
+USB devices in $NORMAL_USB_QUBE now:
+${normal_devices:-  (none)}
+
+Only your USB keyboard and mouse, and internal devices you recorded on another
+controller, may be listed above. Anything else may be an internal device that
+was switched back on: do not type START.
 
 Before typing START:
   * Put away all paper values and secret-bearing screens.
@@ -85,7 +106,11 @@ sleep 30
 # From this point every failure reaches the poweroff trap. Whether the
 # controller moves with a strict PCI reset is fixed by setup; with or without
 # it, sys-usb gets the controller back only after the power-off.
-qvm-start -- "$WEBCAM_USB_QUBE"
+qvm-start -- "$WEBCAM_USB_QUBE" || {
+	echo "ERROR: $WEBCAM_USB_QUBE did not start; nothing was scanned. If the message above says the device cannot be reset, see webcam_usb_no_strict_reset in the QR guide. Powering off in 60 seconds." >&2
+	sleep 60
+	exit 1
+}
 qvm-start -- "$SCANNER_QUBE"
 sleep 5
 

@@ -313,6 +313,20 @@ def test_dom0_sequential_qr_allows_explicit_weak_reset():
           "sequential mode must still require sys-usb to own the controller")
 
 
+def test_dom0_dedicated_qr_rejects_weak_reset():
+    case("dom0.sls: dedicated QR mode rejects no-strict-reset")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "dedicated",
+        "webcam_usb_controller": "03_00.0",
+        "webcam_usb_no_strict_reset": True,
+    })
+    _, parsed = render_state(
+        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+    check("seqs-validation-failed" in parsed,
+          "dedicated + no-strict-reset must fail pre-flight")
+
+
 def test_dom0_dedicated_qr_uses_device_api():
     case("dom0.sls: dedicated QR mode manages PCI through qvm-pci")
     pillar = copy.deepcopy(render_pillar("dom0"))

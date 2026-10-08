@@ -112,6 +112,9 @@
 {% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
 {%   do errors.append("sequential webcam mode requires qr-staging to be offline with preserve_incoming enabled") %}
 {% endif %}
+{% if webcam_mode == 'dedicated' and webcam_no_strict_reset %}
+{%   do errors.append("dedicated webcam mode forbids webcam_usb_no_strict_reset -- without a power-off between transfers, only a strict reset clears the controller") %}
+{% endif %}
 {% if webcam_mode == 'sequential' and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_normal_usb_qube) != 0 %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
