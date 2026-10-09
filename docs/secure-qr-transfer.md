@@ -40,11 +40,9 @@ Passphrase:      source key qube -> written on paper -> typed on the
 7. You delete the leftover encrypted copies and destroy the paper.
 
 The camera side only ever handles encrypted data, and the passphrase is typed
-only after the camera side is shut down. As long as those two conditions hold,
-and the trusted parts listed below are not compromised, an attacker who can
-only watch needs to control both the camera side and the keyboard side to read
-the secret. The next section says what those two sides are, and why a USB
-keyboard weakens this protection.
+only after the camera side is shut down. The next section says what the camera
+side and the keyboard side are, what this split protects against, and why a
+USB keyboard weakens it.
 
 ## What you must trust
 
@@ -237,8 +235,8 @@ strict reset (a reset that clears its state when it moves between qubes),
 which the chipset controller of Intel computers often does not. Without it,
 the controller reaches `sys-usb-webcam` still holding state that `sys-usb`
 left in it, possibly traces of earlier keyboard input. The camera side has no
-network; it could pass such traces on only through the scanned file, which
-stays in offline qubes, or to the webcam itself.
+NetVM and no default disposable; it could pass such traces on only through the
+scanned file, which stays in offline qubes, or to the webcam itself.
 
 The sequential path cannot protect against malicious state that survives power
 removal in the controller, keyboard, or webcam firmware, a webcam attack that
@@ -1059,14 +1057,25 @@ qvm-copy key.asc
 ```
 
 `ls` must list only `key.asc`. If it lists anything else, the scanner sent
-files on its own: do not open them, cancel the copy dialog, and treat it like
-a fingerprint mismatch in step 5.
+files on its own: do not open them, cancel the copy dialog, delete them all
+with `rm -rf -- ~/QubesIncoming/seqs-qr-scanner`, and treat it like a
+fingerprint mismatch in step 5.
 
 If `cd` or `qvm-copy` reports a missing directory or file, the scan failed.
 Shut down `D-qr-display` if it is still running, then repeat from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
 the source `key.asc` can be reused. Otherwise, choose the target key qube in
 the dialog. Do not open or decrypt the file in `A-qr-staging`.
+
+`A-qr-staging` belongs to the camera side, which must be shut down before you
+type the passphrase. When the copy has finished, delete the staging copy in
+the same terminal:
+
+```bash
+rm -f -- key.asc
+```
+
+Then shut down `A-qr-staging` in the Qubes Domains widget.
 
 ### Step 5: Compare fingerprints (both computers)
 
@@ -1076,7 +1085,7 @@ hash, so a match makes an undetected change very unlikely rather than
 impossible; the numbers follow the commands.
 
 First check that the webcam is unplugged and that every camera and webcam qube
-on the receiving computer has stopped. Qubes puts received files in
+on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts received files in
 `~/QubesIncoming/<sender>`, where the sender is the camera disposable (a name
 like `disp1234`) or `A-qr-staging`. In a terminal in the target key qube,
 replace `<sender>` with that name and `<target-dir>` with the directory where
@@ -1131,8 +1140,7 @@ on the camera side changed the file on purpose. That side is then hostile, and
 the secret depends entirely on the keyboard side staying clean.
 
 Without opening anything, delete the received `key.asc`, and any unexpected
-files, in the target key qube, and on the sequential path also in
-`A-qr-staging`. Retry only after you have found the cause, or if you will type
+files, in the target key qube. Retry only after you have found the cause, or if you will type
 the passphrase on a keyboard that does not go through a USB qube. To retry,
 shut down `D-qr-display` if it is still running, then repeat from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
@@ -1191,14 +1199,7 @@ run:
 rm -f -- key.asc
 ```
 
-On the sequential path, also run this on the receiving computer in an
-`A-qr-staging` terminal:
-
-```bash
-rm -f -- ~/QubesIncoming/seqs-qr-scanner/key.asc
-```
-
-Both commands print nothing. Check that the files are gone. Destroy the paper
+The command prints nothing. Check that the file is gone. Destroy the paper
 only after step 6 showed `600 master.key`: burn it, or cut it with a cross-cut
 shredder, so that the passphrase cannot be read from the pieces.
 

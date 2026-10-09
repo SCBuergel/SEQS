@@ -39,7 +39,7 @@ Receiving computer, one of:
       found on another controller, unplug the keyboard and mouse within 10
       seconds of `START`, plug the webcam into the socket you chose for it,
       remove all power after the power-off, then copy `key.asc` from
-      `A-qr-staging`.
+      `A-qr-staging`, delete the staging copy, and shut `A-qr-staging` down.
 
 Both computers:
 
@@ -49,5 +49,5 @@ Both computers:
 - [ ] [Step 6](secure-qr-transfer.md#step-6-decrypt-receiving-computer): the
       passphrase prompt has the target key qube's colour border, and the last
       line shows `600 master.key`.
-- [ ] [Step 7](secure-qr-transfer.md#step-7-clean-up): delete the leftover
-      `key.asc` copies, then destroy the paper.
+- [ ] [Step 7](secure-qr-transfer.md#step-7-clean-up): delete the source
+      `key.asc`, then destroy the paper.
