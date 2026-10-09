@@ -46,12 +46,19 @@ qvm-check --running -q -- "$WEBCAM_USB_QUBE" && {
 qvm-check --running -q -- "$SCANNER_QUBE" && {
 	echo "ERROR: $SCANNER_QUBE is already running" >&2; exit 1;
 }
-qvm-run --pass-io "$STAGING_QUBE" \
-	'test ! -e "$HOME/QubesIncoming/seqs-qr-scanner/key.asc"' \
-	</dev/null >/dev/null 2>/dev/null || {
-	echo "ERROR: staging already contains an incoming key.asc; inspect and remove it before a new ceremony" >&2
-	exit 1
-}
+# The staging qube's answer is only compared, never printed.
+staged="$(qvm-run --pass-io "$STAGING_QUBE" \
+	'if test -e "$HOME/QubesIncoming/seqs-qr-scanner/key.asc"; then echo PRESENT; else echo ABSENT; fi' \
+	</dev/null 2>/dev/null)" || staged=''
+case "$staged" in
+	ABSENT) ;;
+	PRESENT)
+		echo "ERROR: staging already contains an incoming key.asc; inspect and remove it before a new ceremony" >&2
+		exit 1 ;;
+	*)
+		echo "ERROR: could not check $STAGING_QUBE for an old key.asc" >&2
+		exit 1 ;;
+esac
 # The camera side must stay offline at every ceremony, not only after setup:
 # no NetVM, and no default disposable that qubes.OpenInVM could reach.
 for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
@@ -101,7 +108,13 @@ read -r -p "Type START to begin: " answer </dev/tty
 echo "Unplug keyboard and mouse now. The normal USB backend stops in 10 seconds."
 sleep 10
 exposed=1
-qvm-shutdown --wait -- "$NORMAL_USB_QUBE"
+if qvm-check --running -q -- "$NORMAL_USB_QUBE"; then
+	qvm-shutdown --wait -- "$NORMAL_USB_QUBE"
+fi
+if qvm-check --running -q -- "$NORMAL_USB_QUBE"; then
+	echo "ERROR: $NORMAL_USB_QUBE is still running" >&2
+	exit 1
+fi
 
 echo "NORMAL USB BACKEND STOPPED. Connect only the webcam now; waiting 30 seconds."
 sleep 30
@@ -119,7 +132,7 @@ qvm-start -- "$SCANNER_QUBE"
 # Wait up to 20 seconds for the webcam to be listed, then let enumeration
 # settle before the final count, so a slow start does not cost a power cycle.
 list_webcam_devices() {
-	qvm-usb 2>/dev/null | awk -v p="$WEBCAM_USB_QUBE:" '$1 ~ ("^" p) {print $1}'
+	qvm-usb 2>/dev/null | awk -v p="$WEBCAM_USB_QUBE:" 'index($1, p) == 1 {print $1}'
 }
 for _ in $(seq 20); do
 	[ -n "$(list_webcam_devices)" ] && break
