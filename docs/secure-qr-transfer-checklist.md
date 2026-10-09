@@ -38,9 +38,9 @@ Receiving computer, one of:
       `sys-usb` except your USB keyboard and mouse and internal devices you
       found on another controller, unplug the keyboard and mouse within 10
       seconds of `START`, plug the webcam into the socket you chose for it,
-      remove all power after the power-off, then copy `key.asc` from
-      `A-qr-staging` (accept only that one dialog), delete the staging copy,
-      and shut `A-qr-staging` down.
+      remove all power after the power-off, check that only `key.asc`
+      arrived in `A-qr-staging`, copy it (accept only that one dialog),
+      delete the staging copy, and shut `A-qr-staging` down.
 
 Both computers:
 

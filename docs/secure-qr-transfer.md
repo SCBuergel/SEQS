@@ -39,10 +39,8 @@ Passphrase:      source key qube -> written on paper -> typed on the
    file.
 7. You delete the leftover encrypted copies and destroy the paper.
 
-The camera side only ever handles encrypted data, and the passphrase is typed
-only after the camera side is shut down. The next section says what the camera
-side and the keyboard side are, what this split protects against, and why a
-USB keyboard weakens it.
+Everything that handles the QR code only ever sees encrypted data, and the
+passphrase is typed only after all of it is shut down.
 
 ## What you must trust
 
@@ -812,8 +810,8 @@ The rehearsal succeeds only if each of these happens as described:
 
 - on the sequential path, the script lists only the devices you expect in
   `sys-usb`, starts `sys-usb-webcam`, and powers off after the scan;
-- exactly one copy dialog appears, and the received folder holds only
-  `key.asc`;
+- on the receiving computer, exactly one copy dialog appears, and the
+  received folder holds only `key.asc`;
 - all four fingerprint groups match in step 5; and
 - step 6 ends with `600 master.key`.
 
@@ -1036,22 +1034,27 @@ and run:
 ```bash
 cd ~/QubesIncoming/seqs-qr-scanner
 ls -A
+```
+
+If `cd` reports a missing directory, or `ls` lists nothing, the scan failed.
+Shut down `D-qr-display` if it is still running, then repeat from
+[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
+the source `key.asc` can be reused. If `ls` lists anything other than
+`key.asc`, the scanner sent files on its own: do not open them, delete them
+all with `rm -rf -- ~/QubesIncoming/seqs-qr-scanner`, and treat it like a
+fingerprint mismatch in step 5.
+
+If `ls` lists only `key.asc`, copy it in the same terminal, without opening or
+decrypting it here:
+
+```bash
 qvm-copy key.asc
 ```
 
-`ls` must list only `key.asc`. If it lists anything else, the scanner sent
-files on its own: do not open them, cancel the copy dialog, delete them all
-with `rm -rf -- ~/QubesIncoming/seqs-qr-scanner`, and treat it like a
-fingerprint mismatch in step 5.
-
-If `cd` or `qvm-copy` reports a missing directory or file, the scan failed.
-Shut down `D-qr-display` if it is still running, then repeat from
-[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
-the source `key.asc` can be reused. Otherwise, choose the target key qube in
-the dialog. Do not open or decrypt the file in `A-qr-staging`. Accept only
-this one copy dialog; `A-qr-staging` belongs to the camera side and can open
-dialogs on its own, so cancel any other dialog from it and treat it like a
-fingerprint mismatch in step 5.
+In the dialog, choose the target key qube. Accept only this one copy dialog;
+`A-qr-staging` belongs to the camera side and can open dialogs on its own, so
+cancel any other dialog from it and treat it like a fingerprint mismatch in
+step 5.
 
 The camera side must be shut down before you type the passphrase. When the
 copy has finished, delete the staging copy in the same terminal:
@@ -1065,9 +1068,7 @@ Then shut down `A-qr-staging` in the Qubes Domains widget.
 ### Step 5: Compare fingerprints (both computers)
 
 The fingerprint check detects whether the file the target received differs
-from the source's `key.asc`, before GnuPG reads it. It compares a shortened
-hash, so a match makes an undetected change very unlikely rather than
-impossible.
+from the source's `key.asc`, before GnuPG reads it.
 
 First check that the webcam is unplugged and that every camera and webcam qube
 on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts
@@ -1114,7 +1115,8 @@ Place the two screens side by side, use a large font, and compare all four
 groups character by character. Do not copy, paste, retype, or photograph the
 code.
 
-The code is the first 20 characters (80 bits) of the file's SHA-256 hash. For a
+The code is the first 20 characters (80 bits) of the file's SHA-256 hash, so a
+match makes an undetected change very unlikely rather than impossible: for a
 given source code, producing a different file with the same code would take
 about 2^80 attempts.
 
