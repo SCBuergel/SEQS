@@ -139,7 +139,8 @@ The **receiving computer** needs:
 
 - a trusted **target key qube** that does not yet contain a `master.key`;
 - a USB webcam that can read a QR code from the sending computer's screen and
-  shows up as a single USB device, which the setup checks confirm;
+  shows up as a single USB device, which the dedicated-path check or the
+  sequential scan script confirms;
 - the hardware lookups described below; and
 - SEQS installed with the `qr-camera` qube selected, plus `qr-staging` if the
   hardware check leads you to the weaker of its two setups. This creates

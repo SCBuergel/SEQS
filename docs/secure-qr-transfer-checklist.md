@@ -24,7 +24,8 @@ Sending computer:
       start `D-qr-display` first, then copy `key.asc` to it. Keep the source
       `key.asc`.
 - [ ] [Step 3](secure-qr-transfer.md#step-3-show-the-qr-code-sending-computer):
-      put the paper away, then show the QR code in `D-qr-display`.
+      put the paper away, then show the QR code in `D-qr-display`; cancel any
+      dialog from `D-qr-display` and treat it like a fingerprint mismatch.
 
 Receiving computer, one of:
 

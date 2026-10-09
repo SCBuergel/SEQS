@@ -115,9 +115,18 @@ qvm-start -- "$WEBCAM_USB_QUBE" || {
 	exit 1
 }
 qvm-start -- "$SCANNER_QUBE"
-sleep 5
 
-mapfile -t devices < <(qvm-usb 2>/dev/null | awk -v p="$WEBCAM_USB_QUBE:" '$1 ~ ("^" p) {print $1}')
+# Wait up to 20 seconds for the webcam to be listed, then let enumeration
+# settle before the final count, so a slow start does not cost a power cycle.
+list_webcam_devices() {
+	qvm-usb 2>/dev/null | awk -v p="$WEBCAM_USB_QUBE:" '$1 ~ ("^" p) {print $1}'
+}
+for _ in $(seq 20); do
+	[ -n "$(list_webcam_devices)" ] && break
+	sleep 1
+done
+sleep 3
+mapfile -t devices < <(list_webcam_devices)
 [ "${#devices[@]}" -eq 1 ] || {
 	echo "ERROR: expected exactly one USB device in $WEBCAM_USB_QUBE, found ${#devices[@]}" >&2
 	exit 1
