@@ -1041,8 +1041,9 @@ Shut down `D-qr-display` if it is still running, then repeat from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
 the source `key.asc` can be reused. If `ls` lists anything other than
 `key.asc`, the scanner sent files on its own: do not open them, delete them
-all with `rm -rf -- ~/QubesIncoming/seqs-qr-scanner`, and treat it like a
-fingerprint mismatch in step 5.
+all with `rm -rf -- ~/QubesIncoming/seqs-qr-scanner`, shut down
+`A-qr-staging` in the Qubes Domains widget, and treat it like a fingerprint
+mismatch in step 5.
 
 If `ls` lists only `key.asc`, copy it in the same terminal, without opening or
 decrypting it here:
