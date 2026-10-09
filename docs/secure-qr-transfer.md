@@ -1078,9 +1078,10 @@ from the source's `key.asc`, before GnuPG reads it.
 First check that the webcam is unplugged and that every camera and webcam qube
 on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts
 received files in `~/QubesIncoming/<sender>`, where the sender is the camera
-disposable (a name like `disp1234`) or `A-qr-staging`. In a terminal in the
-target key qube, replace `<sender>` with that name and `<target-dir>` with the
-directory where `master.key` should end up, and run:
+disposable (a name like `disp1234`) or `A-qr-staging`; `ls ~/QubesIncoming`
+in the target key qube shows it. In a terminal in the target key qube, replace
+`<sender>` with that name and `<target-dir>` with the directory where
+`master.key` should end up, and run:
 
 ```bash
 ls -A ~/QubesIncoming/<sender>
