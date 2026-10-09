@@ -427,7 +427,7 @@ is more trustworthy than the lookups inside `sys-usb`, although the device
 list it shows is still reported by `sys-usb`.
 
 In the dom0 controller list, check whether the line of the controller you will
-test shows `no-strict-reset=True` next to `sys-usb`. Plug the test device into
+test shows `no-strict-reset` next to `sys-usb`. Plug the test device into
 the socket you are checking. Then run this in a dom0 terminal as a single line,
 with your BDF in both places, and add `--option no-strict-reset=true` after
 `--persistent` if the line showed that option:
