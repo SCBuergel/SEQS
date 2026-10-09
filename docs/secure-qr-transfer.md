@@ -1047,11 +1047,13 @@ If `cd` or `qvm-copy` reports a missing directory or file, the scan failed.
 Shut down `D-qr-display` if it is still running, then repeat from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
 the source `key.asc` can be reused. Otherwise, choose the target key qube in
-the dialog. Do not open or decrypt the file in `A-qr-staging`.
+the dialog. Do not open or decrypt the file in `A-qr-staging`. Accept only
+this one copy dialog; `A-qr-staging` belongs to the camera side and can open
+dialogs on its own, so cancel any other dialog from it and treat it like a
+fingerprint mismatch in step 5.
 
-`A-qr-staging` belongs to the camera side, which must be shut down before you
-type the passphrase. When the copy has finished, delete the staging copy in
-the same terminal:
+The camera side must be shut down before you type the passphrase. When the
+copy has finished, delete the staging copy in the same terminal:
 
 ```bash
 rm -f -- key.asc

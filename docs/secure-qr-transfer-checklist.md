@@ -39,7 +39,8 @@ Receiving computer, one of:
       found on another controller, unplug the keyboard and mouse within 10
       seconds of `START`, plug the webcam into the socket you chose for it,
       remove all power after the power-off, then copy `key.asc` from
-      `A-qr-staging`, delete the staging copy, and shut `A-qr-staging` down.
+      `A-qr-staging` (accept only that one dialog), delete the staging copy,
+      and shut `A-qr-staging` down.
 
 Both computers:
 
