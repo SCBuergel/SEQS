@@ -722,14 +722,17 @@ seqs-webcam-usb-backend:
           printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
           [ "$current" = "{{ webcam_usb_qube }}" ] && continue
           if qvm-pci list "$current" 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }'; then
+            if qvm-check --running -q -- "$current"; then
+              stopped="$stopped $current"
+            fi
             qvm-shutdown --wait "$current" || true
             qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
-            stopped="$stopped $current"
           fi
           qvm-pci unassign "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
         done
-        # Restart the former owners (normally sys-usb) without the controller,
-        # so USB input on its other controllers returns.
+        # Restart only the former owners that were running (normally sys-usb),
+        # now without the controller, so USB input on its other controllers
+        # returns; qubes the user had stopped stay stopped.
         for current in $stopped; do
           qvm-start -- "$current" || echo "WARNING: could not restart $current" >&2
         done

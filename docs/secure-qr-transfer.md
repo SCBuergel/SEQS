@@ -667,12 +667,12 @@ the BDF.
 If the build, or a later start of `sys-usb-webcam`, fails because the
 controller cannot be reset, the reset check was wrong for this controller. On
 the dedicated-controller path, the controller is then unsuitable; give it
-back to `sys-usb` with step 3 of the recovery under
+back to `sys-usb` with steps 3 and 4 of the recovery under
 [Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
-On the sequential path, a failed start makes the scan script say so and power off
-after 60 seconds without scanning; in either case, set
-`webcam_usb_no_strict_reset` to `True`, commit, build again, and repeat the
-transfer from
+On the sequential path, a failed start makes the scan script say so and power
+off after 60 seconds without scanning. Whether the build or a later start
+failed, set `webcam_usb_no_strict_reset` to `True`, commit, build again, and
+repeat the transfer from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer).
 
 ## Check the setup
