@@ -835,11 +835,12 @@ The rehearsal succeeds only if each of these happens as described:
 
 If anything else happens, find the cause before you use a real secret. The
 sequential scan script has not been tested on Qubes 4.3, whose USB device
-listing may differ; if the script refuses to scan at every attempt there,
-this is a likely cause. The scan relies on `zbarcam` adding no line break to the scanned data, which holds
-for the zbar versions in Debian 12 and 13 (0.23.92 and 0.23.93). If the
-fingerprints differ at every attempt while the scan otherwise works, this may
-not hold for your template, and the scan commands need a change before use.
+listing may differ; if the script refuses to scan at every attempt there, this
+is a likely cause. The scan relies on `zbarcam` adding no line break to the
+scanned data, which holds for the zbar versions in Debian 12 and 13 (0.23.92
+and 0.23.93). If the fingerprints differ at every attempt while the scan
+otherwise works, this may not hold for your template, and the scan commands
+need a change before use.
 
 ## Transfer a file
 
