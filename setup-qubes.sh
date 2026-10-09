@@ -464,7 +464,8 @@ readTargets() {
 verifyAirgap() {
 	local vm nv dv
 	for vm in "${OFFLINE_TARGETS[@]}"; do
-		nv="$(qvm-prefs -- "${vm}" netvm 2>/dev/null || true)"
+		nv="$(qvm-prefs -- "${vm}" netvm 2>/dev/null)" \
+			|| die "could not read the netvm of offline qube '${vm}' -- refusing to provision."
 		# Unset netvm prints as empty on current releases; accept None/none too.
 		case "${nv,,}" in
 			''|none) ;;
@@ -472,7 +473,8 @@ verifyAirgap() {
 		esac
 		# A default disposable usually has network access and is reachable
 		# through qubes.OpenInVM, so it must be unset as well.
-		dv="$(qvm-prefs -- "${vm}" default_dispvm 2>/dev/null || true)"
+		dv="$(qvm-prefs -- "${vm}" default_dispvm 2>/dev/null)" \
+			|| die "could not read the default_dispvm of offline qube '${vm}' -- refusing to provision."
 		case "${dv,,}" in
 			''|none) ;;
 			*) die "offline qube '${vm}' still has default_dispvm '${dv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;

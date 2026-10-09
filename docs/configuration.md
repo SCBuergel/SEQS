@@ -100,8 +100,9 @@ flags:
   wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
   at the qube's xdg config and via dom0 qrexec deny rules for `qubes.OpenURL`.
-  Dom0 also denies `qubes.OpenInVM`, so the qube cannot open files in other
-  qubes or in a disposable; copy files with `qvm-copy` instead.
+  For `offline` qubes, dom0 also denies `qubes.OpenInVM` and starting commands
+  in a disposable, so an offline qube cannot open files in other qubes or in a
+  disposable; copy files with `qvm-copy` instead.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
@@ -137,7 +138,8 @@ Duplicate names abort the pre-flight.
 
 Browser-suppression denies are additive across partial upgrades. When a run
 configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules
-(and regenerates the matching `qubes.OpenInVM` denies) for
+(and regenerates the matching disposable denies for preserved qubes without a
+NetVM) for
 existing qubes carrying the `seqs-managed` feature; it never imports arbitrary
 policy text or allow rules. To deliberately forget a preserved entry, add its
 base name to `browser_suppress_prune`, for example:

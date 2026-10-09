@@ -299,6 +299,9 @@ seqs-policy-qr-input-deny:
         qubes.OpenURL        *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.OpenInVM       *  {{ webcam_usb_qube }}  @anyvm    deny
         qubes.OpenInVM       *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.VMShell        *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.VMExec         *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.VMExecGUI      *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.OpenURL        *  @dispvm:{{ webcam_scanner_dvm }}  @anyvm    deny
         qubes.InputKeyboard  *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
         qubes.InputMouse     *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
@@ -311,6 +314,9 @@ seqs-policy-qr-input-deny:
         qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @dispvm   deny
         qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @anyvm    deny
         qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.VMShell        *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.VMExec         *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.VMExecGUI      *  {{ webcam_sequential_scanner }}  @dispvm   deny
 {% endif %}
 {% else %}
 seqs-policy-qr-input-deny:
@@ -358,16 +364,24 @@ seqs-policy-browser:
    config base names and affect preserved entries, not currently configured
    offline/no_handoff qubes. #}
 {% set suppressed = [] %}
+{#  Offline subjects additionally lose every route into a new disposable. #}
+{% set offline_subjects = [] %}
 {% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') %}
-{%   do suppressed.append(papp ~ name) %}
+{%   set subjects = [papp ~ name] %}
 {#   Disposables are separate policy subjects: a rule for A-x covers neither a
      disposable spawned from it (@dispvm:A-x) nor the named disposable D-x. #}
 {%   if q.get('dispvm_template') %}
-{%     do suppressed.append('@dispvm:' ~ papp ~ name) %}
+{%     do subjects.append('@dispvm:' ~ papp ~ name) %}
 {%   endif %}
 {%   if q.get('named_disposable') and pdvm %}
-{%     do suppressed.append(pdvm ~ name) %}
+{%     do subjects.append(pdvm ~ name) %}
 {%   endif %}
+{%   for vm in subjects %}
+{%     do suppressed.append(vm) %}
+{%     if q.get('offline') %}
+{%       do offline_subjects.append(vm) %}
+{%     endif %}
+{%   endfor %}
 {% endfor %}
 {% set suppress_policy = '/etc/qubes/policy.d/28-browser-suppress.policy' %}
 {% if salt['file.file_exists'](suppress_policy) %}
@@ -388,6 +402,11 @@ seqs-policy-browser:
             and salt['cmd.retcode']('qvm-check -q -- ' ~ concrete) == 0
             and salt['cmd.shell']('qvm-features -- ' ~ concrete ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
 {%         do suppressed.append(vm) %}
+{#         A preserved qube without a NetVM is treated as offline. An empty
+           read also counts, which errs toward more denies. #}
+{%         if salt['cmd.shell']('qvm-prefs -- ' ~ concrete ~ ' netvm 2>/dev/null') | trim in ['', 'None', 'none'] %}
+{%           do offline_subjects.append(vm) %}
+{%         endif %}
 {%       endif %}
 {%     endif %}
 {%   endfor %}
@@ -404,17 +423,23 @@ seqs-policy-browser-suppress:
         # Deny qubes.OpenURL from every 'offline' / 'no_handoff' qube to ANY
         # target. Evaluated before 29-browser.policy, so the deny fires before
         # the @anyvm allow rule -- the opt-out is enforced at the dom0
-        # boundary, not just at each qube's xdg config. qubes.OpenInVM is
-        # denied too: the Qubes default policy lets any qube open a file in a
-        # new disposable, which by default has network access. The @dispvm
-        # lines state the disposable target explicitly.
+        # boundary, not just at each qube's xdg config. The @dispvm lines
+        # state the disposable target explicitly.
+        # Offline qubes also lose every default route into a new disposable,
+        # which normally has network access. Their unset default_dispvm is
+        # the primary control; these denies are a second layer.
         # Existing strict denies for SEQS-managed qubes are preserved across
         # partial upgrades; use browser_suppress_prune to remove stale entries.
         {%- for vm in suppressed %}
         qubes.OpenURL  *  {{ vm }}  @anyvm  deny
         qubes.OpenURL  *  {{ vm }}  @dispvm  deny
+        {%- if vm in offline_subjects %}
         qubes.OpenInVM  *  {{ vm }}  @anyvm  deny
         qubes.OpenInVM  *  {{ vm }}  @dispvm  deny
+        qubes.VMShell  *  {{ vm }}  @dispvm  deny
+        qubes.VMExec  *  {{ vm }}  @dispvm  deny
+        qubes.VMExecGUI  *  {{ vm }}  @dispvm  deny
+        {%- endif %}
         {%- endfor %}
 {% else %}
 # No offline/no_handoff qubes configured: remove only our managed policy.
@@ -563,7 +588,7 @@ seqs-offline-{{ name }}:
     - name: |
         set -e
         qvm-prefs -- {{ app }} netvm none
-        qvm-prefs -- {{ app }} default_dispvm ''
+        qvm-prefs -- {{ app }} default_dispvm none
     - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ app }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]; } && { [ -z "$d" ] || [ "$d" = "None" ] || [ "$d" = "none" ]; }
     - require:
       - qvm: seqs-app-{{ name }}
@@ -683,7 +708,7 @@ seqs-disposable-prefs-{{ name }}:
     - name: |
         set -e
         qvm-prefs -- {{ dvm }} netvm none
-        qvm-prefs -- {{ dvm }} default_dispvm ''
+        qvm-prefs -- {{ dvm }} default_dispvm none
         qvm-features -- {{ dvm }} appmenus-dispvm ''
     - unless: n="$(qvm-prefs -- {{ dvm }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ dvm }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
     - require:
@@ -728,7 +753,7 @@ seqs-webcam-usb-backend:
         qvm-prefs -- {{ webcam_usb_qube }} virt_mode hvm
         qvm-prefs -- {{ webcam_usb_qube }} maxmem 0
         qvm-prefs -- {{ webcam_usb_qube }} netvm none
-        qvm-prefs -- {{ webcam_usb_qube }} default_dispvm ''
+        qvm-prefs -- {{ webcam_usb_qube }} default_dispvm none
         qvm-prefs -- {{ webcam_usb_qube }} autostart false
         qvm-features -- {{ webcam_usb_qube }} appmenus-dispvm ''
         qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
@@ -789,7 +814,7 @@ seqs-qr-sequential-scanner:
           qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_sequential_scanner }}
         fi
         qvm-prefs -- {{ webcam_sequential_scanner }} netvm none
-        qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm ''
+        qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm none
         qvm-prefs -- {{ webcam_sequential_scanner }} autostart false
         qvm-features -- {{ webcam_sequential_scanner }} appmenus-dispvm ''
         qvm-features -- {{ webcam_sequential_scanner }} seqs-managed 1

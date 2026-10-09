@@ -697,15 +697,16 @@ Having no network does not stop
 (the Qubes service that lets qubes copy files, open links, and send input to
 each other), so SEQS also installs qrexec policies (dom0 rules deciding which
 qube may use which service). Check that the display qubes may neither hand
-links to the browser qube nor open files in other qubes. In a dom0 terminal of
-the sending computer, run:
+links to the browser qube nor start a disposable, as a second layer behind the
+unset default disposable. In a dom0 terminal of the sending computer, run:
 
 ```bash
 grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see `deny` lines for `qubes.OpenURL` and `qubes.OpenInVM` from
-each of `A-qr-display`, `@dispvm:A-qr-display`, and `D-qr-display`.
+You should see `deny` lines for `qubes.OpenURL`, `qubes.OpenInVM`,
+`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI` from each of
+`A-qr-display`, `@dispvm:A-qr-display`, and `D-qr-display`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -747,17 +748,17 @@ cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
 ```
 
 You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
-`qubes.InputTablet`, `qubes.Filecopy`, `qubes.OpenURL`, and `qubes.OpenInVM`
-from `sys-usb-webcam`, and for the input services and `qubes.OpenURL` from
-`@dispvm:A-qr-camera`. The camera disposables and `A-qr-staging` get their
-`qubes.OpenURL` and `qubes.OpenInVM` denies from the same policy file as the
-display qubes; to see them, run:
+`qubes.InputTablet`, `qubes.Filecopy`, `qubes.OpenURL`, `qubes.OpenInVM`,
+`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI` from `sys-usb-webcam`,
+and for the input services and `qubes.OpenURL` from `@dispvm:A-qr-camera`. The
+camera disposables and `A-qr-staging` get their disposable denies from the same
+policy file as the display qubes; to see them, run:
 
 ```bash
 grep -E 'qr-camera|qr-staging' /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see both kinds of `deny` line for `A-qr-camera`,
+You should see the same five services denied for `A-qr-camera`,
 `@dispvm:A-qr-camera`, and `A-qr-staging`.
 
 On the sequential path, also run:
@@ -831,10 +832,11 @@ The rehearsal succeeds only if each of these happens as described:
 - all four fingerprint groups match in step 5; and
 - step 6 ends with `600 master.key`.
 
-If anything else happens, find the cause before you use a real secret. A
-fingerprint mismatch at every attempt, with the scan otherwise working, can
-mean that the `zbarcam` version in `A-qr-camera` adds a line break to the
-scanned data; current versions do not.
+If anything else happens, find the cause before you use a real secret. The
+scan relies on `zbarcam` adding no line break to the scanned data, which holds
+for the zbar versions in Debian 12 and 13 (0.23.92 and 0.23.93). If the
+fingerprints differ at every attempt while the scan otherwise works, this may
+not hold for your template, and the scan commands need a change before use.
 
 ## Transfer a file
 
