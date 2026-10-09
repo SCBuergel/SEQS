@@ -342,6 +342,8 @@ def test_dom0_dedicated_qr_uses_device_api():
           "dedicated mode must inspect and remove PCI assignments with qvm-pci")
     check("pcidevs" not in backend,
           "dedicated mode must not query nonexistent qvm-prefs pcidevs")
+    check('qvm-start -- "$current"' in backend,
+          "dedicated mode must restart the qubes it stopped to free the controller")
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
     check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny
           and "qubes.OpenURL        *  @dispvm:A-qr-camera  @anyvm    deny" in deny,

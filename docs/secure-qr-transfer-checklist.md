@@ -2,7 +2,8 @@
 
 This checklist is for repeating a transfer after the one-time setup in
 [secure-qr-transfer.md](secure-qr-transfer.md) is complete, including its
-setup checks. Each item links to the step that holds the commands and the
+setup checks and the
+[rehearsal with a throwaway file](secure-qr-transfer.md#rehearse-with-a-throwaway-file). Each item links to the step that holds the commands and the
 full instructions; follow the step whenever you are unsure, and stop wherever
 the step says to stop.
 
@@ -32,9 +33,11 @@ Receiving computer, one of:
       `sys-usb-webcam`, as a single device; accept exactly one copy dialog;
       afterwards unplug the webcam and confirm the camera qubes have stopped.
 - [ ] [Step 4b](secure-qr-transfer.md#step-4b-scan-on-the-sequential-path-receiving-computer),
-      sequential path: run the dom0 script, check that it lists only your
-      USB keyboard and mouse in `sys-usb`, unplug them within 10 seconds of
-      `START`, remove all power after the power-off, then copy `key.asc` from
+      sequential path: run the dom0 script, check that it lists nothing in
+      `sys-usb` except your USB keyboard and mouse and internal devices you
+      found on another controller, unplug the keyboard and mouse within 10
+      seconds of `START`, plug the webcam into the socket you chose for it,
+      remove all power after the power-off, then copy `key.asc` from
       `A-qr-staging`.
 
 Both computers:

@@ -717,14 +717,21 @@ seqs-webcam-usb-backend:
 {% if webcam_mode == 'dedicated' %}
         # Remove live attachments and persistent assignments from other qubes.
         # PCI devices are managed by qvm-pci/qvm-device, not qvm-prefs.
+        stopped=''
         for current in $(qvm-ls --raw-list); do
           printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
           [ "$current" = "{{ webcam_usb_qube }}" ] && continue
           if qvm-pci list "$current" 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }'; then
             qvm-shutdown --wait "$current" || true
             qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
+            stopped="$stopped $current"
           fi
           qvm-pci unassign "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
+        done
+        # Restart the former owners (normally sys-usb) without the controller,
+        # so USB input on its other controllers returns.
+        for current in $stopped; do
+          qvm-start -- "$current" || echo "WARNING: could not restart $current" >&2
         done
 {% else %}
         # Sequential mode is valid only when this is already the physical

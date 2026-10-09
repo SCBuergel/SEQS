@@ -330,8 +330,11 @@ button briefly to shut the computer down, or hold it if that does nothing.
 
 ### Find the internal USB devices
 
-Internal USB devices cannot be unplugged, so the sequential path needs them
-switched off. In a dom0 terminal, run:
+Internal USB devices cannot be unplugged. The sequential path needs every
+one on the webcam's controller switched off; the dedicated-controller path
+needs the radios among them switched off, as
+[Look for a dedicated controller](#look-for-a-dedicated-controller) explains.
+In a dom0 terminal, run:
 
 ```bash
 sleep 20; qvm-usb
@@ -343,8 +346,8 @@ is internal. Its identifier, such as `sys-usb:3-10`, names its position in
 `sys-usb`; write it down with the device's name. Then reconnect the keyboard
 and mouse.
 
-Switch off every listed device in the firmware settings, then repeat the
-check. If the repeated check lists nothing, you are done here. Any device that
+On the sequential path, switch off every listed device in the firmware
+settings, then repeat the check. If the repeated check lists nothing, you are done here. Any device that
 remains, such as a built-in keyboard that uses USB, must be on a different
 controller from the webcam's, which the next subsection checks; if it is on
 the same controller, the sequential path is not possible with that socket.
@@ -359,8 +362,10 @@ has been switched back on, for example by a firmware update.
 
 ### Find the controller of the webcam's socket
 
-If the controller list showed only one USB controller and no internal device
-remained switched on, skip this subsection: that controller is the webcam's.
+If the controller list showed only one USB controller, skip this subsection:
+that controller is the webcam's. If an internal device remained switched on
+there as well, the sequential path is not possible on this computer without a
+USB controller card.
 
 Choose the socket you will always use for the webcam. Most webcams are USB 2,
 which their packaging or specifications state; if yours is USB 3, use a USB 3
@@ -421,8 +426,8 @@ These results come from `sys-usb`, a qube that Qubes does not trust. On the
 sequential path, if no internal device remained switched on, a wrong result
 cannot expose the keyboard side: if the configured controller is not the
 webcam's, the script finds no device during the scan and powers off without
-scanning. The same happens if you plug the
-webcam into a different socket later.
+scanning. The same happens if you later plug the webcam into a socket of
+another controller.
 
 ### Tell identical controllers apart
 
@@ -489,8 +494,10 @@ The controller must carry none of these:
 - any other device you need to operate or recover the computer.
 
 A built-in keyboard that does not use USB, as the earlier check showed, does
-not count, because it uses no USB controller. Internal devices on the
-controller may stay switched on, but they are then handled by the camera side.
+not count, because it uses no USB controller. Other internal devices on the
+controller are handled by the camera side. Radios among them, such as
+Bluetooth, must be switched off in the firmware settings: they would give the
+camera side a way to send data out without a network.
 
 The socket must lead only to that controller. A USB 3 socket has separate
 wires for USB 2 and USB 3, and on some computers they lead to different
@@ -553,9 +560,10 @@ controller card.
 ### Before you build on the dedicated-controller path
 
 Arrange a second way to type in dom0, such as a built-in keyboard that does
-not use USB or a keyboard on another controller. The build takes the
-controller away from `sys-usb` immediately, and the assignment survives
-reboots; setting the mode back to `disabled` does not undo it. If you chose
+not use USB or a keyboard on another controller. The build stops `sys-usb`,
+takes the controller away from it, and starts `sys-usb` again without it, so
+USB devices on its other controllers return after a short pause. The
+assignment survives reboots; setting the mode back to `disabled` does not undo it. If you chose
 the wrong BDF and it carries your only keyboard, the keyboard stops working
 until you undo the assignment as follows:
 
@@ -602,7 +610,7 @@ qube. For the sequential path:
 ```jinja
 {%- set webcam_usb_mode = 'sequential' %}
 {%- set webcam_usb_controller = '00_14.0' %}
-{%- set webcam_usb_no_strict_reset = True %}
+{%- set webcam_usb_no_strict_reset = False %}
 ```
 
 For the dedicated-controller path:
@@ -658,8 +666,10 @@ the BDF.
 
 If the build, or a later start of `sys-usb-webcam`, fails because the
 controller cannot be reset, the reset check was wrong for this controller. On
-the dedicated-controller path, the controller is then unsuitable. On the
-sequential path, a failed start makes the scan script say so and power off
+the dedicated-controller path, the controller is then unsuitable; give it
+back to `sys-usb` with step 3 of the recovery under
+[Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
+On the sequential path, a failed start makes the scan script say so and power off
 after 60 seconds without scanning; in either case, set
 `webcam_usb_no_strict_reset` to `True`, commit, build again, and repeat the
 transfer from
@@ -779,6 +789,25 @@ risk the sequential path accepts. Continue only if you accept that; otherwise
 replace the keyboard. If `sys-usb` is not a disposable, treat it, and with a
 USB keyboard the whole receiving computer, as compromised, and do not
 continue. The same rule applies whenever this happens during a transfer.
+
+### Rehearse with a throwaway file
+
+Run the whole transfer once with a throwaway file before you transfer a real
+secret. Parts of this procedure have not been tested on every Qubes release
+and computer, and a failure costs nothing when no secret is involved. In a
+terminal in the source key qube, run:
+
+```bash
+mkdir ~/qr-rehearsal && cd ~/qr-rehearsal && head -c 1000 /dev/urandom > master.key
+```
+
+This creates a random 1,000-byte `master.key` in a new directory. In a terminal
+in the target key qube, run `mkdir ~/qr-rehearsal`, and use `~/qr-rehearsal`
+as `<target-dir>` in step 5. Then follow [Transfer a file](#transfer-a-file)
+from step 1, working in `~/qr-rehearsal` on both computers, with a fresh sheet
+of paper that you destroy as in step 7. If any step fails, find the cause
+before you use a real secret. Afterwards, run `rm -rf ~/qr-rehearsal` in both
+key qubes.
 
 ## Transfer a file
 
@@ -961,8 +990,8 @@ run the script again. Otherwise, type `START` in capital letters. After that:
    the webcam: use it again only if you accept that its firmware may have been
    compromised, the same residual risk this path already accepts for the
    controller; otherwise replace it.
-2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the webcam.
-   You have 30 seconds.
+2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the webcam,
+   into the socket you chose for it during setup. You have 30 seconds.
 3. The script starts `sys-usb-webcam` and `seqs-qr-scanner`, checks that exactly
    one USB device is present, and scans for up to 3 minutes. If
    `sys-usb-webcam` does not start, the script shows an error and powers off
