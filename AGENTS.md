@@ -91,7 +91,8 @@ formatting or cleanup alongside a functional change.
   air-gap verification, or unsafe-name rejection to make a workflow pass.
 - Untrusted strings reaching a dom0 terminal must remain sanitized.
 - Validate values before interpolating them into shell or Salt state commands.
-- An `offline` qube must have no NetVM and no OpenURL handoff.
+- An `offline` qube must have no NetVM, no default disposable, and no
+  OpenURL or OpenInVM handoff.
 - Do not overwrite an existing unmarked qrexec policy.
 - Keep the catalogue independent of the runtime `--qubes`/`--all` selection.
 - Component scripts must be idempotent enough for the marker-controlled rerun

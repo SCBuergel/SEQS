@@ -47,6 +47,11 @@ if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "netvm" ]; then
 	exit 0
 fi
 
+if [ "${property}" = "default_dispvm" ] && [ "${#args[@]}" -lt 3 ]; then
+	echo "${SEQS_MOCK_DEFAULT_DISPVM:-}"
+	exit 0
+fi
+
 if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ]; then
 	if [ "${#args[@]}" -ge 3 ]; then
 		tmp="${SEQS_MOCK_NETVM_STATE}.tmp"

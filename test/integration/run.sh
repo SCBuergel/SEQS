@@ -31,7 +31,7 @@ new_sandbox() {
 	export SEQS_EXPECTED_COMMIT
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
-	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE
+	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE SEQS_MOCK_DEFAULT_DISPVM
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG
@@ -178,6 +178,14 @@ out="$(run_setup --all 2>&1)"; rc=$?
 grep -qi "air gap NOT in effect" <<<"$out" && ok || bad "expected an air-gap failure message"
 rm -rf "${SBX}"
 
+echo "== scenario: a default disposable on an offline qube halts provisioning =="
+new_sandbox
+export SEQS_MOCK_DEFAULT_DISPVM="default-dvm"   # reachable via qubes.OpenInVM
+out="$(run_setup --all 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a default_dispvm"
+grep -q "still has default_dispvm" <<<"$out" && ok || bad "expected a default_dispvm failure message"
+rm -rf "${SBX}"
+
 # ── Scenario 5: identical re-fetch skips the review-gate prompt ────────────
 echo "== scenario: re-running recognizes an identical staged tree =="
 new_sandbox
@@ -266,9 +274,13 @@ export SEQS_BROWSER_SUPPRESS_POLICY="${SBX}/28-browser-suppress.policy"
 cat > "${SEQS_BROWSER_SUPPRESS_POLICY}" <<'EOF'
 # Managed by SEQS (test)
 qubes.OpenURL  *  A-keepass  @anyvm  deny
+qubes.OpenURL  *  A-keepass  @dispvm  deny
+qubes.OpenInVM  *  A-keepass  @anyvm  deny
+qubes.OpenInVM  *  A-keepass  @dispvm  deny
 qubes.OpenURL  *  @dispvm:A-keepass  @anyvm  deny
 qubes.OpenURL  *  D-keepass  @anyvm  deny
 qubes.OpenURL  *  A-wallet-ledger  @anyvm  deny
+qubes.OpenInVM  *  A-wallet-ledger  @dispvm  deny
 EOF
 # Dry-run: announces itself, exits 0, changes nothing.
 out="$(bash "${REPO}/delete-vms.sh" --dry-run keepass 2>&1)"; rc=$?
@@ -291,6 +303,8 @@ grep -q "keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
 	"stale @dispvm:A-keepass and D-keepass browser denies should have been removed" || ok
 grep -q "A-wallet-ledger" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
 	|| bad "unrelated browser deny was removed"
+grep -q "qubes.OpenInVM  \*  A-wallet-ledger  @dispvm  deny" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
+	|| bad "unrelated OpenInVM deny was removed"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \

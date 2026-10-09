@@ -403,7 +403,9 @@ more is USB 3), the controller's hardware ID, and its description. The
 addresses such as `00:09.0` exist only inside `sys-usb`; never put them into
 the SEQS configuration. Find the line of the test device's bus, and match its
 description to a line of the dom0 controller list: that line's BDF is the
-webcam's controller. Internal devices that remained switched on must lead to a
+webcam's controller. In the example, a test device listed as `sys-usb:1-2` is
+on bus 1; the `usb1` line names the PCH xHCI Host Controller, which the dom0
+list shows as `dom0:00_14.0`, so the BDF is `00_14.0`. Internal devices that remained switched on must lead to a
 different description.
 
 If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`.
@@ -681,42 +683,45 @@ Run these checks once after building and before you use any secret.
 
 ### Sending computer: check that the display qubes are offline
 
-A qube without a NetVM is offline. The SEQS run that builds an offline qube
-checks this itself and stops if the qube still has a NetVM; its output then
-contains a line starting with `Air gap verified:` that names `A-qr-display`
-and `D-qr-display`. If you no longer have that output, run
-`qvm-prefs A-qr-display netvm` and `qvm-prefs D-qr-display netvm` in a dom0
-terminal of the sending computer; both must print nothing, `None`, or `none`.
+A qube is offline if it has no NetVM and no default disposable (a networked
+disposable it could open files in). The SEQS run that builds an offline qube
+checks both itself and stops otherwise; its output then contains a line
+starting with `Air gap verified:` that names `A-qr-display` and
+`D-qr-display`. If you no longer have that output, run
+`qvm-prefs <qube> netvm` and `qvm-prefs <qube> default_dispvm` for both qubes
+in a dom0 terminal of the sending computer; each must print nothing, `None`,
+or `none`.
 
 Having no network does not stop
 [qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
 (the Qubes service that lets qubes copy files, open links, and send input to
 each other), so SEQS also installs qrexec policies (dom0 rules deciding which
-qube may use which service). Check that the display qubes may not hand links
-to the browser qube. In a dom0 terminal of the sending computer, run:
+qube may use which service). Check that the display qubes may neither hand
+links to the browser qube nor open files in other qubes. In a dom0 terminal of
+the sending computer, run:
 
 ```bash
 grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see `deny` lines for `A-qr-display`, `@dispvm:A-qr-display`, and
-`D-qr-display`.
+You should see `deny` lines for `qubes.OpenURL` and `qubes.OpenInVM` from
+each of `A-qr-display`, `@dispvm:A-qr-display`, and `D-qr-display`.
 
 ### Receiving computer: check that the camera qubes are offline
 
 The `Air gap verified:` line of the SEQS run covers `A-qr-camera` and, on the
 sequential path, `A-qr-staging`, in the same way. If you no longer have that
-output, check them with `qvm-prefs <qube> netvm` as on the sending computer.
-On the sequential path, the scan script also refuses to start if
-`sys-usb-webcam`, `seqs-qr-scanner`, or `A-qr-staging` has a NetVM, at every
-transfer. On the dedicated-controller path, check `sys-usb-webcam` yourself;
-in a dom0 terminal of the receiving computer, run:
+output, check them with `qvm-prefs` as on the sending computer. On the
+sequential path, the scan script also refuses to start if `sys-usb-webcam`,
+`seqs-qr-scanner`, or `A-qr-staging` has a NetVM or a default disposable, at
+every transfer. On the dedicated-controller path, check `sys-usb-webcam`
+yourself; in a dom0 terminal of the receiving computer, run:
 
 ```bash
-qvm-prefs sys-usb-webcam netvm
+qvm-prefs sys-usb-webcam netvm; qvm-prefs sys-usb-webcam default_dispvm
 ```
 
-It must print nothing, `None`, or `none`.
+Each must print nothing, `None`, or `none`.
 
 ### Receiving computer: check the controller assignment
 
@@ -742,9 +747,18 @@ cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
 ```
 
 You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
-`qubes.InputTablet`, `qubes.Filecopy`, and `qubes.OpenURL` from
-`sys-usb-webcam`, and for the input services and `qubes.OpenURL` from
-`@dispvm:A-qr-camera`.
+`qubes.InputTablet`, `qubes.Filecopy`, `qubes.OpenURL`, and `qubes.OpenInVM`
+from `sys-usb-webcam`, and for the input services and `qubes.OpenURL` from
+`@dispvm:A-qr-camera`. The camera disposables and `A-qr-staging` get their
+`qubes.OpenURL` and `qubes.OpenInVM` denies from the same policy file as the
+display qubes; to see them, run:
+
+```bash
+grep -E 'qr-camera|qr-staging' /etc/qubes/policy.d/28-browser-suppress.policy
+```
+
+You should see both kinds of `deny` line for `A-qr-camera`,
+`@dispvm:A-qr-camera`, and `A-qr-staging`.
 
 On the sequential path, also run:
 
@@ -805,9 +819,22 @@ This creates a random 1,000-byte `master.key` in a new directory. In a terminal
 in the target key qube, run `mkdir ~/qr-rehearsal`, and use `~/qr-rehearsal`
 as `<target-dir>` in step 5. Then follow [Transfer a file](#transfer-a-file)
 from step 1, working in `~/qr-rehearsal` on both computers, with a fresh sheet
-of paper that you destroy as in step 7. If any step fails, find the cause
-before you use a real secret. Afterwards, run `rm -rf ~/qr-rehearsal` in both
-key qubes.
+of paper that you destroy as in step 7. Afterwards, run
+`rm -rf ~/qr-rehearsal` in both key qubes.
+
+The rehearsal succeeds only if each of these happens as described:
+
+- on the sequential path, the script lists only the devices you expect in
+  `sys-usb`, starts `sys-usb-webcam`, and powers off after the scan;
+- exactly one copy dialog appears, and the received folder holds only
+  `key.asc`;
+- all four fingerprint groups match in step 5; and
+- step 6 ends with `600 master.key`.
+
+If anything else happens, find the cause before you use a real secret. A
+fingerprint mismatch at every attempt, with the scan otherwise working, can
+mean that the `zbarcam` version in `A-qr-camera` adds a line break to the
+scanned data; current versions do not.
 
 ## Transfer a file
 
@@ -901,6 +928,11 @@ most terminals with `Ctrl+-`) until the whole code fits. If `qrencode` instead
 reports that it failed to encode the input data, stop: the file is too big for
 this procedure. Keep `D-qr-display` running only until the receiving computer
 has scanned the code, then shut it down.
+
+`D-qr-display` never needs to open a dialog. It can still request one on its
+own, for example to copy `key.asc` to a qube with network access. Cancel any
+dialog that names `D-qr-display` as the source, and treat it like a
+fingerprint mismatch in step 5.
 
 ### Step 4a: Scan on the dedicated-controller path (receiving computer)
 

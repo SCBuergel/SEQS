@@ -91,12 +91,14 @@ findNetvmUsers() {
 	done <<< "${inventory}"
 }
 
-# browserRuleExists VM -- match only the strict rule shape SEQS generates.
+# browserRuleExists VM -- match only the strict rule shapes SEQS generates
+# (OpenURL and OpenInVM denies to @anyvm and @dispvm).
 browserRuleExists() {
 	local vm="$1"
 	sudo awk -v vm="${vm}" '
-		NF == 5 && $1 == "qubes.OpenURL" && $2 == "*" &&
-		$3 == vm && $4 == "@anyvm" && $5 == "deny" { found=1 }
+		NF == 5 && ($1 == "qubes.OpenURL" || $1 == "qubes.OpenInVM") &&
+		$2 == "*" && $3 == vm && ($4 == "@anyvm" || $4 == "@dispvm") &&
+		$5 == "deny" { found=1 }
 		END { exit !found }
 	' "${BROWSER_SUPPRESS_POLICY}"
 }
@@ -133,8 +135,9 @@ removeBrowserRule() {
 	tmp="$(sudo mktemp "${BROWSER_SUPPRESS_POLICY}.tmp.XXXXXX")" \
 		|| { echo "ERROR: could not create policy temporary" >&2; return 1; }
 	if ! sudo awk -v vm="${vm}" '
-		!(NF == 5 && $1 == "qubes.OpenURL" && $2 == "*" &&
-		  $3 == vm && $4 == "@anyvm" && $5 == "deny")
+		!(NF == 5 && ($1 == "qubes.OpenURL" || $1 == "qubes.OpenInVM") &&
+		  $2 == "*" && $3 == vm && ($4 == "@anyvm" || $4 == "@dispvm") &&
+		  $5 == "deny")
 	' "${BROWSER_SUPPRESS_POLICY}" | sudo tee "${tmp}" >/dev/null; then
 		sudo rm -f -- "${tmp}"
 		echo "ERROR: could not rewrite ${BROWSER_SUPPRESS_POLICY}" >&2

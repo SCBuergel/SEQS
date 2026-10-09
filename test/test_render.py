@@ -119,6 +119,15 @@ def test_dom0_happy_path():
                     "@dispvm:A-qr-display", "D-qr-display", "A-qr-staging"):
         check("qubes.OpenURL  *  %s  @anyvm  deny" % subject in suppress,
               "browser handoff must be denied for %s" % subject)
+        for target in ("@anyvm", "@dispvm"):
+            check("qubes.OpenInVM  *  %s  %s  deny" % (subject, target) in suppress,
+                  "open-in-qube handoff to %s must be denied for %s" % (target, subject))
+    offline = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
+    check("default_dispvm ''" in offline,
+          "an offline qube must lose its (networked) default disposable")
+    named = state_arg(parsed, "seqs-disposable-prefs-qr-display", "cmd.run", "name")
+    check("default_dispvm ''" in named,
+          "a named offline disposable must lose its default disposable")
     check("@dispvm:A-keepass" not in suppress and "D-keepass" not in suppress,
           "non-disposable offline qubes get only their own deny")
     camera_state = parsed["seqs-app-qr-camera"]["qvm.vm"]
@@ -282,6 +291,12 @@ def test_dom0_sequential_qr_mode():
               "camera-side qube %s must not reach the browser handoff" % subject)
     check("qubes.InputKeyboard  *  @dispvm:A-qr-camera  @adminvm  deny" in deny,
           "camera disposables must be denied dom0 input")
+    for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
+        check("qubes.OpenInVM       *  %s  @dispvm   deny" % subject in deny,
+              "camera-side qube %s must not open files in a disposable" % subject)
+    for state in ("seqs-webcam-usb-backend", "seqs-qr-sequential-scanner"):
+        check("default_dispvm ''" in state_arg(parsed, state, "cmd.run", "name"),
+              "%s must clear the default disposable" % state)
     check("no-strict-reset=true" not in text,
           "sequential mode must keep strict reset unless explicitly disabled")
     backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")

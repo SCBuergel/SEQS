@@ -39,7 +39,7 @@ data flow and controls. For the per-component trust analysis see
    to a separate generated instance name, and each VM records its recipe in
    the `seqs-recipe` feature.
    Air-gapped (`offline`) qubes are independently re-verified by the runner
-   before anything is provisioned.
+   (no NetVM and no default disposable) before anything is provisioned.
 
    It then applies qubes (`qubesctl --skip-dom0 --targets=... state.apply seqs.qube`):
    provisions each template, then each app qube. Qubes Salt runs this through a

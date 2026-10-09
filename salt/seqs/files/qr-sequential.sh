@@ -52,15 +52,18 @@ qvm-run --pass-io "$STAGING_QUBE" \
 	echo "ERROR: staging already contains an incoming key.asc; inspect and remove it before a new ceremony" >&2
 	exit 1
 }
-# The camera side must stay offline at every ceremony, not only after setup.
+# The camera side must stay offline at every ceremony, not only after setup:
+# no NetVM, and no default disposable that qubes.OpenInVM could reach.
 for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
-	netvm="$(qvm-prefs -- "$vm" netvm 2>/dev/null)" || {
-		echo "ERROR: cannot read the NetVM of '$vm'" >&2; exit 1;
-	}
-	case "$netvm" in
-		''|None|none) ;;
-		*) echo "ERROR: '$vm' has a NetVM; the camera side must be offline" >&2; exit 1 ;;
-	esac
+	for pref in netvm default_dispvm; do
+		value="$(qvm-prefs -- "$vm" "$pref" 2>/dev/null)" || {
+			echo "ERROR: cannot read $pref of '$vm'" >&2; exit 1;
+		}
+		case "$value" in
+			''|None|none) ;;
+			*) echo "ERROR: '$vm' has $pref set; the camera side must be offline" >&2; exit 1 ;;
+		esac
+	done
 done
 # Device descriptions originate in the USB backend; strip control characters.
 normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\t\n')" || {

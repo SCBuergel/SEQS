@@ -296,6 +296,9 @@ seqs-policy-qr-input-deny:
         # 29-browser.policy would let a compromised camera-side qube push the
         # ciphertext to the browser qube without a prompt.
         qubes.OpenURL        *  {{ webcam_usb_qube }}  @anyvm    deny
+        qubes.OpenURL        *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.OpenInVM       *  {{ webcam_usb_qube }}  @anyvm    deny
+        qubes.OpenInVM       *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.OpenURL        *  @dispvm:{{ webcam_scanner_dvm }}  @anyvm    deny
         qubes.InputKeyboard  *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
         qubes.InputMouse     *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
@@ -305,6 +308,9 @@ seqs-policy-qr-input-deny:
         qubes.InputMouse     *  {{ webcam_sequential_scanner }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_sequential_scanner }}  @adminvm  deny
         qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @anyvm    deny
+        qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @anyvm    deny
+        qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @dispvm   deny
 {% endif %}
 {% else %}
 seqs-policy-qr-input-deny:
@@ -398,11 +404,17 @@ seqs-policy-browser-suppress:
         # Deny qubes.OpenURL from every 'offline' / 'no_handoff' qube to ANY
         # target. Evaluated before 29-browser.policy, so the deny fires before
         # the @anyvm allow rule -- the opt-out is enforced at the dom0
-        # boundary, not just at each qube's xdg config.
+        # boundary, not just at each qube's xdg config. qubes.OpenInVM is
+        # denied too: the Qubes default policy lets any qube open a file in a
+        # new disposable, which by default has network access. The @dispvm
+        # lines state the disposable target explicitly.
         # Existing strict denies for SEQS-managed qubes are preserved across
         # partial upgrades; use browser_suppress_prune to remove stale entries.
         {%- for vm in suppressed %}
         qubes.OpenURL  *  {{ vm }}  @anyvm  deny
+        qubes.OpenURL  *  {{ vm }}  @dispvm  deny
+        qubes.OpenInVM  *  {{ vm }}  @anyvm  deny
+        qubes.OpenInVM  *  {{ vm }}  @dispvm  deny
         {%- endfor %}
 {% else %}
 # No offline/no_handoff qubes configured: remove only our managed policy.
@@ -544,11 +556,15 @@ seqs-app-{{ name }}:
 {%   endif %}
 
 {%   if q.get('offline') %}
-# Clear the NetVM, then let setup-qubes.sh independently verify the air gap.
+# Clear the NetVM and the default disposable (which normally has network
+# access), then let setup-qubes.sh independently verify both.
 seqs-offline-{{ name }}:
   cmd.run:
-    - name: qvm-prefs -- {{ app }} netvm none
-    - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]
+    - name: |
+        set -e
+        qvm-prefs -- {{ app }} netvm none
+        qvm-prefs -- {{ app }} default_dispvm ''
+    - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ app }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]; } && { [ -z "$d" ] || [ "$d" = "None" ] || [ "$d" = "none" ]; }
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}
@@ -667,8 +683,9 @@ seqs-disposable-prefs-{{ name }}:
     - name: |
         set -e
         qvm-prefs -- {{ dvm }} netvm none
+        qvm-prefs -- {{ dvm }} default_dispvm ''
         qvm-features -- {{ dvm }} appmenus-dispvm ''
-    - unless: n="$(qvm-prefs -- {{ dvm }} netvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
+    - unless: n="$(qvm-prefs -- {{ dvm }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ dvm }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
     - require:
       - qvm: seqs-app-{{ name }}
 {%     if not dvm_exists %}
@@ -711,6 +728,7 @@ seqs-webcam-usb-backend:
         qvm-prefs -- {{ webcam_usb_qube }} virt_mode hvm
         qvm-prefs -- {{ webcam_usb_qube }} maxmem 0
         qvm-prefs -- {{ webcam_usb_qube }} netvm none
+        qvm-prefs -- {{ webcam_usb_qube }} default_dispvm ''
         qvm-prefs -- {{ webcam_usb_qube }} autostart false
         qvm-features -- {{ webcam_usb_qube }} appmenus-dispvm ''
         qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
@@ -756,7 +774,7 @@ seqs-webcam-usb-backend:
 {% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
 {% if webcam_mode == 'dedicated' %}
-    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i=1; i<=NF; i++) { token=$i; sub(/^\*/, "", token); if (token == vm) found=1 } } END { exit !found }'
+    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_usb_qube }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i=1; i<=NF; i++) { token=$i; sub(/^\*/, "", token); if (token == vm) found=1 } } END { exit !found }'
 {% endif %}
     - require:
       - qvm: seqs-app-qr-camera
@@ -771,10 +789,11 @@ seqs-qr-sequential-scanner:
           qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_sequential_scanner }}
         fi
         qvm-prefs -- {{ webcam_sequential_scanner }} netvm none
+        qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm ''
         qvm-prefs -- {{ webcam_sequential_scanner }} autostart false
         qvm-features -- {{ webcam_sequential_scanner }} appmenus-dispvm ''
         qvm-features -- {{ webcam_sequential_scanner }} seqs-managed 1
-    - unless: n="$(qvm-prefs -- {{ webcam_sequential_scanner }} netvm 2>/dev/null)"; qvm-check -q -- {{ webcam_sequential_scanner }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; }
+    - unless: n="$(qvm-prefs -- {{ webcam_sequential_scanner }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_sequential_scanner }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; }
     - require:
       - qvm: seqs-app-qr-camera
 

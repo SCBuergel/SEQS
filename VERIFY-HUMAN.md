@@ -97,7 +97,7 @@ When you run `setup-qubes.sh`:
    no. No state is applied before this gate; SEQS-written policies re-converge
    silently on re-runs, which is expected.
 
-4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm on A-keepass.` — the runner refuses to provision anything if an `offline` qube still has a netvm.
+4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm and no default disposable on A-keepass.` — the runner refuses to provision anything if an `offline` qube still has a netvm or a default disposable (`default_dispvm`), which `qubes.OpenInVM` could reach. `/etc/qubes/policy.d/28-browser-suppress.policy` must contain `qubes.OpenURL` and `qubes.OpenInVM` denies to `@anyvm` and `@dispvm` for every offline/no_handoff qube.
 
 5. Then, during the per-qube provisioning (`qubesctl --skip-dom0 --targets=…`), watch for the verification lines in the salt output. The signed-artifact lines all come from the shared `verify_detached_sig` helper and share a uniform `signature OK -- <file> signed by <fingerprint>` shape:
     - `Brave keyring verified -- DBF1A116… 47D32A74… B2A3DCA3…`

@@ -94,11 +94,14 @@ a separate canonical run.
 Each entry is `{'name': ..., 'label': ..., 'components': [...]}` plus optional
 flags:
 
-- `'offline': True` — detaches the app qube from netvm (air gap). Implies
-  `no_handoff`, and the runner re-verifies the air gap after the dom0 apply.
-  Use for wallet/vault qubes.
+- `'offline': True` — detaches the app qube from netvm (air gap) and unsets its
+  default disposable, which would otherwise have network access. Implies
+  `no_handoff`, and the runner re-verifies both after the dom0 apply. Use for
+  wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
-  at the qube's xdg config and via a dom0 qrexec deny rule.
+  at the qube's xdg config and via dom0 qrexec deny rules for `qubes.OpenURL`.
+  Dom0 also denies `qubes.OpenInVM`, so the qube cannot open files in other
+  qubes or in a disposable; copy files with `qvm-copy` instead.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
@@ -133,7 +136,8 @@ verification, and runtime checks.
 Duplicate names abort the pre-flight.
 
 Browser-suppression denies are additive across partial upgrades. When a run
-configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules for
+configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules
+(and regenerates the matching `qubes.OpenInVM` denies) for
 existing qubes carrying the `seqs-managed` feature; it never imports arbitrary
 policy text or allow rules. To deliberately forget a preserved entry, add its
 base name to `browser_suppress_prune`, for example:
