@@ -533,10 +533,9 @@ of the same kind (USB-A or USB-C) with the same adapter. If it never does, the
 device or adapter is USB 2 only, and its results cannot show whether a socket
 is split; repeat the check with a real USB 3 device.
 
-Everything you read inside `sys-usb` came from a qube that Qubes does not
-trust. The check after the build, where dom0 shows which qube actually
-receives the webcam, confirms the controller, but it cannot detect a split
-socket. For that you rely on the two test devices.
+The check after the build confirms from dom0 which qube receives the webcam,
+but it cannot detect a split socket. For that you rely on the two test
+devices, as reported by `sys-usb`, a qube that Qubes does not trust.
 
 If a candidate socket is not split and its controller supports a strict reset,
 use the dedicated-controller path with that controller. From now on, plug the
@@ -756,8 +755,8 @@ by a `deny` for every other destination.
 ### Receiving computer: check the dedicated controller with the webcam
 
 On the dedicated-controller path only. This is the first time the webcam is
-plugged into the receiving computer. Start `sys-usb-webcam` from the Qubes
-menu, plug the webcam into its socket, and in a dom0 terminal run:
+plugged into the receiving computer. Start `sys-usb-webcam` in the Qube
+Manager, plug the webcam into its socket, and in a dom0 terminal run:
 
 ```bash
 qvm-usb
@@ -880,9 +879,11 @@ passphrase, and running `clear` does not remove it.
 
 ### Step 2: Copy the encrypted file to the display qube (sending computer)
 
-Start `D-qr-display` from the Qubes menu before copying. SEQS qubes delete
-`~/QubesIncoming` when they start, so a copy that itself starts `D-qr-display`
-could be deleted by that cleanup.
+Start `D-qr-display` before copying, by opening a terminal in it: choose
+`Display QR (offline)` under `D-qr-display` in the Qubes menu, or, if the menu
+does not offer it, run `qvm-run D-qr-display x-terminal-emulator` in a dom0
+terminal. SEQS qubes delete `~/QubesIncoming` when they start, so a copy that
+itself starts `D-qr-display` could be deleted by that cleanup.
 
 Open a new terminal in the source key qube, go to the directory containing
 `key.asc`, and run:
@@ -897,9 +898,9 @@ qube now; its files are kept.
 
 ### Step 3: Show the QR code (sending computer)
 
-Put away the paper and close every window that shows a secret. In a
-`D-qr-display` terminal, run this, replacing `<source-key-qube>` with the name
-of your source key qube:
+Put away the paper and close every window that shows a secret. In the
+`D-qr-display` terminal from step 2, run this, replacing `<source-key-qube>`
+with the name of your source key qube:
 
 ```bash
 cd ~/QubesIncoming/<source-key-qube>
@@ -925,7 +926,8 @@ Use this step only on the dedicated-controller path; on the sequential path,
 use step 4b.
 
 1. Start the target key qube, so that it can be chosen as a copy destination.
-2. Start `sys-usb-webcam` and plug the webcam into its socket.
+2. Start `sys-usb-webcam` in the Qube Manager and plug the webcam into its
+   socket.
 3. Open the Qubes Devices widget (the USB icon in the system tray). The webcam
    must be listed as `sys-usb-webcam:...`, as a single device. If it is listed
    as `sys-usb:...`, it is in a socket of the keyboard's controller: unplug it
@@ -933,8 +935,10 @@ use step 4b.
    and the internal devices you recorded for this controller, unplug the webcam
    and stop, as described under
    [check the dedicated controller with the webcam](#receiving-computer-check-the-dedicated-controller-with-the-webcam).
-4. From the Qubes menu, open a terminal in a new disposable based on
-   `A-qr-camera`.
+4. Open a terminal in a new disposable based on `A-qr-camera`: from its
+   entry in the Qubes menu, or, if the menu offers no terminal for it, by
+   running `qvm-run --dispvm=A-qr-camera x-terminal-emulator` in a dom0
+   terminal.
 5. Attach only the webcam to that disposable with the Devices widget.
 6. In the disposable's terminal, run:
 
