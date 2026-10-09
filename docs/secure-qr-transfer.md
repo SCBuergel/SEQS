@@ -1085,11 +1085,11 @@ hash, so a match makes an undetected change very unlikely rather than
 impossible; the numbers follow the commands.
 
 First check that the webcam is unplugged and that every camera and webcam qube
-on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts received files in
-`~/QubesIncoming/<sender>`, where the sender is the camera disposable (a name
-like `disp1234`) or `A-qr-staging`. In a terminal in the target key qube,
-replace `<sender>` with that name and `<target-dir>` with the directory where
-`master.key` should end up, and run:
+on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts
+received files in `~/QubesIncoming/<sender>`, where the sender is the camera
+disposable (a name like `disp1234`) or `A-qr-staging`. In a terminal in the
+target key qube, replace `<sender>` with that name and `<target-dir>` with the
+directory where `master.key` should end up, and run:
 
 ```bash
 ls -A ~/QubesIncoming/<sender>
@@ -1140,10 +1140,11 @@ on the camera side changed the file on purpose. That side is then hostile, and
 the secret depends entirely on the keyboard side staying clean.
 
 Without opening anything, delete the received `key.asc`, and any unexpected
-files, in the target key qube. Retry only after you have found the cause, or if you will type
-the passphrase on a keyboard that does not go through a USB qube. To retry,
-shut down `D-qr-display` if it is still running, then repeat from
-[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
+files, in the target key qube. Retry only after you have found the cause, or if
+you will type the passphrase on a keyboard that does not go through a USB qube.
+To retry, shut down `D-qr-display` if it is still running, then repeat from
+[Step 2: Copy the encrypted file to the display
+qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
 the source `key.asc` can be reused.
 
 ### Step 6: Decrypt (receiving computer)
