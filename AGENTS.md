@@ -92,7 +92,7 @@ formatting or cleanup alongside a functional change.
 - Untrusted strings reaching a dom0 terminal must remain sanitized.
 - Validate values before interpolating them into shell or Salt state commands.
 - An `offline` qube must have no NetVM, no default disposable, and no
-  OpenURL, OpenInVM, or disposable-command route out.
+  OpenURL, OpenInVM, or other disposable route out.
 - Do not overwrite an existing unmarked qrexec policy.
 - Keep the catalogue independent of the runtime `--qubes`/`--all` selection.
 - Component scripts must be idempotent enough for the marker-controlled rerun

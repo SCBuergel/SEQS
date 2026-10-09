@@ -77,29 +77,21 @@ the split holds only because you perform the steps in the order given, so that
 nothing on the camera side is running when the passphrase is typed.
 
 A keyboard side that goes through a USB qube can do more than watch. With a USB
-keyboard, `sys-usb` reads the physical keys and passes each key press to dom0,
-and dom0 cannot tell a real key press from one that `sys-usb` invents. A
-compromised `sys-usb` can therefore type into dom0 or a key qube, for example a
-command that copies `master.key` to a qube with network access. It needs
-neither the camera side nor the passphrase. A malicious USB keyboard can do the
-same through `sys-usb`. A USB mouse gives `sys-usb` the weaker power to click,
-for example on dialogs, which is still more than watching. This applies on both
-computers: on the sending computer, `sys-usb` can type into the source key
-qube, and on the receiving computer into the target key qube. The QR transfer
-does not create this risk; with a USB keyboard, `sys-usb` can take over the
-whole Qubes system at any time. But it means that `sys-usb` is then a single
-point of failure, not an independent second side.
+keyboard, `sys-usb` passes each key press to dom0, and dom0 cannot tell a real
+key press from one that `sys-usb` invents. A compromised `sys-usb`, or a
+malicious USB keyboard, can therefore type into dom0 or a key qube on either
+computer, for example a command that copies `master.key` to a qube with network
+access, without the camera side or the passphrase. A USB mouse lets it click,
+for example on dialogs. The QR transfer does not create this risk, which exists
+whenever you use a USB keyboard on Qubes, but it makes `sys-usb` a single point
+of failure rather than an independent second side.
 
-The two-side protection therefore holds in full only if you type on keyboards
-that do not go through a USB qube, such as a built-in laptop keyboard that is
-not internally USB; the setup shows how to
-[check this](#check-whether-the-built-in-keyboard-uses-usb). Its key presses
-reach dom0 directly, so the keyboard side becomes dom0, which you already
-trust. With a USB keyboard, the split still
-protects against parts that can only watch: for example, a camera that sees the
-paper but never the encrypted file, or a camera-side qube that gets the
-encrypted file but never the passphrase. The secret, like the rest of your
-Qubes system, then also depends on `sys-usb` not being compromised.
+The two-side protection therefore holds in full only if you type on a keyboard
+that does not go through a USB qube, such as a built-in laptop keyboard that is
+not internally USB ([check this](#check-whether-the-built-in-keyboard-uses-usb));
+its key presses reach dom0 directly. With a USB keyboard, the split still
+protects against parts that can only watch, such as a camera that sees the
+paper but never the encrypted file.
 
 Even against parts that only watch, the two sides can fail together more
 easily than it seems. They share the USB attack surface, the room, and possibly
@@ -125,34 +117,30 @@ The **sending computer** needs:
   encrypted data.
 
 `D-qr-display` is a disposable: a qube whose changes are thrown away when it
-shuts down. It starts from `A-qr-display`, an app qube that SEQS creates at the
-same time and that serves as its disposable template (the qube a disposable is
-copied from). It is not a TemplateVM.
-
-The sending computer needs no webcam and no USB controller check. Its built-in
-cameras must still be covered during each transfer, as the transfer procedure
-says.
+shuts down. It starts from `A-qr-display`, its disposable template (the app
+qube it is copied from), which SEQS creates at the same time. The sending
+computer needs no webcam and no USB controller check.
 
 The **receiving computer** needs:
 
+- Qubes OS 4.3, because the setup uses device commands that Qubes 4.2 does
+  not have;
 - a trusted **target key qube** that does not yet contain a `master.key`;
 - a USB webcam that can read a QR code from the sending computer's screen and
   shows up as a single USB device, which the dedicated-path check or the
   sequential scan script confirms;
 - the hardware lookups described below; and
-- SEQS installed with the `qr-camera` qube selected, plus `qr-staging` if the
-  hardware check leads you to the weaker of its two setups. This creates
+- SEQS installed with the `qr-camera` qube selected, plus `qr-staging` on the
+  weaker of the two hardware setups described below. This creates
   `A-qr-camera`, the offline disposable template for the camera disposables
-  that run `zbarcam` (the QR scanner program), and `sys-usb-webcam`, which
-  handles only the webcam.
+  that run `zbarcam` (the QR scanner program), and `sys-usb-webcam`, a USB
+  qube (a qube that owns USB hardware and passes individual devices to other
+  qubes) that handles only the webcam.
 
 Both key qubes should be offline: a key qube with a NetVM (the qube that gives
 it network access) keeps the plaintext `master.key` one software bug away from
 the network. The `vault` qube that the Qubes installer creates by default has
 no NetVM and is a suitable choice on either computer.
-
-`sys-usb-webcam` is a USB qube: a qube that owns USB hardware and passes
-individual devices to other qubes.
 
 SEQS does not create the key qubes, because their names and contents differ for
 every user.
@@ -442,10 +430,10 @@ In the dom0 controller list, check whether the line of the controller you will
 test shows `no-strict-reset=True` next to `sys-usb`. Plug the test device into
 the socket you are checking. Then run this in a dom0 terminal as a single line,
 with your BDF in both places, and add `--option no-strict-reset=true` after
-`--persistent` in the second `qvm-pci` command if the line showed that option:
+`--persistent` if the line showed that option:
 
 ```bash
-qvm-shutdown --wait sys-usb; qvm-pci detach --persistent sys-usb dom0:00_14.0; qvm-start sys-usb; sleep 30; qvm-usb; qvm-shutdown --wait sys-usb; qvm-pci attach --persistent sys-usb dom0:00_14.0; qvm-start sys-usb
+qvm-shutdown --wait sys-usb; qvm-pci unassign sys-usb dom0:00_14.0; qvm-start sys-usb; sleep 30; qvm-usb; qvm-shutdown --wait sys-usb; qvm-pci attach --persistent sys-usb dom0:00_14.0; qvm-start sys-usb
 ```
 
 Your USB keyboard and mouse may stop working while the line runs, because the
@@ -582,13 +570,12 @@ working until you undo the assignment as follows:
 
    ```bash
    qvm-shutdown --wait sys-usb
-   qvm-pci detach --persistent sys-usb-webcam dom0:<BDF>
-   qvm-pci attach --persistent sys-usb dom0:<BDF>
+   qvm-pci unassign sys-usb-webcam dom0:<BDF>
+   qvm-pci attach --persistent --option no-strict-reset=true sys-usb dom0:<BDF>
    ```
 
-   If the last command fails because the controller does not support a strict
-   reset, repeat it with `--option no-strict-reset=true` after `--persistent`.
-   The default Qubes setup assigns USB controllers to `sys-usb` this way.
+   The last command gives the controller back to `sys-usb` the way the Qubes
+   installer assigns USB controllers.
 4. Restart the computer normally. The GRUB edit applied only to one boot, and
    `sys-usb` owns the controller again.
 
@@ -661,19 +648,19 @@ sequential path it also creates `seqs-qr-scanner` (a disposable that scans the
 QR code), `A-qr-staging` (a persistent offline qube that keeps the encrypted
 file while the computer is off), and the dom0 script
 `/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential
-path, the build stops with `Configured controller is not assigned to sys-usb`
-if the configured BDF is not a controller `sys-usb` currently owns; recheck
-the BDF.
+path, the build stops with `Configured controller is not attached to sys-usb`
+if the configured BDF is not a controller that the running `sys-usb` holds;
+recheck the BDF, and that `sys-usb` is running.
 
-If the build, or a later start of `sys-usb-webcam`, fails because the
-controller cannot be reset, the reset check was wrong for this controller. On
-the dedicated-controller path, the controller is then unsuitable; give it
-back to `sys-usb` with steps 3 and 4 of the recovery under
+The build assigns the controller without resetting it. If `sys-usb-webcam`
+later fails to start because the controller cannot be reset, the reset check
+was wrong for this controller. On the dedicated-controller path, the
+controller is then unsuitable; give it back to `sys-usb` with steps 3 and 4 of
+the recovery under
 [Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
-On the sequential path, a failed start makes the scan script say so and power
-off after 60 seconds without scanning. Whether the build or a later start
-failed, set `webcam_usb_no_strict_reset` to `True`, commit, build again, and
-repeat the transfer from
+On the sequential path, the scan script says so and powers off after 60
+seconds without scanning; set `webcam_usb_no_strict_reset` to `True`, commit,
+build again, and repeat the transfer from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer).
 
 ## Check the setup
@@ -696,16 +683,18 @@ Having no network does not stop
 (the Qubes service that lets qubes copy files, open links, and send input to
 each other), so SEQS also installs qrexec policies (dom0 rules deciding which
 qube may use which service). Check that the display qubes may neither hand
-links to the browser qube nor start a disposable, as a second layer behind the
-unset default disposable. In a dom0 terminal of the sending computer, run:
+links to the browser qube nor use the services that the Qubes default policy
+lets into a disposable without asking, as a second layer behind the unset
+default disposable. In a dom0 terminal of the sending computer, run:
 
 ```bash
 grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see `deny` lines for `qubes.OpenURL`, `qubes.OpenInVM`,
-`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI` from each of
-`A-qr-display`, `@dispvm:A-qr-display`, and `D-qr-display`.
+You should see `deny` lines for `qubes.OpenURL` and for these disposable
+services from each of `A-qr-display`, `@dispvm:A-qr-display`, and
+`D-qr-display`: `qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`,
+`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -744,21 +733,17 @@ of the receiving computer, run:
 
 ```bash
 cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
-```
-
-You should see `deny` lines for `qubes.InputKeyboard`, `qubes.InputMouse`,
-`qubes.InputTablet`, `qubes.Filecopy`, `qubes.OpenURL`, `qubes.OpenInVM`,
-`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI` from `sys-usb-webcam`,
-and for the input services and `qubes.OpenURL` from `@dispvm:A-qr-camera`. The
-camera disposables and `A-qr-staging` get their disposable denies from the same
-policy file as the display qubes; to see them, run:
-
-```bash
 grep -E 'qr-camera|qr-staging' /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see the same five services denied for `A-qr-camera`,
-`@dispvm:A-qr-camera`, and `A-qr-staging`.
+The first file must deny the input services (`qubes.InputKeyboard`,
+`qubes.InputMouse`, `qubes.InputTablet`) and `qubes.OpenURL` from
+`sys-usb-webcam`, `@dispvm:A-qr-camera`, and, on the sequential path,
+`seqs-qr-scanner`; it must also deny the disposable services listed for the
+sending computer from `sys-usb-webcam` and `seqs-qr-scanner`, and
+`qubes.Filecopy` from `sys-usb-webcam`. The `grep` lines must deny
+`qubes.OpenURL` and the disposable services from `A-qr-camera`,
+`@dispvm:A-qr-camera`, and, on the sequential path, `A-qr-staging`.
 
 On the sequential path, also run:
 
@@ -807,9 +792,9 @@ continue. The same rule applies whenever this happens during a transfer.
 ### Rehearse with a throwaway file
 
 Run the whole transfer once with a throwaway file before you transfer a real
-secret. Parts of this procedure have not been tested on every Qubes release
-and computer, and a failure costs nothing when no secret is involved. In a
-terminal in the source key qube, run:
+secret. Parts of this procedure, including the sequential scan script, have not
+yet been tested on Qubes 4.3, and a failure costs nothing when no secret is
+involved. In a terminal in the source key qube, run:
 
 ```bash
 mkdir ~/qr-rehearsal && cd ~/qr-rehearsal && head -c 1000 /dev/urandom > master.key
@@ -831,14 +816,11 @@ The rehearsal succeeds only if each of these happens as described:
 - all four fingerprint groups match in step 5; and
 - step 6 ends with `600 master.key`.
 
-If anything else happens, find the cause before you use a real secret. The
-sequential scan script has not been tested on Qubes 4.3, whose USB device
-listing may differ; if the script refuses to scan at every attempt there, this
-is a likely cause. The scan relies on `zbarcam` adding no line break to the
-scanned data, which holds for the zbar versions in Debian 12 and 13 (0.23.92
-and 0.23.93). If the fingerprints differ at every attempt while the scan
-otherwise works, this may not hold for your template, and the scan commands
-need a change before use.
+If anything else happens, find the cause before you use a real secret. The scan
+relies on `zbarcam` adding no line break to the scanned data, which holds for
+the zbar versions in Debian 12 and 13 (0.23.92 and 0.23.93). If the
+fingerprints differ at every attempt while the scan otherwise works, this may
+not hold for your template, and the scan commands need a change before use.
 
 ## Transfer a file
 
@@ -1007,14 +989,14 @@ sudo /usr/local/sbin/seqs-qr-sequential
 ```
 
 The script checks that the required qubes exist, that the camera-side qubes
-have no NetVM, and that `A-qr-staging` holds no old `key.asc`. It then shows
-the controller, the qube names, and the USB devices now in `sys-usb`. Only
-your USB keyboard and mouse, and internal devices you found on another
-controller, may be listed. If anything else is listed, an internal device may
-have been switched back on, for example by a firmware update: do not type
-`START`; press `Enter` to end the script, switch the device off as described
-under [Find the internal USB devices](#find-the-internal-usb-devices), and
-run the script again. Otherwise, type `START` in capital letters. After that:
+have no NetVM and no default disposable, and that `A-qr-staging` holds no old
+`key.asc`. It then lists the USB devices now in `sys-usb`. Only your USB
+keyboard and mouse, and internal devices you found on another controller, may
+be listed. If anything else is listed, an internal device may have been
+switched back on, for example by a firmware update: do not type `START`; press
+`Enter` to end the script, switch the device off as described under
+[Find the internal USB devices](#find-the-internal-usb-devices), and run the
+script again. Otherwise, type `START` in capital letters. After that:
 
 1. Unplug every USB keyboard and mouse right away. After 10 seconds the
    script stops normal `sys-usb`. If you cannot unplug them in time, press
@@ -1082,7 +1064,7 @@ Then shut down `A-qr-staging` in the Qubes Domains widget.
 The fingerprint check detects whether the file the target received differs
 from the source's `key.asc`, before GnuPG reads it. It compares a shortened
 hash, so a match makes an undetected change very unlikely rather than
-impossible; the numbers follow the commands.
+impossible.
 
 First check that the webcam is unplugged and that every camera and webcam qube
 on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts

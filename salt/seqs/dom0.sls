@@ -299,6 +299,8 @@ seqs-policy-qr-input-deny:
         qubes.OpenURL        *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.OpenInVM       *  {{ webcam_usb_qube }}  @anyvm    deny
         qubes.OpenInVM       *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.StartApp       *  {{ webcam_usb_qube }}  @dispvm   deny
+        qubes.GetImageRGBA   *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMShell        *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExec         *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExecGUI      *  {{ webcam_usb_qube }}  @dispvm   deny
@@ -314,6 +316,8 @@ seqs-policy-qr-input-deny:
         qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @dispvm   deny
         qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @anyvm    deny
         qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.StartApp       *  {{ webcam_sequential_scanner }}  @dispvm   deny
+        qubes.GetImageRGBA   *  {{ webcam_sequential_scanner }}  @dispvm   deny
         qubes.VMShell        *  {{ webcam_sequential_scanner }}  @dispvm   deny
         qubes.VMExec         *  {{ webcam_sequential_scanner }}  @dispvm   deny
         qubes.VMExecGUI      *  {{ webcam_sequential_scanner }}  @dispvm   deny
@@ -425,8 +429,9 @@ seqs-policy-browser-suppress:
         # the @anyvm allow rule -- the opt-out is enforced at the dom0
         # boundary, not just at each qube's xdg config. The @dispvm lines
         # state the disposable target explicitly.
-        # Offline qubes also lose every default route into a new disposable,
-        # which normally has network access. Their unset default_dispvm is
+        # Offline qubes also lose every service that the Qubes default policy
+        # lets into a new disposable without asking; that disposable normally
+        # has network access. Their unset default_dispvm is
         # the primary control; these denies are a second layer.
         # Existing strict denies for SEQS-managed qubes are preserved across
         # partial upgrades; use browser_suppress_prune to remove stale entries.
@@ -436,6 +441,8 @@ seqs-policy-browser-suppress:
         {%- if vm in offline_subjects %}
         qubes.OpenInVM  *  {{ vm }}  @anyvm  deny
         qubes.OpenInVM  *  {{ vm }}  @dispvm  deny
+        qubes.StartApp  *  {{ vm }}  @dispvm  deny
+        qubes.GetImageRGBA  *  {{ vm }}  @dispvm  deny
         qubes.VMShell  *  {{ vm }}  @dispvm  deny
         qubes.VMExec  *  {{ vm }}  @dispvm  deny
         qubes.VMExecGUI  *  {{ vm }}  @dispvm  deny
@@ -781,21 +788,25 @@ seqs-webcam-usb-backend:
         done
 {% else %}
         # Sequential mode is valid only when this is already the physical
-        # controller used by the configured normal USB backend.
+        # controller used by the configured normal USB backend. Qubes 4.3
+        # lists a qube's PCI devices only while it runs.
         qvm-pci list {{ webcam_normal_usb_qube }} 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }' || {
-          echo 'Configured controller is not assigned to {{ webcam_normal_usb_qube }}' >&2
+          echo 'Configured controller is not attached to {{ webcam_normal_usb_qube }}; check the BDF and that {{ webcam_normal_usb_qube }} is running' >&2
           exit 1
         }
 {% endif %}
         qvm-shutdown --wait {{ webcam_usb_qube }} || true
+        # Drop an earlier webcam assignment so that a rerun can recreate it
+        # with the configured reset option; Qubes refuses a duplicate. Qubes
+        # 4.3 removes it with unassign, 4.2 with detach of the halted qube.
+        qvm-pci unassign {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
+        qvm-pci detach {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
 {% if webcam_mode == 'sequential' %}
-        # Remove any prior attachment options, then recreate the webcam
-        # assignment: strict reset by default, or no-strict-reset only when
+        # Strict reset by default, or no-strict-reset only when
         # webcam_usb_no_strict_reset is set for a controller without a reset
         # method. Either way the ceremony ends in a power-off, so sys-usb
         # receives the controller back only after a cold boot. The normal
         # sys-usb assignment remains; only one owner may run at a time.
-        qvm-pci detach --persistent {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
 {% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
 {% if webcam_mode == 'dedicated' %}

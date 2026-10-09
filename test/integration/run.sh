@@ -277,6 +277,8 @@ qubes.OpenURL  *  A-keepass  @anyvm  deny
 qubes.OpenURL  *  A-keepass  @dispvm  deny
 qubes.OpenInVM  *  A-keepass  @anyvm  deny
 qubes.OpenInVM  *  A-keepass  @dispvm  deny
+qubes.StartApp  *  A-keepass  @dispvm  deny
+qubes.GetImageRGBA  *  A-keepass  @dispvm  deny
 qubes.OpenURL  *  @dispvm:A-keepass  @anyvm  deny
 qubes.OpenURL  *  D-keepass  @anyvm  deny
 qubes.OpenURL  *  A-wallet-ledger  @anyvm  deny

@@ -100,9 +100,10 @@ flags:
   wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
   at the qube's xdg config and via dom0 qrexec deny rules for `qubes.OpenURL`.
-  For `offline` qubes, dom0 also denies `qubes.OpenInVM` and starting commands
-  in a disposable, so an offline qube cannot open files in other qubes or in a
-  disposable; copy files with `qvm-copy` instead.
+  For `offline` qubes, dom0 also denies `qubes.OpenInVM` and every other
+  service that the Qubes default policy lets into a disposable without asking,
+  so an offline qube cannot open files in other qubes or start a disposable;
+  copy files with `qvm-copy` instead.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates

@@ -122,12 +122,14 @@ def test_dom0_happy_path():
         for target in ("@anyvm", "@dispvm"):
             check("qubes.OpenInVM  *  %s  %s  deny" % (subject, target) in suppress,
                   "open-in-qube handoff to %s must be denied for %s" % (target, subject))
-        for service in ("qubes.VMShell", "qubes.VMExec", "qubes.VMExecGUI"):
+        for service in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
+                        "qubes.VMExec", "qubes.VMExecGUI"):
             check("%s  *  %s  @dispvm  deny" % (service, subject) in suppress,
                   "%s to a disposable must be denied for %s" % (service, subject))
     check("qubes.OpenURL  *  A-wallet-ledger  @dispvm  deny" in suppress
           and "qubes.OpenInVM  *  A-wallet-ledger" not in suppress
-          and "qubes.VMShell  *  A-wallet-ledger" not in suppress,
+          and "qubes.VMShell  *  A-wallet-ledger" not in suppress
+          and "qubes.StartApp  *  A-wallet-ledger" not in suppress,
           "networked no_handoff qubes keep disposables, only the link handoff is denied")
     offline = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
     check("default_dispvm none" in offline,
@@ -299,8 +301,9 @@ def test_dom0_sequential_qr_mode():
     check("qubes.InputKeyboard  *  @dispvm:A-qr-camera  @adminvm  deny" in deny,
           "camera disposables must be denied dom0 input")
     for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
-        for service in ("qubes.OpenInVM ", "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI"):
-            check("%s      *  %s  @dispvm   deny" % (service, subject) in deny,
+        for service in ("qubes.OpenInVM ", "qubes.StartApp ", "qubes.GetImageRGBA",
+                        "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI"):
+            check("%s   *  %s  @dispvm   deny" % (service.ljust(18), subject) in deny,
                   "camera-side qube %s must not reach a disposable via %s" % (subject, service.strip()))
     for state in ("seqs-webcam-usb-backend", "seqs-qr-sequential-scanner"):
         check("default_dispvm none" in state_arg(parsed, state, "cmd.run", "name"),
@@ -312,6 +315,11 @@ def test_dom0_sequential_qr_mode():
           "sequential mode must verify the controller through qvm-pci")
     check("pcidevs" not in backend,
           "PCI ownership is not a qvm-prefs property")
+    check("detach --persistent" not in text,
+          "qvm-pci detach has no --persistent option on Qubes 4.2 or 4.3")
+    unassign = backend.find("qvm-pci unassign sys-usb-webcam dom0:00_14.0")
+    check(0 <= unassign < backend.find("qvm-pci attach --persistent"),
+          "a rerun must drop the old webcam assignment before recreating it")
 
 
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
