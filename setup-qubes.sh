@@ -458,9 +458,10 @@ readTargets() {
 }
 
 # verifyAirgap -- independent post-apply check that every 'offline' qube really
-# has no netvm. The dom0 state sets this, but qvm-prefs semantics are
-# release-dependent and this is the most security-critical pref in the setup
-# (wallet/vault air gap), so refuse to provision anything if it is not in effect.
+# has no netvm and no default disposable. The dom0 state sets both, but
+# qvm-prefs semantics are release-dependent and these are the most
+# security-critical prefs in the setup (wallet/vault air gap), so refuse to
+# provision anything if they are not in effect.
 verifyAirgap() {
 	local vm nv dv
 	for vm in "${OFFLINE_TARGETS[@]}"; do
@@ -472,7 +473,7 @@ verifyAirgap() {
 			*) die "offline qube '${vm}' still has netvm '${nv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;
 		esac
 		# A default disposable usually has network access and is reachable
-		# through qubes.OpenInVM, so it must be unset as well.
+		# without a prompt through qubes.OpenInVM and similar services.
 		dv="$(qvm-prefs -- "${vm}" default_dispvm 2>/dev/null)" \
 			|| die "could not read the default_dispvm of offline qube '${vm}' -- refusing to provision."
 		case "${dv,,}" in

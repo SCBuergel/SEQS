@@ -720,9 +720,10 @@ In a dom0 terminal of the receiving computer, run:
 qvm-pci list --assignments
 ```
 
-On the dedicated-controller path, your controller must be assigned only to
-`sys-usb-webcam`. On the sequential path, it is assigned to both `sys-usb` and
-`sys-usb-webcam`. Qubes refuses to start a qube whose controller another
+Assigned qubes are marked with `*`; an unmarked name is a qube that is using
+the controller right now. On the dedicated-controller path, your controller
+must be assigned only to `sys-usb-webcam`. On the sequential path, it is
+assigned to both `sys-usb` and `sys-usb-webcam`. Qubes refuses to start a qube whose controller another
 running qube holds, and the script stops `sys-usb` before starting
 `sys-usb-webcam`.
 
