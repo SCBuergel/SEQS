@@ -723,9 +723,9 @@ qvm-pci list --assignments
 Assigned qubes are marked with `*`; an unmarked name is a qube that is using
 the controller right now. On the dedicated-controller path, your controller
 must be assigned only to `sys-usb-webcam`. On the sequential path, it is
-assigned to both `sys-usb` and `sys-usb-webcam`. Qubes refuses to start a qube whose controller another
-running qube holds, and the script stops `sys-usb` before starting
-`sys-usb-webcam`.
+assigned to both `sys-usb` and `sys-usb-webcam`. Qubes refuses to start a qube
+whose controller another running qube holds, and the script stops `sys-usb`
+before starting `sys-usb-webcam`.
 
 ### Receiving computer: check the qrexec policies
 
