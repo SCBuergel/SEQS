@@ -347,14 +347,14 @@ is internal. Its identifier, such as `sys-usb:3-10`, names its position in
 and mouse.
 
 On the sequential path, switch off every listed device in the firmware
-settings, then repeat the check. If the repeated check lists nothing, you are done here. Any device that
-remains, such as a built-in keyboard that uses USB, must be on a different
-controller from the webcam's, which the next subsection checks; if it is on
-the same controller, the sequential path is not possible with that socket.
-If a built-in camera that cannot be switched off shares the controller of the
-USB-A sockets, a USB 3 webcam in a USB-C socket may still work: on many Intel
-laptops, the USB 3 wires of the USB-C sockets lead to the other controller,
-which the next subsection shows with a USB 3 test device.
+settings, then repeat the check. If the repeated check lists nothing, you are
+done here. Any device that remains, such as a built-in keyboard that uses USB,
+must be on a different controller from the webcam's, which the next subsection
+checks; if it is on the same controller, the sequential path is not possible
+with that socket. If a built-in camera that cannot be switched off shares the
+controller of the USB-A sockets, a USB 3 webcam in a USB-C socket may still
+work: on many Intel laptops, the USB 3 wires of the USB-C sockets lead to the
+other controller, which the next subsection shows with a USB 3 test device.
 
 The devices must stay switched off for every later transfer. The scan script
 shows the devices in `sys-usb` before every scan, so that you notice one that
@@ -405,8 +405,8 @@ the SEQS configuration. Find the line of the test device's bus, and match its
 description to a line of the dom0 controller list: that line's BDF is the
 webcam's controller. In the example, a test device listed as `sys-usb:1-2` is
 on bus 1; the `usb1` line names the PCH xHCI Host Controller, which the dom0
-list shows as `dom0:00_14.0`, so the BDF is `00_14.0`. Internal devices that remained switched on must lead to a
-different description.
+list shows as `dom0:00_14.0`, so the BDF is `00_14.0`. Internal devices that
+remained switched on must lead to a different description.
 
 If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`.
 In that case, or if no line of the dom0 list has the same description, which
@@ -561,13 +561,13 @@ controller card.
 
 ### Before you build on the dedicated-controller path
 
-Arrange a second way to type in dom0, such as a built-in keyboard that does
-not use USB or a keyboard on another controller. The build stops `sys-usb`,
-takes the controller away from it, and starts `sys-usb` again without it, so
-USB devices on its other controllers return after a short pause. The
-assignment survives reboots; setting the mode back to `disabled` does not undo it. If you chose
-the wrong BDF and it carries your only keyboard, the keyboard stops working
-until you undo the assignment as follows:
+Arrange a second way to type in dom0, such as a built-in keyboard that does not
+use USB or a keyboard on another controller. The build stops `sys-usb`, takes
+the controller away from it, and starts `sys-usb` again without it, so USB
+devices on its other controllers return after a short pause. The assignment
+survives reboots; setting the mode back to `disabled` does not undo it. If you
+chose the wrong BDF and it carries your only keyboard, the keyboard stops
+working until you undo the assignment as follows:
 
 1. Unplug every USB device except the keyboard, then restart the computer by
    pressing the power button.
