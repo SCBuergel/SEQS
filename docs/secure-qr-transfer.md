@@ -1144,7 +1144,6 @@ files, in the target key qube. Retry only after you have found the cause, or if
 you will type the passphrase on a keyboard that does not go through a USB qube.
 To retry, shut down `D-qr-display` if it is still running, then repeat from
 [Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer);
-
 the source `key.asc` can be reused.
 
 ### Step 6: Decrypt (receiving computer)
