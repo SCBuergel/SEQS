@@ -367,6 +367,16 @@ def test_dom0_qr_mode_without_camera_in_selection():
     check(unresolved_requisites(parsed) == [],
           "webcam states must not require the unrendered qr-camera state: %r"
           % unresolved_requisites(parsed))
+    # A run for an unrelated qube, with the whole QR setup already built.
+    sc = Scenario(sys_usb=True, selection="brave",
+                  existing_qubes=["A-qr-camera", "A-qr-staging"],
+                  tagged_qubes=["A-qr-camera", "A-qr-staging"])
+    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed,
+          "existing QR qubes satisfy the webcam pre-flight for other runs")
+    check(unresolved_requisites(parsed) == [],
+          "webcam states must not require unrendered QR states: %r"
+          % unresolved_requisites(parsed))
 
 
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
