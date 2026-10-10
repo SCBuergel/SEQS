@@ -306,6 +306,25 @@ def test_dom0_browser_required_only_for_handoff():
           "an existing A-brave satisfies a handoff qube")
 
 
+def test_dom0_component_menu_entries():
+    case("dom0.sls: a component's own menu entry is listed in its app qube and named disposable menus")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="qr-display\nkeepass\nbrave"))
+    for vm, entry in [("D-qr-display", "qr-display.desktop"), ("A-keepass", "keepass.desktop")]:
+        sid = "seqs-menu-" + vm
+        check(sid in parsed, "%s must get its component menu entry" % vm)
+        if sid in parsed:
+            name = state_arg(parsed, sid, "cmd.run", "name")
+            check(entry in name and ("qvm-features -- %s menu-items" % vm) in name,
+                  "%s must add %s to its menu-items feature" % (vm, entry))
+    check("seqs-menu-A-brave" not in parsed, "brave ships no menu.desktop, so no menu state")
+    check("seqs-menu-A-qr-display" not in parsed,
+          "a disposable template gets no entry: it would run the component in the template itself")
+    check(not unresolved_requisites(parsed), "menu states must require rendered states only")
+    _, parsed = render_state("qube", "Z-qr-display")
+    check("seqs-appmenus-sync" in parsed and "qr-display" in state_arg(parsed, "seqs-appmenus-sync", "cmd.run", "onlyif"),
+          "the template must report its applications to dom0 when a component ships a menu entry")
+
+
 def test_dom0_refuses_recipe_change():
     case("dom0.sls: refuses to repurpose a managed qube recorded for another recipe")
     _, parsed = render_state(

@@ -140,6 +140,10 @@ class Scenario:
         return False
 
     def file_file_exists(self, path):
+        # The staged salt tree mirrors the repository's component directories.
+        marker = "/srv/salt/seqs/files/components/"
+        if path.startswith(marker):
+            return os.path.isfile(os.path.join(REPO_ROOT, "install-scripts/components", path[len(marker):]))
         return path in self.existing_files
 
     def file_read(self, path):

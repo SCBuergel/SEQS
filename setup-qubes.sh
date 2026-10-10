@@ -666,6 +666,12 @@ echo ""
 
 # Commit template root volumes before any app qube snapshots them.
 shutdownAll "${TEMPLATE_TARGETS[@]}"
+# A template reports new menu entries while it is provisioned, which refreshes
+# the menus of its app qubes but not of named disposables one level further.
+for vm in "${DISPOSABLE_TARGETS[@]}"; do
+	qvm-appmenus --update -- "${vm}" >/dev/null 2>&1 \
+		|| echo "WARNING: could not refresh the menu of ${vm}" >&2
+done
 
 echo ""
 	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"

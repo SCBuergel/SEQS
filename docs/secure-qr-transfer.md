@@ -392,6 +392,10 @@ on bus 1; the `usb1` line names the PCH xHCI Host Controller, which the dom0
 list shows as `dom0:00_14.0`, so the BDF is `00_14.0`. Internal devices that
 remained switched on must lead to a different description.
 
+A line with the hardware ID `0x8086 0x24cd` belongs to the virtual USB
+controller that Qubes gives the `sys-usb` qube itself, not to a controller of
+the computer; no test device appears on its bus, so ignore it.
+
 If the lines end after the hardware ID, `lspci` is not installed in `sys-usb`.
 In that case, or if no line of the dom0 list has the same description, which
 can happen because `sys-usb` and dom0 may use different versions of the
@@ -902,7 +906,9 @@ Start `D-qr-display` before copying, by opening a terminal in it: choose
 `Display QR (offline)` under `D-qr-display` in the Qubes menu, or, if the menu
 does not offer it, run `qvm-run D-qr-display x-terminal-emulator` in a dom0
 terminal. SEQS qubes delete `~/QubesIncoming` when they start, so a copy that
-itself starts `D-qr-display` could be deleted by that cleanup.
+itself starts `D-qr-display` could be deleted by that cleanup. If you used the
+dom0 command, that dom0 terminal stays busy until the new terminal is closed;
+leave it open, because closing it also closes the terminal in `D-qr-display`.
 
 Open a new terminal in the source key qube, go to the directory containing
 `key.asc`, and run:
@@ -927,9 +933,12 @@ qrencode -l M -t ansiutf8 < key.asc
 ```
 
 The terminal should show one complete QR code: a square with a light border on
-all sides and no wrapped lines. A code for a file near the size limit is about
-185 characters wide, so maximize the terminal and make the font smaller (in
-most terminals with `Ctrl+-`) until the whole code fits. If `qrencode` instead
+all sides and no wrapped lines. The code is large: the 1,000-byte rehearsal
+file already gives one about 155 characters wide and 77 lines high, and a file
+near the size limit one about 185 characters wide and 93 lines high. At a
+typical default font size it does not fit even in a maximized terminal, so
+maximize the terminal and make the font smaller (in most terminals with
+`Ctrl+-`) until the whole code fits. If `qrencode` instead
 reports that it failed to encode the input data, stop: the file is too big for
 this procedure. Keep `D-qr-display` running only until the receiving computer
 has scanned the code, then shut it down.
@@ -957,7 +966,7 @@ use step 4b.
 4. Open a terminal in `seqs-qr-scanner`, the camera disposable: choose a
    terminal under `seqs-qr-scanner` in the Qubes menu, or, if the menu offers
    none, run `qvm-run seqs-qr-scanner x-terminal-emulator` in a dom0
-   terminal.
+   terminal and leave that dom0 terminal open while you scan.
 5. Attach only the webcam to `seqs-qr-scanner` with the Devices widget.
 6. In the `seqs-qr-scanner` terminal, run:
 

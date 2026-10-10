@@ -345,6 +345,25 @@ checkTemplateApt() {
 	fi
 }
 
+# checkMenu KIND VM RECIPE -- every component of RECIPE that ships its own
+# menu entry has a generated dom0 menu entry that starts it in VM; a
+# disposable template must have none.
+checkMenu() {
+	local kind="$1" vm="$2" recipe="$3" comp found
+	for comp in $(componentsFor "${recipe}"); do
+		sudo test -f "${SALT_TREE}/files/components/${comp}/menu.desktop" || continue
+		found=0
+		grep -lF "qubes.StartApp+${comp}" ~/.local/share/applications/*.desktop 2>/dev/null \
+			| xargs -r grep -lF -- "-- ${vm} qubes.StartApp" >/dev/null 2>&1 && found=1
+		if [ "${kind}" = "app" ] && [ "$(catField "${recipe}" dispvm_template)" = "True" ]; then
+			[ "${found}" -eq 0 ] && pass "${vm}: no menu entry for ${comp} in the disposable template" \
+				|| fail "${vm}: disposable template offers ${comp} in its menu"
+		else
+			[ "${found}" -eq 1 ] && pass "${vm}: menu entry for ${comp}" || fail "${vm}: no menu entry for ${comp}"
+		fi
+	done
+}
+
 # checkMarkers VM ROLE RECIPE -- every component left its .done marker.
 checkMarkers() {
 	local vm="$1" role="$2" comps comp have missing=""
@@ -503,9 +522,13 @@ check() {
 				qvm-check --running --quiet -- "${name}" >/dev/null 2>&1 || ours=1
 				checkMarkers "${name}" app "${recipe}"
 				checkSetup app "${name}" "${recipe}"
+				checkMenu app "${name}" "${recipe}"
 				smoke "${name}" "${recipe}"
 				;;
-			disposable) checkSetup disposable "${name}" "${recipe}" ;;
+			disposable)
+				checkSetup disposable "${name}" "${recipe}"
+				checkMenu disposable "${name}" "${recipe}"
+				;;
 		esac
 		if [[ " ${flags} " == *" offline "* ]]; then
 			if isNone "${nv}" && isNone "${dv}"; then

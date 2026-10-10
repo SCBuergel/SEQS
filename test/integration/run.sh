@@ -34,7 +34,7 @@ new_sandbox() {
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE SEQS_MOCK_DEFAULT_DISPVM
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
-	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG
+	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG SEQS_MOCK_APPMENUS_LOG
 	unset SEQS_BROWSER_SUPPRESS_POLICY
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
@@ -57,6 +57,7 @@ run_setup() {  # supplies the explicit repository qube to workflows with FETCH
 # ── Scenario 1: full happy-path install on a fresh dom0 ────────────────────
 echo "== scenario: fresh full workflow (fetch + stage + build) =="
 new_sandbox
+export SEQS_MOCK_APPMENUS_LOG="${SBX}/qvm-appmenus.log"
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
@@ -85,6 +86,12 @@ grep -q "disposable D-qr-display qr-display offline" "${SEQS_TARGETS_FILE}" 2>/d
 	|| bad "the named disposable should be listed offline in targets"
 grep -q "Air gap verified:.*D-qr-display" <<<"$out" && ok \
 	|| bad "the named disposable should be independently air-gap verified"
+# Named disposables get their menus refreshed after the template step: dom0
+# refreshes only a template's direct children when it reports new entries.
+grep -qx -- "--update -- D-qr-display" "${SEQS_MOCK_APPMENUS_LOG}" 2>/dev/null && ok \
+	|| bad "the runner must refresh the named disposable's menu"
+! grep -q "A-qr-display" "${SEQS_MOCK_APPMENUS_LOG}" 2>/dev/null && ok \
+	|| bad "only named disposables need the runner's menu refresh"
 rm -rf "${SBX}"
 
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────

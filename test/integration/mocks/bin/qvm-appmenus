@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Mock qvm-appmenus: menus are not modelled; SEQS_MOCK_APPMENUS_LOG records calls.
+if [ -n "${SEQS_MOCK_APPMENUS_LOG:-}" ]; then
+	printf '%s\n' "$*" >> "${SEQS_MOCK_APPMENUS_LOG}"
+fi
+exit 0

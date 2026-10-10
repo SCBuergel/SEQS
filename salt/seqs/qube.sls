@@ -149,6 +149,18 @@ seqs-install-{{ comp }}:
 {% endfor %}
 
 {% if role == 'template' %}
+# ── Report the template's applications to dom0, so that a component's own
+# menu entry (installed above, not by a package) becomes available for the
+# app qube menus. Runs on every build while such an entry exists, so it also
+# reaches templates whose components were installed earlier; it is also what
+# regenerates the app qube menus after their menu-items change, so do not hide
+# it behind a completion marker.
+seqs-appmenus-sync:
+  cmd.run:
+    - name: /usr/lib/qubes/qubes-trigger-sync-appmenus.sh
+    - onlyif: test -x /usr/lib/qubes/qubes-trigger-sync-appmenus.sh && for c in {{ comps | join(' ') }}; do [ -e /usr/share/applications/$c.desktop ] && exit 0; done; exit 1
+    - order: last
+
 # ── Link-handoff .desktop handler (root volume, inherited by app qubes).
 # Installed into EVERY template; whether a given app qube actually hands
 # links off is gated per-qube by the xdg default below and at the dom0

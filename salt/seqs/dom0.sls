@@ -779,6 +779,36 @@ seqs-recipe-disposable-{{ name }}:
       - cmd: seqs-tag-disposable-{{ name }}
 {%     endif %}
 {%   endif %}
+
+{#   A component's own menu entry ships as menu.desktop and is installed in
+     the template as <component>.desktop; list it in the menus of the qubes
+     that run it. A disposable template gets none: its entry would run the
+     component in the template itself, whose files persist, instead of in the
+     named disposable. The state only adds entries, so it also re-adds one the
+     operator removed and leaves one behind when a component leaves the
+     recipe. qvm-appmenus regenerates menus in the dom0 user's home, so the
+     runner, not this root state, refreshes them. #}
+{%   set menu_entries = [] %}
+{%   for comp in q.get('components', []) if salt['file.file_exists']('/srv/salt/seqs/files/components/' ~ comp ~ '/menu.desktop') %}
+{%     do menu_entries.append(comp ~ '.desktop') %}
+{%   endfor %}
+{%   for vm in (([] if q.get('dispvm_template') else [app]) + ([dvm] if q.get('named_disposable') else [])) if menu_entries %}
+seqs-menu-{{ vm }}:
+  cmd.run:
+    - name: |
+        items="$(qvm-features -- {{ vm }} menu-items 2>/dev/null)"
+        for e in {{ menu_entries | join(' ') }}; do
+          case " $items " in *" $e "*) ;; *) items="${items:+$items }$e" ;; esac
+        done
+        qvm-features -- {{ vm }} menu-items "$items"
+    - unless: items=" $(qvm-features -- {{ vm }} menu-items 2>/dev/null) "; for e in {{ menu_entries | join(' ') }}; do case "$items" in *" $e "*) ;; *) exit 1 ;; esac; done
+    - require:
+{%     if vm == app %}
+      - cmd: seqs-recipe-app-{{ name }}
+{%     else %}
+      - cmd: seqs-recipe-disposable-{{ name }}
+{%     endif %}
+{%   endfor %}
 {% endfor %}
 
 {% if webcam_mode in ['dedicated', 'sequential'] %}
