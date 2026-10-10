@@ -140,8 +140,7 @@ it network access) keeps the plaintext `master.key` one software bug away from
 the network. The `vault` qube that the Qubes installer creates by default has
 no NetVM and is a suitable choice on either computer.
 
-SEQS does not create the key qubes, because their names and contents differ for
-every user.
+SEQS does not create the key qubes.
 
 ## Why the webcam must not share a USB controller with the keyboard
 
@@ -554,7 +553,7 @@ chose the wrong BDF and it carries your only keyboard, the keyboard stops
 working until you undo the assignment as follows:
 
 1. Unplug every USB device except the keyboard, then restart the computer by
-   pressing the power button.
+   pressing the power button, or holding it if a short press does nothing.
 2. In the GRUB boot menu, select the Qubes entry and press `e`. In the line
    that contains `rd.qubes.hide_all_usb`, delete that word, then press
    `Ctrl+X` or `F10` to boot. For this one boot, dom0 itself drives the USB
