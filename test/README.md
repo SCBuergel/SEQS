@@ -105,7 +105,9 @@ needs a real Salt run. Two options, in ascending fidelity:
    not every edit.
 
    For a dedicated test machine that you drive over SSH instead of at its
-   keyboard, see [hardware/README.md](hardware/README.md).
+   keyboard, see [hardware/README.md](hardware/README.md). Its
+   `system-test.sh` resets that machine, installs the working copy from
+   scratch, checks every built qube, and reports durations and findings.
 
 ---
 

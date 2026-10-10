@@ -363,6 +363,49 @@ out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 grep -q "refusing unsafe name" <<<"$out" && ok || bad "expected the unsafe-name error"
 rm -rf "${SBX}"
 
+# ── Scenario 9: hardware test reset keeps the control path ──────────────────
+# test/hardware/dom0-test.sh reset deletes every SEQS qube on a test machine.
+# It must never remove the control qube or sys-net, must leave stock and
+# unrelated qubes alone, and must not delete an unmarked policy file.
+echo "== scenario: hardware test reset removes SEQS state, keeps test-ctl and sys-net =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+# The controller is named like a SEQS app qube, so only the protection keeps it.
+export SEQS_TEST_CTL_VM="A-ctl"
+printf '%s\n' "A-ctl running" "sys-net running" "sys-firewall running" \
+	"debian-13-xfce halted" "personal halted" "Z-keepass halted" "A-keepass running" \
+	"Z-qr-display halted" "A-qr-display halted" "D-qr-display halted" \
+	"seqs-qr-scanner running" > "${SEQS_MOCK_STATE}"
+export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d"
+export SEQS_ETC_DIR="${SBX}/etc/seqs" SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequential"
+export SEQS_TMP_DIR="${SBX}/tmp" SEQS_TEST_DELETE_VMS="${REPO}/delete-vms.sh"
+export SEQS_BROWSER_SUPPRESS_POLICY="${SEQS_POLICY_DIR}/28-browser-suppress.policy"
+mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_POLICY_DIR}" \
+	"${SEQS_ETC_DIR}" "${SBX}/sbin" "${SEQS_TMP_DIR}/seqs-stage.x"
+touch "${SEQS_QR_SCRIPT}"
+for p in 28-browser-suppress 29-browser; do
+	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"
+done
+echo "# Managed by SEQS test machine setup" > "${SEQS_POLICY_DIR}/20-seqs-test-control.policy"
+out="$(bash "${REPO}/test/hardware/dom0-test.sh" reset 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "reset exited non-zero ($rc): ${out}"
+remaining="$(cut -d' ' -f1 "${SEQS_MOCK_STATE}" | sort | tr '\n' ' ')"
+[ "${remaining}" = "A-ctl debian-13-xfce personal sys-firewall sys-net " ] && ok \
+	|| bad "reset left the wrong qubes: ${remaining}"
+for d in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_ETC_DIR}" \
+		"${SEQS_QR_SCRIPT}" "${SEQS_TMP_DIR}/seqs-stage.x" "${SEQS_POLICY_DIR}/29-browser.policy"; do
+	[ ! -e "${d}" ] && ok || bad "reset left ${d}"
+done
+[ -e "${SEQS_POLICY_DIR}/20-seqs-test-control.policy" ] && ok \
+	|| bad "reset must not remove the test-control policy"
+# An unmarked file under a SEQS policy name is reported and kept.
+echo "qubes.InputKeyboard * sys-usb @adminvm allow" > "${SEQS_POLICY_DIR}/30-user-input.policy"
+out="$(bash "${REPO}/test/hardware/dom0-test.sh" reset 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "reset should fail on an unmarked SEQS policy name"
+[ -e "${SEQS_POLICY_DIR}/30-user-input.policy" ] && ok || bad "reset removed an unmarked policy"
+unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_TMP_DIR SEQS_TEST_DELETE_VMS SEQS_TEST_CTL_VM
+rm -rf "${SBX}"
+
 echo
 echo "integration tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

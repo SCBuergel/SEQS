@@ -13,3 +13,4 @@ service-account*.json
 .secrets/
 
 *.swp
+test/hardware/results/

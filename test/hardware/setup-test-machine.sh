@@ -300,7 +300,7 @@ configureCtl() {
 set -e
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update -q
-apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y -q openssh-server curl zbar-tools
+apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y -q openssh-server curl zbar-tools git
 cat > /usr/local/bin/dom0 <<'CMD'
 #!/bin/sh
 # ${MARKER}
@@ -407,7 +407,7 @@ configureDom0() {
 # ${MARKER} -- runs stdin as a bash script in dom0. Test machines only.
 exec 2>&1
 if [ "\$(id -u)" -eq 0 ]; then
-	exec runuser -u ${DOM0_USER} -- /bin/bash -s
+	exec runuser -u ${DOM0_USER} -- env HOME=/home/${DOM0_USER} USER=${DOM0_USER} LOGNAME=${DOM0_USER} /bin/bash -s
 fi
 exec /bin/bash -s
 EOF

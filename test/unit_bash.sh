@@ -186,6 +186,28 @@ if grep -q FAIL "${tmp}/testmachine.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/testmachine.out")
 else ok; fi
 
+echo "== hardware system test: dom0-side helpers =="
+(
+	SEQS_SOURCE_ONLY=1 source ./test/hardware/dom0-test.sh
+	# A selection reaches the runner's command line, so only catalogue-shaped
+	# lists and "all" pass; nothing is run for a rejected one.
+	for s in "x;id" "" "Brave" "a,,b" "-all" "a b"; do
+		install "$s" >/dev/null 2>&1; [ $? -eq 2 ] || echo "FAIL install accepted [$s]"
+	done
+	for v in "" None none; do isNone "$v" || echo "FAIL isNone [$v]"; done
+	isNone sys-firewall && echo "FAIL isNone sys-firewall"
+	# qubesctl wraps salt-call output in {"local": ...}; both shapes parse.
+	CATALOGUE_JSON='{"local": {"dev-full": {"components": ["docker", "python"]}}}'
+	[ "$(componentsFor dev-full)" = "docker python" ] || echo "FAIL componentsFor local"
+	CATALOGUE_JSON='{"keepass": {"components": ["keepass"]}}'
+	[ "$(componentsFor keepass)" = "keepass" ] || echo "FAIL componentsFor plain"
+	CATALOGUE_JSON='not json'
+	[ -z "$(componentsFor keepass)" ] || echo "FAIL componentsFor must be empty on bad JSON"
+) > "${tmp}/dom0test.out" 2>&1
+if grep -q FAIL "${tmp}/dom0test.out"; then
+	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
+else ok; fi
+
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

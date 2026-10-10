@@ -102,19 +102,34 @@ reboot, which does not matter here.
 
 ## 3. Run the setup on the test machine
 
-Everything in this step happens on the test machine. Dom0 has no clipboard,
-so you type the command.
+Everything in this step happens on the test machine. You download the setup
+script in a disposable qube (one that is deleted when it closes), where you
+can paste commands, and then copy it into dom0, which has no clipboard and no
+network.
 
-Open a dom0 terminal: in the Qubes menu, open the gear (settings) section and
-choose the Xfce terminal. Type:
+Start a terminal in a disposable: in the Qubes menu, open the disposables
+section and choose the terminal of the default disposable template
+(`default-dvm`). To paste instead of type, start a browser in the same
+disposable by running `firefox &` in its terminal, open this README there, and
+copy the commands from it; a browser started from the Qubes menu would open in
+a different disposable. In the disposable's terminal:
 
 ```bash
-qvm-run -p --dispvm=default-dvm 'curl -fsSL https://raw.githubusercontent.com/SCBuergel/SEQS/main/test/hardware/setup-test-machine.sh' > t.sh; bash t.sh
+curl -fsSLo t.sh https://raw.githubusercontent.com/SCBuergel/SEQS/main/test/hardware/setup-test-machine.sh
+hostname
 ```
 
-The first part starts a disposable qube (one that is deleted when it closes),
-downloads the script there, and saves it in dom0 as `t.sh`; dom0 itself never
-touches the network. `bash t.sh` then runs it. The script:
+`hostname` prints the disposable's name, for example `disp1234`. Keep the
+disposable open until the script is in dom0.
+
+Open a dom0 terminal: in the Qubes menu, open the gear (settings) section and
+choose the Xfce terminal. Type, with the disposable's name:
+
+```bash
+qvm-run -p disp1234 'cat t.sh' > t.sh; bash t.sh
+```
+
+This copies the script into dom0 as `t.sh` and runs it. The script:
 
 1. Finds the network's address range and asks you to type `TEST MACHINE`.
    Type it exactly and press Enter.
@@ -178,28 +193,119 @@ The output is the list of running qubes on the test machine, produced by dom0.
 If the test machine's address changes later, edit the `HostName` line in
 `~/.ssh/config`.
 
-## 5. Run tests from your laptop
+## 5. Run the system test
 
-`dom0` runs either its arguments or a whole script in the test machine's
-dom0, and returns the output and exit status. These examples run in the
-controlling qube on your laptop:
+The system test installs SEQS on the test machine from scratch and reports
+everything that went wrong, how long each step took, and how large the
+installer is. It runs on your laptop, from a clone of this repository in the
+controlling qube, and tests your working copy, including changes you have
+not committed yet (untracked files are left out, and the test says so).
+
+It is the measuring step of an improvement loop for the installer, which is
+judged by four criteria in this order: it works, it is secure, it is fast, and
+it is small enough to audit. Each run produces the evidence for the first and
+third criteria, plus the installer's size in lines as a measure of the
+fourth; a person or an AI coding assistant reads the results, changes the
+code, and runs the test again.
+
+### What one run does
+
+| Phase | Where it runs | What happens |
+|---|---|---|
+| sync | laptop to `test-ctl` | Pushes the commit under test into `test-ctl`'s `/home/user/SEQS`, which serves as the runner's repository qube (`--repo-vm test-ctl`). |
+| reset | dom0 | Deletes every SEQS qube (all `D-`, `A-`, and `Z-` qubes and those tagged by SEQS) and all SEQS files in dom0, then verifies that none are left. |
+| install | dom0 | Runs the SEQS runner from the commit under test for the selected qubes, answering each `[y/N]` prompt with `y`. |
+| check | dom0 | Verifies what was built: see below. |
+| rerun | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
+
+The reset keeps `test-ctl`, `sys-net`, and every other qube that SEQS did not
+create, including the stock Qubes qubes and templates the installer builds on
+(`sys-firewall`, `sys-usb`, `debian-13-xfce`, and so on). A clean SEQS install
+needs them, and recreating them would mean reinstalling Qubes.
+
+The check phase verifies, for every qube the runner was asked to build, that:
+
+- it exists, has the expected kind (template, app qube, or disposable), and is
+  tagged as managed by SEQS;
+- every component recorded its completion marker
+  (`/rw/config/seqs/<component>.<role>.done` inside the qube);
+- templates are shut down after the install, and app qubes are based on
+  their SEQS template;
+- offline qubes have no network qube and no default disposable, and an
+  offline app qube really cannot open a connection to the internet;
+- networked app qubes have a network qube.
+
+It also checks that the runner recorded success, that every SEQS policy file
+in dom0 carries the SEQS marker, and that no temporary qube, policy, or file
+was left behind.
+
+### Running it
+
+In a terminal of the controlling qube on your laptop, in your clone of this
+repository:
+
+```bash
+test/hardware/system-test.sh
+```
+
+The output of every phase scrolls by as it happens. A run of the
+default selection (`keepass`, `qr-display`, and `brave`) takes a while, mostly
+for downloading packages into the new templates. At the end, a summary
+appears, similar to this (`N` stands for the measured seconds):
+
+```text
+phase     result  time
+sync      ok        Ns
+reset     ok        Ns
+install   ok        Ns
+check     ok        Ns
+rerun-install ok    Ns
+rerun-check ok      Ns
+
+Runner steps (install):
+<time> ==> <each step the runner announced>
+
+Findings (errors, warnings, failed checks):
+<matching lines from each phase log>
+
+Product size (lines, for auditability):
+<lines in setup-qubes.sh, delete-vms.sh, salt/, and install-scripts/>
+```
+
+The script exits with status 0 only if every phase succeeded. Everything is
+also saved under `test/hardware/results/<date-time>/`: `summary.txt` and one
+log per phase, with `test/hardware/results/latest` pointing to the newest
+run. The results directory is not committed.
+
+To test other qubes, name them, or build the whole catalogue:
+
+```bash
+test/hardware/system-test.sh --qubes keepass,signal
+test/hardware/system-test.sh --all
+test/hardware/system-test.sh --no-rerun
+```
+
+`--no-rerun` skips the second install, which saves time while you work on a
+problem in the first one.
+
+### Running your own commands in dom0
+
+`dom0` in `test-ctl` runs either its arguments or a whole script in the test
+machine's dom0 and returns the output. In the controlling qube on your
+laptop:
 
 ```bash
 ssh seqs-test dom0 qvm-ls --running
-ssh seqs-test dom0 < my-test.sh
+ssh seqs-test dom0 < my-check.sh
 ```
 
-The second form runs the local file `my-test.sh` in dom0, for example a
-sequence of `qvm-run --pass-io <qube> '<check>'` calls that test the qubes
-SEQS built.
+The second form runs the local file `my-check.sh` in dom0. There is no
+terminal on the dom0 side, so a command that waits for typed input cannot be
+answered this way; the system test gives the runner a terminal for this
+reason.
 
-There is no terminal (TTY) on the dom0 side. Commands that wait for typed
-confirmation, such as the SEQS runner's `[y/N]` prompts, cannot be answered
-this way yet.
-
-To reset between test runs, remove the qubes SEQS built with `delete-vms.sh`,
-as on any SEQS machine. If dom0 itself gets into a bad state, reinstall Qubes
-and repeat this guide from the Qubes installation in
+If dom0 itself gets into a bad state, reinstall Qubes and repeat this guide
+from the Qubes installation in
 [1. Prepare the test machine](#1-prepare-the-test-machine).
 
 ## Removing the remote control

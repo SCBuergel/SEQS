@@ -14,6 +14,19 @@ Do not claim that Qubes behavior has been tested unless it was tested on Qubes.
 The local harness validates rendering and orchestration with mocks; its limits
 are documented in `test/README.md`.
 
+## Design priorities
+
+Judge every change to SEQS and to its tests by these criteria, in this order:
+
+1. It works.
+2. It is secure.
+3. It is fast.
+4. It is minimal, so that it stays easy to audit.
+
+A faster or smaller design never justifies a weaker security property. Prefer
+test-only scaffolding over adding flags or code paths to the product for the
+sake of testing, and report timing and size changes alongside pass/fail.
+
 ## Start here
 
 1. Read `README.md` for the user workflow.
@@ -136,6 +149,16 @@ modifying:
 
 Hardware-bound verification commands are documented in `test/README.md`; do
 not run provisioning or deletion commands merely to validate a repository edit.
+
+When the user has set up the dedicated test machine described in
+`test/hardware/README.md` and asks for a hardware run, use
+`test/hardware/system-test.sh` from the controlling qube. It resets the test
+machine, installs the working copy from scratch, checks the result, and
+writes `test/hardware/results/<run>/summary.txt`. Work in a loop: read the
+summary and the phase logs, fix the root cause in the product (never by
+weakening a check or an invariant above), rerun, and compare durations and
+product size with the previous run. Only the test machine may be targeted;
+never run these scripts against another Qubes installation.
 
 ## Completion standard
 

@@ -8,6 +8,9 @@ what forkpty gives us. Whenever the child prints the prompt, we type y; all
 child output is mirrored to stdout so the test can assert on it. Exit status is
 propagated.
 
+The run ends when the child has printed nothing for PTY_RUN_IDLE_TIMEOUT
+seconds (default 30; 0 waits indefinitely, for real Salt runs on hardware).
+
 Usage: pty_run.py <cmd> [args...]
 """
 import os
@@ -28,12 +31,14 @@ def main():
         os.execvp(cmd[0], cmd)
         os._exit(127)
 
-    buf = b""
-    answered = set()
+    idle = float(os.environ.get("PTY_RUN_IDLE_TIMEOUT", "30")) or None
+    # Prompts have no trailing newline and may span two reads, so watch a short
+    # window of recent output; clearing it after a reply answers each prompt once.
+    window = b""
     out = sys.stdout.buffer
     while True:
         try:
-            r, _, _ = select.select([fd], [], [], 30)
+            r, _, _ = select.select([fd], [], [], idle)
         except (OSError, select.error):
             break
         if not r:
@@ -46,12 +51,10 @@ def main():
             break
         out.write(data)
         out.flush()
-        buf += data
-        tail = buf[-200:]  # prompts have no trailing newline; watch the tail
+        window = (window + data)[-400:]
         for needle, reply in PROMPTS.items():
-            key = (needle, buf.count(needle))
-            if needle in tail and key not in answered:
-                answered.add(key)
+            if needle in window:
+                window = b""
                 os.write(fd, reply)
 
     _, status = os.waitpid(pid, 0)
