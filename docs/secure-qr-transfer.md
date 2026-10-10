@@ -433,10 +433,10 @@ restarts, so your keyboard still works. In a dom0 terminal, run:
 qvm-pci unassign sys-usb dom0:00_14.0
 ```
 
-The output starts with `Unassigned`. If it says instead that the device is
-not assigned, the assignment dates from before an upgrade to Qubes 4.3 and
-records no device identity; run the command again with `--port` after
-`unassign`. Then run this as a single line, with your BDF, and add
+The output starts with `Unassigned`, or is empty if `sys-usb` was not
+running. If it says instead that the device is not assigned, the assignment
+dates from before an upgrade to Qubes 4.3 and records no device identity; run
+the command again with `--port` after `unassign`. Then run this as a single line, with your BDF, and add
 `--option no-strict-reset=true` after `--persistent` if the controller line
 showed that option:
 
