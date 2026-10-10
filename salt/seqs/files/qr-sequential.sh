@@ -27,6 +27,9 @@ teardown_and_poweroff() {
 	set +e
 	qvm-kill -- "$SCANNER_QUBE" >/dev/null 2>&1
 	qvm-kill -- "$WEBCAM_USB_QUBE" >/dev/null 2>&1
+	# A clean shutdown commits the received file to the staging qube's disk
+	# before the power-off; qvm-shutdown kills the qube if it ignores this.
+	qvm-shutdown --wait -- "$STAGING_QUBE" >/dev/null 2>&1
 	if [ "$exposed" -eq 1 ]; then
 		echo "Camera phase ended (status $rc). Powering off; do not reconnect USB input before power is off."
 		sync
