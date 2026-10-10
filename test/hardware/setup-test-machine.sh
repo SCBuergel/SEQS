@@ -210,31 +210,57 @@ detectLan() {
 # scanQr -- attach a USB webcam to test-ctl, read one QR code with zbarcam,
 # and put the key line it carries into KEYS_FILE.
 scanQr() {
-	local line id desc choice payload i
-	local -a ids=() descs=() cams=()
-	while IFS= read -r line; do
-		id="${line%% *}"
-		desc="$(sed -E 's/^[^ ]+ +//' <<< "${line}")"
-		[[ "${id}" =~ ^[A-Za-z0-9_.:-]+$ ]] || continue
-		ids+=("${id}")
-		descs+=("${desc}")
-		if grep -qiE 'cam|video|uvc' <<< "${desc}"; then
-			cams+=("$(( ${#ids[@]} - 1 ))")
+	local raw line id desc choice payload i first=1
+	local -a ids descs cams other
+	while true; do
+		ids=() descs=() cams=() other=()
+		raw="$(qvm-usb list 2>&1 | sanitize)"
+		while IFS= read -r line; do
+			[ -n "${line}" ] || continue
+			id="${line%% *}"
+			[ "${id}" != "BACKEND:DEVID" ] || continue
+			desc="$(sed -E 's/^[^ ]+ +//' <<< "${line}")"
+			if [[ "${id}" =~ ^[A-Za-z0-9_.:-]+$ ]] && [[ "${id}" == *:* ]]; then
+				ids+=("${id}")
+				descs+=("${desc}")
+				if grep -qiE 'cam|video|uvc' <<< "${desc}"; then
+					cams+=("$(( ${#ids[@]} - 1 ))")
+				fi
+			else
+				other+=("${line}")
+			fi
+		done <<< "${raw}"
+		# One device that looks like a camera: use it without asking, once.
+		if [ "${first}" -eq 1 ] && [ "${#cams[@]}" -eq 1 ]; then
+			i="${cams[0]}"
+			break
 		fi
-	done < <(qvm-usb list 2>/dev/null | sanitize | tail -n +2)
-	[ "${#ids[@]}" -gt 0 ] || die "no USB devices found -- plug in the webcam (or pass --ssh-keys-url)."
-	if [ "${#cams[@]}" -eq 1 ]; then
-		i="${cams[0]}"
-	else
-		echo "==> USB devices:"
+		first=0
+		echo "==> USB devices that can be attached to ${CTL_VM}:"
+		if [ "${#ids[@]}" -eq 0 ]; then
+			echo "    (none)"
+		fi
 		for i in "${!ids[@]}"; do
 			printf '    %d) %s  %s\n' "$(( i + 1 ))" "${ids[i]}" "${descs[i]}"
 		done
-		read -rp "Number of the webcam: " choice </dev/tty || die "no terminal -- aborting."
-		[[ "${choice}" =~ ^[0-9]+$ ]] && [ "${choice}" -ge 1 ] && [ "${choice}" -le "${#ids[@]}" ] \
-			|| die "no such device: ${choice}"
-		i="$(( choice - 1 ))"
-	fi
+		if [ "${#other[@]}" -gt 0 ]; then
+			echo "    Other output of qvm-usb list:"
+			printf '      %s\n' "${other[@]}"
+		fi
+		echo "    If the webcam is missing, plug it into another socket: sys-usb sees"
+		echo "    only devices on the USB controllers it owns."
+		read -rp "Number of the webcam, Enter to look again, or q to quit: " choice </dev/tty \
+			|| die "no terminal -- aborting."
+		case "${choice}" in
+			q|Q) die "no webcam selected -- rerun the script, or pass --ssh-keys-url." ;;
+			'') continue ;;
+		esac
+		if [[ "${choice}" =~ ^[0-9]+$ ]] && [ "${choice}" -ge 1 ] && [ "${choice}" -le "${#ids[@]}" ]; then
+			i="$(( choice - 1 ))"
+			break
+		fi
+		echo "    No such device: ${choice}"
+	done
 	echo "==> Using webcam ${ids[i]}  ${descs[i]}"
 	qvm-usb attach "${CTL_VM}" "${ids[i]}" || die "cannot attach ${ids[i]} to ${CTL_VM}."
 	echo "==> Hold the QR code from your laptop in front of the webcam (2 minutes)..."
@@ -299,8 +325,25 @@ configureCtl() {
 	runIn "${CTL_VM}" root <<EOF || die "configuring ${CTL_VM} failed."
 set -e
 export DEBIAN_FRONTEND=noninteractive
-apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update -q
-apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y -q openssh-server curl zbar-tools git
+# Wait for another apt run to finish: Qubes' update check runs apt-get update
+# soon after the qube starts, and an interrupted earlier setup may still run.
+waitApt() {
+	for i in \$(seq 300); do
+		pgrep -x apt-get >/dev/null || pgrep -x apt >/dev/null || pgrep -x dpkg >/dev/null \
+			|| pgrep -f unattended-upgrade >/dev/null || return 0
+		[ "\$i" -gt 1 ] || echo "Waiting for another package manager run in ${CTL_VM} to finish..."
+		sleep 2
+	done
+	echo "Another package manager run in ${CTL_VM} is still running after 10 minutes." >&2
+	return 1
+}
+apt() {
+	apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false \
+		-o DPkg::Lock::Timeout=600 "\$@"
+}
+waitApt
+apt update -q || { sleep 10; waitApt; apt update -q; }
+apt install -y -q openssh-server curl zbar-tools git
 cat > /usr/local/bin/dom0 <<'CMD'
 #!/bin/sh
 # ${MARKER}

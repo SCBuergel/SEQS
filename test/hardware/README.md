@@ -136,7 +136,10 @@ This copies the script into dom0 as `t.sh` and runs it. The script:
 2. Creates `test-ctl` and installs the SSH server and the QR scanner in it.
    This downloads packages and takes a few minutes.
 3. Connects the webcam to `test-ctl`. If it cannot tell which USB device is
-   the webcam, it lists the devices and asks for a number.
+   the webcam, it lists the devices and asks for a number. If the webcam is
+   not in the list, plug it into another USB socket and press Enter to look
+   again: `sys-usb` (the qube that owns the USB controllers) sees only devices
+   on its own controllers.
 4. Asks you to hold the QR code in front of the webcam. Turn your laptop's
    screen toward the webcam at a distance of about 20-40 cm until the script
    continues; it waits up to two minutes.
@@ -160,7 +163,8 @@ machine once, so that the automatic login takes effect.
 
 If a step fails, the script stops with an `ERROR:` line that says why. Fix the
 cause and run `bash t.sh` again; each rerun resumes and replaces earlier
-settings. Without a webcam, the script can instead read keys from an HTTPS
+settings. A rerun first waits for any package installation still running in
+`test-ctl`, for example after you stopped the script with Ctrl+C. Without a webcam, the script can instead read keys from an HTTPS
 URL, such as the list GitHub publishes at
 `https://github.com/<account>.keys`:
 `bash t.sh --ssh-keys-url https://github.com/<account>.keys`.
