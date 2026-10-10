@@ -425,12 +425,23 @@ list it shows is still reported by `sys-usb`.
 
 In the dom0 controller list, check whether the line of the controller you will
 test shows `no-strict-reset` next to `sys-usb`. Plug the test device into
-the socket you are checking. Then run this in a dom0 terminal as a single line,
-with your BDF in both places, and add `--option no-strict-reset=true` after
-`--persistent` if the line showed that option:
+the socket you are checking. First remove the controller from the devices
+assigned to `sys-usb`, with your BDF; `sys-usb` keeps the controller until it
+restarts, so your keyboard still works. In a dom0 terminal, run:
 
 ```bash
-qvm-shutdown --wait sys-usb; qvm-pci unassign sys-usb dom0:00_14.0; qvm-start sys-usb; sleep 30; qvm-usb; qvm-shutdown --wait sys-usb; qvm-pci attach --persistent sys-usb dom0:00_14.0; qvm-start sys-usb
+qvm-pci unassign sys-usb dom0:00_14.0
+```
+
+The output starts with `Unassigned`. If it says instead that the device is
+not assigned, the assignment dates from before an upgrade to Qubes 4.3 and
+records no device identity; run the command again with `--port` after
+`unassign`. Then run this as a single line, with your BDF, and add
+`--option no-strict-reset=true` after `--persistent` if the controller line
+showed that option:
+
+```bash
+qvm-shutdown --wait sys-usb; qvm-start sys-usb; sleep 30; qvm-usb; qvm-shutdown --wait sys-usb; qvm-pci attach --persistent sys-usb dom0:00_14.0; qvm-start sys-usb
 ```
 
 Your USB keyboard and mouse may stop working while the line runs, because the
