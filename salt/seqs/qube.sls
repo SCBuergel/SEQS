@@ -61,6 +61,14 @@ seqs-qube-validation-failed:
     - failhard: True
 {% else %}
 
+{#- A completion marker holds the SHA-256 of everything that was staged for
+    the component (its files plus the shared libraries). A rerun skips the
+    component only while that content is unchanged, so a changed script or
+    pin installs again instead of being reported as already done. #}
+{%- macro stage_hash(dirs) -%}
+cd /run/seqs/stage && find {{ dirs }} -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1
+{%- endmacro %}
+
 seqs-marker-dir:
   file.directory:
     - name: /rw/config/seqs
@@ -90,8 +98,8 @@ seqs-install-{{ comp }}:
     - name: |
         set -e
         runuser -l user -c 'set -Eeuo pipefail; . /run/seqs/stage/lib/brave.sh; ensure_brave; install_brave_extension {{ eid }}'
-        touch /rw/config/seqs/{{ comp }}.template.done
-    - creates: /rw/config/seqs/{{ comp }}.template.done
+        ({{ stage_hash('lib') }}) > /rw/config/seqs/{{ comp }}.template.done
+    - unless: test "$(cat /rw/config/seqs/{{ comp }}.template.done 2>/dev/null)" = "$({{ stage_hash('lib') }})"
     - timeout: {{ timeout }}
     - require:
       - file: seqs-stage-lib
@@ -131,8 +139,8 @@ seqs-install-{{ comp }}:
           install -m 0644 -o root -g root /run/seqs/stage/{{ comp }}/menu.desktop /usr/share/applications/{{ comp }}.desktop
         fi
 {%     endif %}
-        touch /rw/config/seqs/{{ comp }}.{{ role }}.done
-    - creates: /rw/config/seqs/{{ comp }}.{{ role }}.done
+        ({{ stage_hash(comp) }}) > /rw/config/seqs/{{ comp }}.{{ role }}.done
+    - unless: test "$(cat /rw/config/seqs/{{ comp }}.{{ role }}.done 2>/dev/null)" = "$({{ stage_hash(comp) }})"
     - timeout: {{ timeout }}
     - require:
       - file: seqs-stage-{{ comp }}-libs

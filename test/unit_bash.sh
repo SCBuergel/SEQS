@@ -186,6 +186,19 @@ if grep -q FAIL "${tmp}/testmachine.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/testmachine.out")
 else ok; fi
 
+echo "== component scripts that lock a file unlock it first, so they can run twice =="
+# A component runs again whenever its files change (hash markers). A file it
+# locked with chattr +i on the first run must be unlocked before it is
+# rewritten, or the rerun fails.
+for f in install-scripts/components/*/*.sh install-scripts/lib/*.sh; do
+	while IFS= read -r target; do
+		lock_line="$(grep -nE "^[[:space:]]*sudo chattr \+i \"?${target}" "$f" | head -n 1 | cut -d: -f1)"
+		unlock_line="$(grep -nE "^[[:space:]]*sudo chattr -i \"?${target}" "$f" | head -n 1 | cut -d: -f1)"
+		if [ -n "${unlock_line}" ] && [ "${unlock_line}" -lt "${lock_line}" ]; then ok
+		else bad "$f locks ${target} without unlocking it earlier"; fi
+	done < <(grep -oE '^[[:space:]]*sudo chattr \+i "?[^" ]+' "$f" | sed -E 's/.*chattr \+i "?//; s/[$]/\\$/g; s/[{}]/\\&/g')
+done
+
 echo "== hardware system test: dom0-side helpers =="
 (
 	SEQS_SOURCE_ONLY=1 source ./test/hardware/dom0-test.sh
@@ -203,6 +216,21 @@ echo "== hardware system test: dom0-side helpers =="
 	[ "$(componentsFor keepass)" = "keepass" ] || echo "FAIL componentsFor plain"
 	CATALOGUE_JSON='not json'
 	[ -z "$(componentsFor keepass)" ] || echo "FAIL componentsFor must be empty on bad JSON"
+
+	# Every component the catalogue uses has a smoke test, and each smoke
+	# command is valid shell for the qube.
+	CATALOGUE_JSON="$(python3 test/render_states.py pillar dom0 2>/dev/null)"
+	EXTENSIONS_JSON="${CATALOGUE_JSON}"
+	CATALOGUE_JSON="$(python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["seqs"]["catalogue"]))' <<< "${CATALOGUE_JSON}")"
+	EXTENSIONS_JSON="$(python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["seqs"]["brave_extensions"]))' <<< "${EXTENSIONS_JSON}")"
+	comps="$(python3 -c 'import json, sys; print("\n".join(sorted({c for q in json.load(sys.stdin).values() for c in q["components"]})))' <<< "${CATALOGUE_JSON}")"
+	[ -n "${comps}" ] || echo "FAIL no catalogue components found"
+	for c in ${comps}; do
+		cmd="$(smokeCmd "$c")"
+		[ -n "${cmd}" ] || echo "FAIL component $c has no smoke test"
+		bash -n <<< "${cmd}" 2>/dev/null || echo "FAIL smoke test of $c is not valid shell"
+		[[ "${cmd}" != false* ]] || echo "FAIL smoke test of $c could not be built: ${cmd}"
+	done
 ) > "${tmp}/dom0test.out" 2>&1
 if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")

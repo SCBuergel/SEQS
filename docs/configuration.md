@@ -74,7 +74,7 @@ a separate canonical run.
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
-| `gnosisvpn`    | Pinned, signed GnosisVPN stable release for `jura`, persistent `/var/lib/gnosisvpn`, and dynamic Qubes DNS/fail-closed hooks |
+| `gnosisvpn`    | Pinned, signed GnosisVPN stable release for `jura-prod`, persistent `/var/lib/gnosisvpn`, and dynamic Qubes DNS/fail-closed hooks |
 | `keepass`      | KeePassXC AppImage (GPG-verified) |
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |
@@ -130,7 +130,7 @@ and firewall behavior.
 
 The optional `gnosisvpn` entry builds `A-gnosisvpn`, installs Debian's
 `wireguard-tools` and `openresolv`, installs the pinned GnosisVPN stable release for
-the `jura` network, and configures reconciled Qubes-aware DNS with
+the `jura-prod` network, and configures reconciled Qubes-aware DNS with
 tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
 [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped download path,
 verification, and runtime checks.
@@ -186,10 +186,12 @@ such reference in a qube.
 
 The `seqs.dom0` state configures every non-browser qube to open web links in
 `browser_vm` (default `A-brave`) via the dom0 qrexec policy
-`qubes.OpenURL * @anyvm A-brave allow`. If you remove `brave` from `qube_catalog`,
-also change `browser_vm` in `config.sls` to a browser qube you do have — the
-pre-flight refuses a `browser_vm` that is neither configured nor already
-existing.
+`qubes.OpenURL * @anyvm A-brave allow`. Offline and `no_handoff` qubes never
+hand links off, so a run that selects only such qubes (for example `keepass`
+or the wallets) does not need the browser qube. For any other selected qube,
+the pre-flight refuses a `browser_vm` that is neither selected in the same run
+nor already existing. If you remove `brave` from `qube_catalog`, also change
+`browser_vm` in `config.sls` to a browser qube you do have.
 
 ## Adding a new component
 

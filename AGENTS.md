@@ -110,8 +110,10 @@ formatting or cleanup alongside a functional change.
   OpenURL, OpenInVM, or other disposable route out.
 - Do not overwrite an existing unmarked qrexec policy.
 - Keep the catalogue independent of the runtime `--qubes`/`--all` selection.
-- Component scripts must be idempotent enough for the marker-controlled rerun
-  behavior described by the existing states.
+- Component scripts must be safe to run twice: a component runs again whenever
+  its files or the shared libraries change (its completion marker records
+  their hash). `test/hardware/system-test.sh --force-rerun` checks this on
+  hardware.
 - New downloads and repositories require explicit provenance, pinning where
   possible, and an honest update to `TRUST.md` about residual risk.
 - Never put secrets, network access, or executable project code into dom0.

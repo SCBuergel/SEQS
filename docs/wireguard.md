@@ -130,10 +130,9 @@ IPv4 DNS server from the imported configuration. If IP traffic works but names
 do not resolve, do not replace `/etc/resolv.conf`; inspect these chains and the
 provider configuration's `DNS=` value.
 
-For repository upgrades to an already-provisioned WireGuard qube, see
-[upgrading](upgrading.md#deliberately-rerunning-a-changed-component). Changed
-component scripts are intentionally not rerun until their completion marker is
-removed.
+For repository upgrades to an already-provisioned WireGuard qube, rerun
+`--build-only --qubes wireguard`: a changed WireGuard component runs again
+automatically (see [upgrading](upgrading.md#what-convergence-does-and-does-not-do)).
 
 ## What it does under the hood
 

@@ -275,6 +275,53 @@ def test_dom0_refuses_unmanaged_qube():
           "an existing untagged A-brave must trip the no-clobber guard")
 
 
+def test_dom0_inventory_fails_closed():
+    case("dom0.sls: an unreadable qube inventory stops the run instead of reading as 'nothing exists'")
+    # A-brave exists untagged. If the inventory query returned nothing, the
+    # no-clobber guard would see no A-brave and adopt the unrelated qube.
+    text, parsed = render_state(
+        "dom0", "dom0",
+        Scenario(existing_qubes=["A-brave"], qubesd_up=False))
+    check("seqs-validation-failed" in parsed,
+          "an empty inventory must fail validation")
+    check("could not list the existing qubes" in text,
+          "the failure must say that the qube list was unavailable")
+    check(not ids_containing(parsed, "seqs-clone-") and not ids_containing(parsed, "seqs-app-"),
+          "no qube may be created without an inventory")
+
+
+def test_dom0_browser_required_only_for_handoff():
+    case("dom0.sls: the browser qube is required only when a selected qube hands links to it")
+    # Fresh dom0: A-brave does not exist. Offline and no_handoff qubes never
+    # hand links off, and the browser qube does not hand off to itself.
+    for selection in ["keepass", "wallet-ledger", "keepass\nqr-display", "brave", "signal\nbrave"]:
+        _, parsed = render_state("dom0", "dom0", Scenario(selection=selection))
+        check("seqs-validation-failed" not in parsed,
+              "selection %r must not require an existing browser qube" % selection)
+    text, parsed = render_state("dom0", "dom0", Scenario(selection="signal"))
+    check("seqs-validation-failed" in parsed and "signal would hand links to it" in text,
+          "signal hands links to A-brave, so it needs A-brave selected or existing")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="signal", existing_qubes=["A-brave"]))
+    check("seqs-validation-failed" not in parsed,
+          "an existing A-brave satisfies a handoff qube")
+
+
+def test_dom0_refuses_recipe_change():
+    case("dom0.sls: refuses to repurpose a managed qube recorded for another recipe")
+    _, parsed = render_state(
+        "dom0", "dom0",
+        Scenario(selection="brave", existing_qubes=["A-brave"],
+                 tagged_qubes=["A-brave"], recipes={"A-brave": "signal"}))
+    check("seqs-validation-failed" in parsed,
+          "a managed A-brave recorded as recipe 'signal' must not be rebuilt as brave")
+    _, parsed = render_state(
+        "dom0", "dom0",
+        Scenario(selection="brave", existing_qubes=["A-brave"],
+                 tagged_qubes=["A-brave"], recipes={"A-brave": "brave"}))
+    check("seqs-validation-failed" not in parsed,
+          "a managed A-brave recorded as recipe 'brave' is adopted")
+
+
 def test_dom0_adopts_via_intent_marker():
     case("dom0.sls: adopts an untagged qube that carries an interrupted-run intent marker")
     _, parsed = render_state(
@@ -653,6 +700,24 @@ def test_qube_template():
           "template should install the boot/shutdown cleanup script")
 
 
+def test_qube_markers_track_content():
+    case("qube.sls: a completion marker skips a component only while its staged content is unchanged")
+    for minion, state_id, staged in [("Z-gnosisvpn", "seqs-install-gnosisvpn", "gnosisvpn"),
+                                     ("A-gnosisvpn", "seqs-install-gnosisvpn", "gnosisvpn"),
+                                     ("Z-wallet-ledger", "seqs-install-brave-extension-rabby", "lib")]:
+        _, parsed = render_state("qube", minion)
+        args = parsed[state_id]["cmd.run"]
+        check(not any("creates" in a for a in args if isinstance(a, dict)),
+              "%s/%s: a bare marker file must not skip the install" % (minion, state_id))
+        unless = state_arg(parsed, state_id, "cmd.run", "unless")
+        name = state_arg(parsed, state_id, "cmd.run", "name")
+        hash_cmd = "find %s -type f -print0" % staged
+        check(hash_cmd in unless and "sha256sum" in unless,
+              "%s/%s: the skip test must compare the staged content hash" % (minion, state_id))
+        check(hash_cmd in name and name.rstrip().endswith(".done"),
+              "%s/%s: the install must record the staged content hash" % (minion, state_id))
+
+
 def test_qube_app_offline_no_browser_default():
     case("qube.sls: an offline app qube gets no browser-default (no_handoff)")
     _, parsed = render_state("qube", "A-keepass")
@@ -753,15 +818,15 @@ def test_qube_gnosisvpn_component():
     check("download.vpn.gnosis.eth.limo proto=tcp dstports=443" in runner_text and
           "printf 'qubes.UpdatesProxy * %s @anyvm deny" in runner_text,
           "temporary proxy must be host-restricted and exact-source scoped")
-    check("gnosisvpn_0.90.0_amd64.deb" in installer_text,
+    check("gnosisvpn_0.95.2_amd64.deb" in installer_text,
           "GnosisVPN installer must pin the requested stable release")
-    check("ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1"
+    check("87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
           in installer_text,
           "GnosisVPN installer must pin the stable release SHA-256")
     check("9A308031FD3BFE8EDBF5076D84F73FEA46D10972" in installer_text,
           "GnosisVPN installer must pin the signing-key fingerprint")
-    check("GNOSISVPN_NETWORK=jura apt install ./g.deb -y" in installer_text,
-          "GnosisVPN installer must select the jura network")
+    check("GNOSISVPN_NETWORK=jura-prod apt install ./g.deb -y" in installer_text,
+          "GnosisVPN installer must select the jura-prod network")
     check("curl --proxy 127.0.0.1:8082" in installer_text,
           "GnosisVPN download must use the Qubes updates proxy")
     check('sudo "${ASSET_DIR}/seqs-gnosisvpn-prepare-app"'

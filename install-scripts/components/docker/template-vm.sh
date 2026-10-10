@@ -103,6 +103,10 @@ EOF
 verify_imported_keyring_matches "${DOCKER_KEY_FPR}"
 
 # ─── Install the keyring and the repository ──────────────────────────────────
+# A rerun finds the keyring locked by the chattr +i below. Unlock it only to
+# write the key that was just verified against the pinned fingerprint; it is
+# locked again after the install, exactly as on the first run.
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
 gpg --export "${DOCKER_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
 
 echo "deb [arch=$(dpkg --print-architecture) signed-by=${KEYRING}] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \

@@ -82,7 +82,11 @@ class Scenario:
         base_template="debian-13-xfce",
         top_content=None,        # contents of /srv/pillar/seqs/config.top
         selection="@all",        # runtime catalogue selection, one name per line
+        recipes=None,            # name -> seqs-recipe feature of existing qubes
+        qubesd_up=True,          # False: the qube inventory query returns nothing
     ):
+        self.recipes = dict(recipes or {})
+        self.qubesd_up = qubesd_up
         self.existing_qubes = set(existing_qubes or [])
         # The base template is expected to exist on any real dom0 running SEQS.
         if base_template:
@@ -109,6 +113,14 @@ class Scenario:
         return 0
 
     def cmd_shell(self, cmd, **_):
+        if "import qubesadmin" in cmd:
+            # The dom0 inventory: "<name> <managed 1|0> <recipe or ->" per
+            # qube, as printed by the one-shot qubesadmin query in dom0.sls.
+            names = sorted(self.existing_qubes | {"dom0"}) if self.qubesd_up else []
+            return "\n".join(
+                "%s %s %s" % (n, "1" if n in self.tagged_qubes else "0",
+                              self.recipes.get(n, "-"))
+                for n in names)
         if "/var/lib/seqs/selection" in cmd:
             return self.selection
         if "config.top" in cmd:

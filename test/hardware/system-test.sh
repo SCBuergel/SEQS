@@ -10,7 +10,11 @@
 #   check    verify what was built (dom0-test.sh check)
 #   rerun    install and check again: a second run must converge quickly
 #
-# Usage: test/hardware/system-test.sh [--qubes LIST | --all] [--no-rerun] [--host HOST]
+# Usage: test/hardware/system-test.sh [--qubes LIST | --all] [--no-rerun]
+#                                     [--force-rerun] [--host HOST]
+#
+# --force-rerun empties every completion marker before the rerun, so it runs
+# every component script a second time instead of skipping finished ones.
 #
 # The commit under test is the working tree's tracked content, including
 # uncommitted changes. Results go to test/hardware/results/<time>/, with
@@ -22,13 +26,15 @@ cd "$(dirname "$0")/../.." || exit 2
 HOST="seqs-test"
 SELECTION="keepass,qr-display,brave"
 RERUN=1
+FORCE_RERUN=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--qubes) [ "$#" -gt 1 ] || { echo "--qubes needs a list" >&2; exit 2; }; SELECTION="$2"; shift ;;
 		--all) SELECTION="all" ;;
 		--no-rerun) RERUN=0 ;;
+		--force-rerun) FORCE_RERUN=1 ;;
 		--host) [ "$#" -gt 1 ] || { echo "--host needs a name" >&2; exit 2; }; HOST="$2"; shift ;;
-		-h|--help) sed -n '3,18p' "$0"; exit 0 ;;
+		-h|--help) sed -n '3,21p' "$0"; exit 0 ;;
 		*) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -140,13 +146,20 @@ summary() {
 	echo "Logs: ${RESULTS}/"
 }
 
-if phase sync sync && phase reset dom0 reset; then
-	phase install dom0 install "${SELECTION}"
-	phase check dom0 check
-	if [ "${RERUN}" -eq 1 ]; then
-		phase rerun-install dom0 install "${SELECTION}"
-		phase rerun-check dom0 check
+# Bash reads a script while running it; keeping the run in a function makes
+# it parse the whole file first, so editing it during a run is harmless.
+main() {
+	if phase sync sync && phase reset dom0 reset; then
+		phase install dom0 install "${SELECTION}"
+		phase check dom0 check
+		if [ "${RERUN}" -eq 1 ]; then
+			[ "${FORCE_RERUN}" -eq 0 ] || phase invalidate dom0 invalidate
+			phase rerun-install dom0 install "${SELECTION}"
+			phase rerun-check dom0 check
+		fi
 	fi
-fi
-summary
-exit "${OVERALL}"
+	summary
+	exit "${OVERALL}"
+}
+
+main

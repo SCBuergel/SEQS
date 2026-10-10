@@ -12,6 +12,9 @@
 #                                catalogue names) or "all", answering its
 #                                prompts with y; output is time-stamped
 #   dom0-test.sh check           verify what the last install built
+#   dom0-test.sh invalidate      empty the completion markers in every built
+#                                qube, so the next install runs every
+#                                component script again
 #
 # Output lines starting with CHECK-FAIL are findings; the exit status is
 # non-zero when there is at least one.
@@ -183,7 +186,10 @@ checkMarkers() {
 		echo "    (no components known for $3; markers not checked)"
 		return
 	fi
-	have="$(qvm-run --pass-io --no-gui -u root "${vm}" 'ls /rw/config/seqs' 2>/dev/null </dev/null)"
+	# Only a marker holding a content hash counts: an empty one means the last
+	# install of that component did not finish.
+	have="$(qvm-run --pass-io --no-gui -u root "${vm}" \
+		"find /rw/config/seqs -maxdepth 1 -name '*.done' ! -empty -printf '%f\n'" 2>/dev/null </dev/null)"
 	for comp in ${comps}; do
 		[ "${role}" = "app" ] && [[ "${comp}" == brave-extension-* ]] && continue
 		grep -qxF "${comp}.${role}.done" <<< "${have}" || missing+=" ${comp}"
@@ -192,8 +198,97 @@ checkMarkers() {
 		|| fail "${vm}: no completion marker for${missing}"
 }
 
+# ---- smoke tests -------------------------------------------------------------
+
+# smokeCmd COMPONENT -- a terminal-only command, run as the user inside an app
+# qube that has COMPONENT, that exits 0 only if the component works. Where a
+# GUI app cannot be exercised without a display or an account, the test is
+# limited to the installed package or binary, and says so.
+smokeCmd() {
+	case "$1" in
+		brave) echo "timeout 90 brave-browser --headless=new --disable-gpu --no-first-run --dump-dom 'data:text/html,<p>seqs-smoke-ok</p>' 2>/dev/null | grep -q seqs-smoke-ok" ;;
+		brave-extension-*)
+			local id
+			id="$(python3 -c 'import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+except ValueError:
+    sys.exit(0)
+print(d.get("local", d).get(sys.argv[1], ""))' "${1#brave-extension-}" <<< "${EXTENSIONS_JSON}")"
+			[[ "${id}" =~ ^[a-p]{32}$ ]] || { echo "false # extension id unknown"; return; }
+			echo "test -f /opt/brave.com/brave/extensions/${id}.json" ;;
+		keepass) echo 'd=$(mktemp -d) && k="keepassxc.AppImage cli" && printf "pw\npw\n" | $k db-create --set-password "$d/t.kdbx" >/dev/null 2>&1 && printf "pw\n" | $k add -u seqs-smoke "$d/t.kdbx" entry >/dev/null 2>&1 && printf "pw\n" | $k show -a UserName "$d/t.kdbx" entry 2>/dev/null | grep -qx seqs-smoke' ;;
+		openoffice) echo 's=$(ls /opt/openoffice*/program/soffice.bin 2>/dev/null | head -n 1) && [ -x "$s" ] && ! ldd "$s" | grep -q "not found" # binary and libraries only' ;;
+		docker) echo 'timeout 180 sudo docker run --rm hello-world 2>&1 | grep -q "Hello from Docker"' ;;
+		python) echo 'bash -lc "python -c \"import sys; print(sys.version_info[:2])\"" 2>/dev/null | grep -qx "(3, 13)"' ;;
+		node) echo 'bash -lc ". ~/.nvm/nvm.sh && node -e \"console.log(6 * 7)\"" 2>/dev/null | grep -qx 42' ;;
+		vscode) echo 'timeout 60 code --version >/dev/null 2>&1' ;;
+		claude-code) echo 'timeout 60 ~/.local/bin/claude --version >/dev/null 2>&1' ;;
+		element|signal|xournalpp)
+			local pkg="$1"
+			[ "$1" = element ] && pkg=element-desktop
+			[ "$1" = signal ] && pkg=signal-desktop
+			echo "dpkg-query -W -f='\${Status}' ${pkg} 2>/dev/null | grep -q 'install ok installed' # package only" ;;
+		telegram) echo 'snap list telegram-desktop >/dev/null 2>&1 # package only' ;;
+		adb) echo 'adb version >/dev/null 2>&1 && test -x /usr/bin/adb-pull' ;;
+		ledger) echo 'test -x /usr/bin/LedgerLive.AppImage && test -f /etc/udev/rules.d/20-hw1.rules # files only' ;;
+		trezor) echo 'test -f /etc/udev/rules.d/51-trezor.rules # udev rules only' ;;
+		qr-display) echo 'qrencode -o - seqs-smoke | head -c 4 | grep -q PNG' ;;
+		qr-camera) echo 'command -v zbarimg >/dev/null && command -v zbarcam >/dev/null' ;;
+		wireguard) echo 'wg --version >/dev/null && test -x /usr/bin/seqs-wireguard-import && sudo grep -qx /rw/config/seqs-wireguard/boot.sh /rw/config/rc.local' ;;
+		gnosisvpn) echo 'dpkg-query -W -f="\${Status}" gnosisvpn 2>/dev/null | grep -q "install ok installed" && systemctl is-enabled --quiet seqs-gnosisvpn-dns.path && test -d /rw/bind-dirs/var/lib/gnosisvpn' ;;
+		*) echo "" ;;
+	esac
+}
+
+# smoke VM RECIPE -- run the smoke test of every component of RECIPE in VM.
+smoke() {
+	local vm="$1" comp cmd out note
+	for comp in $(componentsFor "$2"); do
+		cmd="$(smokeCmd "${comp}")"
+		[ -n "${cmd}" ] || continue
+		note=""
+		[[ "${cmd}" != *" # "* ]] || note=" (${cmd##* # })"
+		if out="$(qvm-run --pass-io --no-gui "${vm}" "${cmd}" 2>&1 </dev/null)"; then
+			pass "${vm}: ${comp} works${note}"
+		else
+			fail "${vm}: ${comp} smoke test failed${out:+: $(tail -n 2 <<< "${out}" | tr '\n' ' ')}"
+		fi
+	done
+}
+
+# refusesHandoff VM -- an offline qube must not be able to open a link or a
+# file elsewhere. A refusal comes back at once; a timeout would mean a
+# confirmation dialog appeared instead, which is also a failure.
+refusesHandoff() {
+	local vm="$1" svc out
+	for svc in qubes.OpenURL qubes.OpenInVM; do
+		out="$(qvm-run --pass-io --no-gui "${vm}" \
+			"echo https://example.com | timeout 20 qrexec-client-vm @dispvm ${svc}; echo rc=\$?" 2>&1 </dev/null)"
+		if grep -qi "refused" <<< "${out}" && ! grep -q "rc=124" <<< "${out}"; then
+			pass "${vm}: ${svc} to a disposable is refused"
+		else
+			fail "${vm}: ${svc} to a disposable was not refused: $(tail -n 2 <<< "${out}" | tr '\n' ' ')"
+		fi
+	done
+}
+
+# qrRoundTrip -- the QR transfer without the webcam: A-qr-display encodes a
+# random payload, dom0 carries the image, A-qr-camera decodes it.
+qrRoundTrip() {
+	local payload got
+	payload="seqs-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+	got="$(qvm-run --pass-io --no-gui A-qr-display "qrencode -o - ${payload}" 2>/dev/null </dev/null \
+		| qvm-run --pass-io --no-gui A-qr-camera 'f=$(mktemp) && cat > "$f" && zbarimg --raw -q "$f"' 2>/dev/null)"
+	if [ "${got}" = "${payload}" ]; then
+		pass "QR code from A-qr-display decodes in A-qr-camera"
+	else
+		fail "QR round trip returned '${got}' instead of '${payload}'"
+	fi
+}
+
 check() {
-	local kind name recipe flags tpl klass nv dv started=()
+	local kind name recipe flags tpl klass nv dv ours started=()
 	local targets="${STATE_DIR}/targets"
 	sudo test -r "${targets}" || { fail "${targets} missing -- the dom0 state did not run"; return 1; }
 	if sudo grep -qx 'result=success' "${STATE_DIR}/last-run" 2>/dev/null; then
@@ -202,6 +297,7 @@ check() {
 		fail "runner did not record result=success in ${STATE_DIR}/last-run"
 	fi
 	CATALOGUE_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:catalogue 2>/dev/null)"
+	EXTENSIONS_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:brave_extensions 2>/dev/null)"
 
 	while read -r kind name recipe flags; do
 		case "${kind}" in ''|\#*) continue ;; esac
@@ -218,12 +314,13 @@ check() {
 		esac
 		nv="$(qvm-prefs -- "${name}" netvm 2>/dev/null)"
 		dv="$(qvm-prefs -- "${name}" default_dispvm 2>/dev/null)"
+		ours=0
 		case "${kind}" in
 			template)
 				if qvm-check --running --quiet -- "${name}" >/dev/null 2>&1; then
 					fail "${name} is still running after the install"
 				else
-					started+=("${name}")
+					ours=1
 					checkMarkers "${name}" template "${recipe}"
 				fi
 				;;
@@ -231,8 +328,9 @@ check() {
 				tpl="$(qvm-prefs -- "${name}" template 2>/dev/null)"
 				grep -qE "^template ${tpl} " < <(sudo cat "${targets}") \
 					|| fail "${name} is based on ${tpl:-?}, not on a SEQS template"
-				qvm-check --running --quiet -- "${name}" >/dev/null 2>&1 || started+=("${name}")
+				qvm-check --running --quiet -- "${name}" >/dev/null 2>&1 || ours=1
 				checkMarkers "${name}" app "${recipe}"
+				smoke "${name}" "${recipe}"
 				;;
 		esac
 		if [[ " ${flags} " == *" offline "* ]]; then
@@ -249,9 +347,16 @@ check() {
 				else
 					pass "${name}: cannot reach the internet"
 				fi
+				refusesHandoff "${name}"
 			fi
 		elif [ "${kind}" = "app" ] && isNone "${nv}"; then
 			fail "${name} should have network access but has no netvm"
+		fi
+		# Stop a qube this check started as soon as it is checked, so that a
+		# large selection does not run every qube at once; wait at the end.
+		if [ "${ours}" -eq 1 ]; then
+			qvm-shutdown -- "${name}" >/dev/null 2>&1 || true
+			started+=("${name}")
 		fi
 	done < <(sudo cat "${targets}")
 
@@ -261,6 +366,10 @@ check() {
 			fail "${name} exists without the SEQS marker"
 		fi
 	done
+	if grep -q "^app A-qr-display " < <(sudo cat "${targets}") && grep -q "^app A-qr-camera " < <(sudo cat "${targets}"); then
+		qrRoundTrip
+		qvm-shutdown -- A-qr-display A-qr-camera >/dev/null 2>&1 || true
+	fi
 	! qvm-check --quiet -- seqs-gnosisvpn-update-proxy >/dev/null 2>&1 \
 		|| fail "the temporary GnosisVPN updates proxy was left behind"
 	sudo test ! -e "${POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" \
@@ -268,10 +377,36 @@ check() {
 	[ -z "$(find "${TMP_DIR}" -maxdepth 1 -name 'seqs-*' 2>/dev/null)" ] \
 		|| fail "the runner left temporary files in ${TMP_DIR}"
 
-	for name in "${started[@]}"; do
-		qvm-shutdown --wait -- "${name}" >/dev/null 2>&1 || true
-	done
+	if [ "${#started[@]}" -gt 0 ]; then
+		qvm-shutdown --wait -- "${started[@]}" >/dev/null 2>&1 || true
+	fi
 	echo "checks failed: ${FAILS}"
+	[ "${FAILS}" -eq 0 ]
+}
+
+# ---- invalidate ---------------------------------------------------------------
+
+# invalidate -- an empty marker never matches a content hash, so the next
+# install reruns every component: this proves the scripts can run twice, as
+# they do whenever a component's files or the shared libraries change.
+invalidate() {
+	local kind name rest
+	local -a done_qubes=()
+	while read -r kind name rest; do
+		case "${kind}" in template|app) ;; *) continue ;; esac
+		# shellcheck disable=SC2016 # runs inside the qube
+		if qvm-run --pass-io --no-gui -u root "${name}" \
+				'for f in /rw/config/seqs/*.done; do [ -f "$f" ] && : > "$f"; done; true' </dev/null; then
+			pass "${name}: completion markers emptied"
+		else
+			fail "could not empty the completion markers in ${name}"
+		fi
+		qvm-shutdown -- "${name}" >/dev/null 2>&1 || true
+		done_qubes+=("${name}")
+	done < <(sudo cat "${STATE_DIR}/targets")
+	if [ "${#done_qubes[@]}" -gt 0 ]; then
+		qvm-shutdown --wait -- "${done_qubes[@]}" >/dev/null 2>&1 || true
+	fi
 	[ "${FAILS}" -eq 0 ]
 }
 
@@ -285,5 +420,6 @@ case "${1:-}" in
 	reset) reset ;;
 	install) install "${2:-}" ;;
 	check) check ;;
-	*) sed -n '3,19p' "$0"; exit 2 ;;
+	invalidate) invalidate ;;
+	*) sed -n '3,20p' "$0"; exit 2 ;;
 esac

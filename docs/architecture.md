@@ -69,15 +69,18 @@ Salt see the data; staging alone cannot create qubes; only the build stage runs
 
 ## Convergence
 
-Re-running `setup-qubes.sh` converges: finished components are skipped via
-completion markers in `/rw/config/seqs/`, existing qubes are reconfigured rather
+Re-running `setup-qubes.sh` converges: a finished component is skipped while
+its completion marker in `/rw/config/seqs/` records the SHA-256 of the files
+staged for it (its scripts, pinned keys, and the shared libraries), and runs
+again when any of them changed. Existing qubes are reconfigured rather
 than rebuilt, and qubes not created by SEQS are refused (no-clobber via the
 `seqs-managed` qvm-feature). Catalogue entries omitted from a run are left
 untouched; omission is never interpreted as deletion.
 
 Convergence is deliberately non-destructive: removing configuration does not
-automatically uninstall components or delete qubes, and changed component
-installers remain skipped while their completion markers exist. See
+automatically uninstall components or delete qubes. Because a changed component
+runs again over its earlier installation, every component script must be safe
+to run twice. See
 [upgrading.md](upgrading.md) for the supported update procedure and exact
 behavior by change type.
 

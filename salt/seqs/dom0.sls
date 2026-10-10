@@ -51,6 +51,26 @@
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
 
+{#- One qubesd query lists every qube with its seqs-managed and seqs-recipe
+    features, instead of one qvm-check/qvm-features process per name. An
+    empty or unreadable list must never read as "no qube exists": that would
+    let the no-clobber guard below pass, so the run stops unless dom0 is in
+    it. #}
+{% set inventory_cmd %}python3 -c 'import qubesadmin
+for vm in qubesadmin.Qubes().domains:
+    f = vm.features
+    print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()))'{% endset %}
+{% set inventory = {} %}
+{% for line in salt['cmd.shell'](inventory_cmd | trim).splitlines() %}
+{%   set f = line.split() %}
+{%   if f | length == 3 %}
+{%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2]}}) %}
+{%   endif %}
+{% endfor %}
+{% if 'dom0' not in inventory %}
+{%   do errors.append("could not list the existing qubes through qubesadmin -- refusing to continue without knowing which qubes exist") %}
+{% endif %}
+
 {% if not selection %}
 {%   do errors.append("runtime selection is missing -- invoke setup-qubes.sh with --qubes or --all") %}
 {% endif %}
@@ -105,10 +125,10 @@
 {% if webcam_controller and (not webcam_scanner_dvm or webcam_scanner_dvm | regex_match(name_re) is none) %}
 {%   do errors.append("webcam_scanner_dvm is missing or unsafe") %}
 {% endif %}
-{% if webcam_controller and 'qr-camera' not in qmap and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_scanner_dvm) != 0 %}
+{% if webcam_controller and 'qr-camera' not in qmap and (webcam_scanner_dvm not in inventory) %}
 {%   do errors.append("webcam_usb_controller requires qube 'qr-camera': select it in this run or build it first") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_staging_qube) != 0 %}
+{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap and (webcam_staging_qube not in inventory) %}
 {%   do errors.append("sequential webcam mode requires qube 'qr-staging': select it in this run or build it first") %}
 {% endif %}
 {% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
@@ -117,11 +137,11 @@
 {% if webcam_mode == 'dedicated' and webcam_no_strict_reset %}
 {%   do errors.append("dedicated webcam mode forbids webcam_usb_no_strict_reset -- without a power-off between transfers, only a strict reset clears the controller") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_normal_usb_qube) != 0 %}
+{% if webcam_mode == 'sequential' and (webcam_normal_usb_qube not in inventory) %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
 {% for special in [webcam_usb_qube, webcam_scanner_qube] %}
-{%   if webcam_mode in ['dedicated', 'sequential'] and salt['cmd.retcode']('qvm-check -q -- ' ~ special) == 0 and salt['cmd.shell']('qvm-features -- ' ~ special ~ ' seqs-managed 2>/dev/null') | trim != '1' %}
+{%   if webcam_mode in ['dedicated', 'sequential'] and (special in inventory) and not inventory.get(special, {}).get('managed') %}
 {%     do errors.append("special qube '" ~ special ~ "' already exists but is not marked seqs-managed -- refusing to adopt it") %}
 {%   endif %}
 {% endfor %}
@@ -161,20 +181,25 @@
 {% if base_template %}
 {%   if base_template | regex_match(name_re) is none %}
 {%     do errors.append("base_template '" ~ base_template ~ "' has an unsafe name") %}
-{%   elif salt['cmd.retcode']('qvm-check -q -- ' ~ base_template) != 0 %}
+{%   elif (base_template not in inventory) %}
 {%     do errors.append("base template '" ~ base_template ~ "' does not exist -- install it first, e.g.: sudo qubes-dom0-update qubes-template-" ~ base_template) %}
 {%   endif %}
 {% endif %}
 
-{# ── browser_vm must be a qube this run builds or one that already exists
-     (the qubes.OpenURL allow rule below points every qube at it). ──────── #}
+{# ── browser_vm must be a qube this run builds or one that already exists,
+     but only when a selected qube hands links to it: offline and no_handoff
+     qubes never do (qube.sls), so selecting only those needs no browser. ── #}
 {% if browser_vm %}
 {%   if browser_vm | regex_match(name_re) is none %}
 {%     do errors.append("browser_vm '" ~ browser_vm ~ "' has an unsafe name") %}
 {%   else %}
 {%     set bbase = browser_vm[(papp | length):] if papp and browser_vm.startswith(papp) else '' %}
-{%     if not (bbase and bbase in qmap) and salt['cmd.retcode']('qvm-check -q -- ' ~ browser_vm) != 0 %}
-{%       do errors.append("browser_vm '" ~ browser_vm ~ "' is neither in the configured qubes map nor an existing qube -- links would hand off into a void") %}
+{%     set handoff = [] %}
+{%     for name, q in qmap.items() if not q.get('offline') and not q.get('no_handoff') and papp ~ name != browser_vm %}
+{%       do handoff.append(name) %}
+{%     endfor %}
+{%     if handoff and not (bbase and bbase in qmap) and (browser_vm not in inventory) %}
+{%       do errors.append("browser_vm '" ~ browser_vm ~ "' is neither selected nor an existing qube, but " ~ handoff | join(', ') ~ " would hand links to it -- select it in this run or build it first") %}
 {%     endif %}
 {%   endif %}
 {% endif %}
@@ -241,12 +266,12 @@
 {%     set adopt_names = [ptpl ~ name, papp ~ name] %}
 {%     if q.get('named_disposable') and pdvm %}{% set adopt_names = adopt_names + [pdvm ~ name] %}{% endif %}
 {%     for vmname in adopt_names %}
-{%       if salt['cmd.retcode']('qvm-check -q -- ' ~ vmname) == 0 %}
-{%         if salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim != '1'
+{%       if (vmname in inventory) %}
+{%         if not inventory.get(vmname, {}).get('managed')
               and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
 {%           do errors.append("qube '" ~ vmname ~ "' already exists but is not marked seqs-managed -- refusing to adopt it (remove or rename it, or set: qvm-features " ~ vmname ~ " seqs-managed 1)") %}
-{%         elif salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
-{%           set existing_recipe = salt['cmd.shell']('qvm-features -- ' ~ vmname ~ ' seqs-recipe 2>/dev/null') | trim %}
+{%         elif inventory.get(vmname, {}).get('managed') %}
+{%           set existing_recipe = inventory.get(vmname, {}).get('recipe', '') %}
 {%           if existing_recipe and existing_recipe != recipe %}
 {%             do errors.append("qube '" ~ vmname ~ "' is managed for recipe '" ~ existing_recipe ~ "', not requested recipe '" ~ recipe ~ "' -- refusing to repurpose it") %}
 {%           endif %}
@@ -413,8 +438,8 @@ seqs-policy-browser:
 {%         set base = concrete[(pdvm | length):] %}
 {%       endif %}
 {%       if base and concrete | regex_match(name_re) is not none and base not in browser_suppress_prune and vm not in suppressed
-            and salt['cmd.retcode']('qvm-check -q -- ' ~ concrete) == 0
-            and salt['cmd.shell']('qvm-features -- ' ~ concrete ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+            and (concrete in inventory)
+            and inventory.get(concrete, {}).get('managed') %}
 {%         do suppressed.append(vm) %}
 {#         A preserved qube without a NetVM is treated as offline. An empty
            read also counts, which errs toward more denies. #}
@@ -470,7 +495,7 @@ seqs-policy-browser-suppress:
 
 {# Qubes 4.3 USB-keyboard override; skip without deleting on other releases. #}
 {% set release = salt['cmd.shell']("grep -oE '[0-9]+\\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1") | trim %}
-{% if release == '4.3' and salt['cmd.retcode']('qvm-check -q -- sys-usb') == 0 %}
+{% if release == '4.3' and ('sys-usb' in inventory) %}
 seqs-policy-usb-keyboard:
   file.managed:
     - name: /etc/qubes/policy.d/30-user-input.policy
@@ -502,12 +527,12 @@ seqs-policy-usb-keyboard:
 {%   set tpl = ptpl ~ name %}
 {%   set app = papp ~ name %}
 {%   set dvm = pdvm ~ name %}
-{%   set tpl_exists = salt['cmd.retcode']('qvm-check -q -- ' ~ tpl) == 0 %}
-{%   set app_exists = salt['cmd.retcode']('qvm-check -q -- ' ~ app) == 0 %}
-{%   set dvm_exists = q.get('named_disposable') and salt['cmd.retcode']('qvm-check -q -- ' ~ dvm) == 0 %}
-{%   set tpl_tagged = tpl_exists and salt['cmd.shell']('qvm-features -- ' ~ tpl ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
-{%   set app_tagged = app_exists and salt['cmd.shell']('qvm-features -- ' ~ app ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
-{%   set dvm_tagged = dvm_exists and salt['cmd.shell']('qvm-features -- ' ~ dvm ~ ' seqs-managed 2>/dev/null') | trim == '1' %}
+{%   set tpl_exists = (tpl in inventory) %}
+{%   set app_exists = (app in inventory) %}
+{%   set dvm_exists = q.get('named_disposable') and (dvm in inventory) %}
+{%   set tpl_tagged = tpl_exists and inventory.get(tpl, {}).get('managed') %}
+{%   set app_tagged = app_exists and inventory.get(app, {}).get('managed') %}
+{%   set dvm_tagged = dvm_exists and inventory.get(dvm, {}).get('managed') %}
 
 {%   if tpl_tagged %}
 seqs-existing-template-{{ name }}:

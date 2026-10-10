@@ -149,11 +149,7 @@ recipe:
 Rerun that exact selection and postfix to upgrade or repair the `*-alpha`
 instances. A run without the postfix continues to target only the canonical
 instances. Existing managed qubes are reported explicitly and reconciled in
-place; neither form overwrites or reclones them. GnosisVPN is the exception:
-selecting it fails before Salt when either target already exists, because its
-completed component would otherwise make a lengthy run appear successful
-without installing the newly pinned release. Delete that managed instance
-explicitly before rebuilding it.
+place; neither form overwrites or reclones them.
 
 ## 5. Verify the intended change
 
@@ -179,65 +175,34 @@ USB/QR setup has hardware and policy checks in
 | Select recipes with `--postfix NAME` | Creates or converges separate `Z-<recipe>-NAME` and `A-<recipe>-NAME` instances |
 | Change a supported label, offline flag, firewall, policy, or generated dom0 file | Reapplies the declared setting |
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
-| Change an installer script for a component already completed | Skipped until its completion marker is deliberately removed |
+| Change a component's files (installer, pinned version, key) or the shared libraries | Runs the component again over its earlier installation |
+| Rerun with no change to a component | Skips it: its completion marker records the same content hash |
 | Remove a component from a qube | Stops managing it; does not uninstall its existing software or data |
 | Omit a catalogue entry from `--qubes` | Leaves its existing VMs untouched and does not target or recreate them |
 | Remove a qube from a custom `qube_catalog` | Makes it unavailable to future selections; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |
-| Select an existing GnosisVPN instance | Fails before Salt; delete it explicitly before rebuilding |
 
 These conservative rules avoid silently deleting qubes, software, or data.
 
-### Deliberately rerunning a changed component
+### How a completion marker decides
 
-Component completion markers live under `/rw/config/seqs/`. After reviewing a
-changed installer, remove only the marker for that component and role, then
-rerun `--build-only`. For example, to rerun the `qr-camera` template installer:
+Each finished component leaves a marker under `/rw/config/seqs/`
+(`<component>.template.done` in the template, `<component>.app.done` in the app
+qube) that holds the SHA-256 of everything staged for that component: its
+scripts and assets plus the shared libraries in `install-scripts/lib/`. A run
+skips the component while that hash still matches and runs it again when it
+does not. Markers written before this rule existed are empty, so the first
+build after upgrading SEQS runs every selected component once more.
+
+Every component script must therefore be safe to run over its earlier
+installation. To force one component to run again without a change, empty its
+marker and rerun the build, for example:
 
 ```bash
-qvm-run -u root Z-qr-camera 'rm -f /rw/config/seqs/qr-camera.template.done'
+qvm-run -u root Z-qr-camera ': > /rw/config/seqs/qr-camera.template.done'
 qvm-shutdown --wait Z-qr-camera
 ~/s.sh --build-only --qubes qr-camera
 ```
-
-An app-qube marker uses `.app.done` instead of `.template.done`. Do not delete
-all markers casually: that may rerun network downloads, package installation,
-or per-qube initialization that was designed as a one-time action.
-
-#### Repairing an existing WireGuard qube without the importer
-
-Early versions of the WireGuard component installed its importer under the
-template's `/usr/local`, which Qubes hides behind the AppVM-private
-`/rw/usrlocal` bind mount. After fetching, reviewing, and staging a revision
-containing the corrected component, deliberately rerun both WireGuard roles:
-
-```bash
-qvm-run -u root A-wireguard \
-  'rm -f /rw/config/seqs/wireguard.app.done'
-qvm-shutdown --wait A-wireguard
-qvm-run -u root Z-wireguard \
-  'rm -f /rw/config/seqs/wireguard.template.done'
-qvm-shutdown --wait Z-wireguard
-~/s.sh --build-only --qubes wireguard
-```
-
-Afterward, `A-wireguard` should contain both
-`/usr/bin/seqs-wireguard-import` and the persistent `~/WireGuard` drop
-directory.
-
-If upgrading a WireGuard qube that already has the importer but whose client
-qubes cannot resolve through Qubes' `10.139.1.1`/`.2` addresses, rerun only the
-app role to install the corrected DNS boot hook:
-
-```bash
-qvm-run -u root A-wireguard \
-  'rm -f /rw/config/seqs/wireguard.app.done'
-qvm-shutdown --wait A-wireguard
-~/s.sh --build-only --qubes wireguard
-```
-
-Do not replace `/etc/resolv.conf` in client qubes. It is supposed to retain the
-two Qubes synthetic resolver addresses.
 
 ### Removing or rebuilding managed qubes
 

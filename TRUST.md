@@ -119,7 +119,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Established by:** 📝 Reviewed. The runner requires `--qubes ...` or explicit `--all`, canonicalizes the selection, optionally applies one validated `--postfix` to every selected recipe, writes the root-owned recipe-to-instance runtime intent outside `/srv`, and reports separate staged-tree and build-plan hashes. Salt validates every requested recipe and generated instance name against the reviewed catalogue; only the selected instance map drives creation, target generation, provisioning, and air-gap checks, while unselected managed qubes remain untouched. Each managed qube records its catalogue recipe in the `seqs-recipe` feature, and a later run refuses to repurpose an instance recorded for a different recipe. All qube creation and provisioning logic lives in the Salt states; the runner sequences dom0, templates, and app qubes with `qvm-shutdown --wait` barriers so template root volumes are committed before app qubes snapshot them.
 - **Residual risk:** Runs with the dom0 user's privileges plus `sudo` for `/srv` staging and `qubesctl`. Failure detection is belt-and-braces: `qubesctl`'s exit code **and** a scan of its (sanitized) output for salt's own failure markers (`Result: False`, non-zero `Failed:` summary), because qubesctl versions differ in whether failed states propagate non-zero. For `offline` qubes the runner independently re-checks `qvm-prefs <vm> netvm` and `default_dispvm` after the dom0 apply and refuses to provision anything if the air gap is not in effect.
 
-> **Interrupted or failed runs.** The flow is **convergent**: completed components are skipped via `/rw/config/seqs/` markers, existing qubes are reconfigured, and an interrupted creation is resumed through its intent marker in `/var/lib/seqs/intents/`. A same-named qube without that marker or the `seqs-managed` feature is refused. Per-component `timeout:` on the Salt `cmd.run` states (`component_timeout`, default 900 seconds) bounds a hung installer; after a timeout inside a template, treat its state as suspect and re-run.
+> **Interrupted or failed runs.** The flow is **convergent**: a completed component is skipped while its `/rw/config/seqs/` marker records the SHA-256 of the files staged for it (scripts, pins, and shared libraries) and runs again when they changed, so a reviewed pin update reaches existing qubes instead of being reported as already done; existing qubes are reconfigured, and an interrupted creation is resumed through its intent marker in `/var/lib/seqs/intents/`. A same-named qube without that marker or the `seqs-managed` feature is refused. Per-component `timeout:` on the Salt `cmd.run` states (`component_timeout`, default 900 seconds) bounds a hung installer; after a timeout inside a template, treat its state as suspect and re-run.
 
 ### `install-scripts/*.sh` (run inside templates / app qubes)
 - **Trust assumption:** Each install script is safe to run as root in its VM.
@@ -255,9 +255,10 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   Qubes networking/firewall services, the embedded GnosisVPN signing key, and
   GnosisVPN's package/runtime behavior.
 - **Established by:** ✅ Debian prerequisites come from configured signed
-  repositories. The `amd64` stable release `0.90.0`, selected by the reviewed
-  upstream installer on 2026-07-28, is pinned to SHA-256
-  `ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1`
+  repositories. The `amd64` stable release `0.95.2`, listed on 2026-10-10 in
+  the stable channel's APT index (whose `InRelease` file verified with the
+  embedded key, and whose package entry matches the pin), is pinned to SHA-256
+  `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`
   and its detached signature must verify with embedded fingerprint
   `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`. The key fingerprint is published
   in GnosisVPN's `SECURITY.md`; the operator should cross-check it
@@ -267,10 +268,12 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   template chain to a TemplateVM, and removes both proxy and policy afterward.
 - **Residual risk:** The embedded key and fingerprint originate from the same
   upstream project, so this is not an independent trust anchor by itself. The
-  upstream `downloads.vpn.gnosis.eth.limo/linux/install.sh` is mutable; SEQS
-  deliberately does not pipe it to root and instead pins the package it
-  selected when reviewed. A later upstream stable release requires a reviewed
-  SEQS update rather than being installed automatically. The
+  upstream `download.vpn.gnosis.eth.limo/linux/install.sh` is mutable; SEQS
+  deliberately does not pipe it to root and instead pins the package its
+  stable channel listed when reviewed. A later upstream stable release requires
+  a reviewed SEQS update rather than being installed automatically, and
+  upstream deletes superseded packages, so a stale pin fails closed with
+  HTTP 404 until updated. The
   package runs maintainer scripts as root and may configure an APT repository;
   later updates use the normal Qubes UpdateVM, not the temporary domain-only
   proxy. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls

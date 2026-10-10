@@ -101,6 +101,10 @@ install_brave() {
 	fi
 	echo "Brave keyring verified -- $(printf '%s ' ${got})"
 
+	# A rerun finds the keyring locked by the chattr +i below. Unlock it only
+	# to write the keyring that was just verified against the pinned
+	# fingerprints; it is locked again after the install, as on the first run.
+	sudo chattr -i "${keyring}" 2>/dev/null || true
 	sudo install -m 0644 "${tmp}" "${keyring}"
 	# NB: ${tmp} is kept until after apt completes -- see the re-install
 	# step below for why.

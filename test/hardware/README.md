@@ -294,7 +294,8 @@ The check phase verifies, for every qube the runner was asked to build, that:
 - it exists, has the expected kind (template, app qube, or disposable), and is
   tagged as managed by SEQS;
 - every component recorded its completion marker
-  (`/rw/config/seqs/<component>.<role>.done` inside the qube);
+  (`/rw/config/seqs/<component>.<role>.done` inside the qube, holding the hash
+  of the files installed for it);
 - templates are shut down after the install, and app qubes are based on
   their SEQS template;
 - offline qubes have no network qube and no default disposable, and an
@@ -353,6 +354,16 @@ test/hardware/system-test.sh --no-rerun
 
 `--no-rerun` skips the second install, which saves time while you work on a
 problem in the first one.
+
+```bash
+test/hardware/system-test.sh --force-rerun
+```
+
+`--force-rerun` empties every completion marker before the second install, so
+it runs every component script again instead of skipping finished ones. That
+is what happens on a real machine whenever a component's files or the shared
+libraries change, so this run checks that every script can safely run over
+its earlier installation.
 
 ### Running your own commands in dom0
 

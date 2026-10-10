@@ -1,7 +1,7 @@
 # Using the GnosisVPN NetVM
 
 SEQS builds `A-gnosisvpn`, a network-provider AppVM with a pinned GnosisVPN
-stable release for the `jura` network and Qubes-aware DNS/fail-closed
+stable release for the `jura-prod` network and Qubes-aware DNS/fail-closed
 integration.
 
 ## Build the prepared qube
@@ -14,11 +14,12 @@ After fetching, reviewing, and staging this revision, run in dom0:
 
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
-The build refuses immediately if either target already exists; it does not
-enter Salt or treat an existing GnosisVPN instance as a successful no-op.
-Use `delete-vms.sh gnosisvpn` deliberately when the existing managed instance
-should be destroyed and rebuilt. This also destroys the AppVM's private VPN
-state, so back up anything that must survive first.
+Rerunning the same command upgrades an existing instance in place: when the
+pinned release or any other part of the component changed, its installers run
+again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
+`delete-vms.sh gnosisvpn` only to destroy the instance and rebuild it from
+scratch; that also destroys the private VPN state, so back up anything that
+must survive first.
 
 For an independent second managed template and AppVM:
 
@@ -26,8 +27,7 @@ For an independent second managed template and AppVM:
 ~/s.sh --build-only --qubes gnosisvpn --postfix alpha
 ```
 
-This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`, provided
-neither target already exists. Each
+This creates and prepares `Z-gnosisvpn-alpha` and `A-gnosisvpn-alpha`. Each
 AppVM has independent private VPN state: `/var/lib/gnosisvpn` is mapped into
 its private volume at `/rw/bind-dirs/var/lib/gnosisvpn` through Qubes
 bind-dirs, so that directory survives AppVM restarts and template updates.
@@ -40,8 +40,8 @@ The template contains:
 
 - `wireguard-tools`, including `wg` and `wg-quick`;
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
-- GnosisVPN `0.90.0` for `amd64`, configured with
-  `GNOSISVPN_NETWORK=jura`.
+- GnosisVPN `0.95.2` for `amd64`, configured with
+  `GNOSISVPN_NETWORK=jura-prod`.
 
 Do not install `openresolv` or GnosisVPN manually.
 
@@ -55,18 +55,20 @@ runner follows its validated DispVM-to-AppVM template chain to the underlying
 TemplateVM used to create the temporary AppVM.
 
 Upstream currently recommends piping
-`https://downloads.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable
+`https://download.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable
 installer downloads the repository keyring, writes a stable or snapshot APT
 source, refreshes APT metadata, and installs the channel's current candidate.
 SEQS does not execute that mutable root script. Instead, it downloads the
-stable package selected by the reviewed installer directly, retaining an exact
-version and content pin.
+package that the stable channel's signed APT index listed when the pin was
+last reviewed, retaining an exact version and content pin. Upstream removes
+superseded packages from that repository, so an old pin stops downloading
+(HTTP 404) and the SEQS pin must then be reviewed and updated.
 
 The template downloads the pinned `.deb` and detached signature through
 `127.0.0.1:8082`, checks the embedded signing-key fingerprint
 `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, verifies the detached signature,
 and checks SHA-256
-`ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1`
+`87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`
 before installation. After template provisioning—even on failure—the runner
 removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
 policy then applies again.

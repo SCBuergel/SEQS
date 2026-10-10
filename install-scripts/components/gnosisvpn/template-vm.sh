@@ -4,12 +4,13 @@ set -Eeuo pipefail
 echo "Installing pinned GnosisVPN stable release..."
 
 ASSET_DIR="$(dirname "$0")"
-# This is the package selected by the upstream stable-channel installer at
-# https://downloads.vpn.gnosis.eth.limo/linux/install.sh on 2026-07-28.
-# Fetch the reviewed package directly instead of piping that mutable script to
+# This is the stable-channel package listed on 2026-10-10 in the APT index of
+# https://download.vpn.gnosis.eth.limo/linux/apt, whose InRelease file is
+# signed by the key below; the hash matches that signed index. Fetch the
+# reviewed package directly instead of piping upstream's mutable install.sh to
 # root. This preserves SEQS's version/hash pin and detached-signature check.
-GNOSISVPN_URL="https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.90.0_amd64.deb"
-GNOSISVPN_SHA256="ab91ca3e7824db22bef9e9a27e683714880fc5306b09f99f992a8d57cfa945f1"
+GNOSISVPN_URL="https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb"
+GNOSISVPN_SHA256="87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
 GNOSISVPN_KEY_FPR="9A308031FD3BFE8EDBF5076D84F73FEA46D10972"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
@@ -31,7 +32,7 @@ install -d -m 0700 "${tmp}/gnupg"
 gpg --batch --homedir "${tmp}/gnupg" \
 	--import "${ASSET_DIR}/gnosisvpn-public-key.asc" >/dev/null
 gpg --batch --homedir "${tmp}/gnupg" --verify g.deb.asc g.deb
-sudo env GNOSISVPN_NETWORK=jura apt install ./g.deb -y
+sudo env GNOSISVPN_NETWORK=jura-prod apt install ./g.deb -y
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall
@@ -43,4 +44,4 @@ sudo systemctl daemon-reload
 sudo systemctl enable seqs-gnosisvpn-dns.path
 sudo systemctl enable seqs-gnosisvpn-dns.timer
 
-echo "GnosisVPN ${GNOSISVPN_URL##*/} installed for network jura."
+echo "GnosisVPN ${GNOSISVPN_URL##*/} installed for network jura-prod."
