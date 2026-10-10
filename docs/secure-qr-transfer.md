@@ -657,7 +657,8 @@ file while the computer is off), and the dom0 script
 `/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential
 path, the build stops with `Configured controller is not attached to sys-usb`
 if the configured BDF is not a controller that the running `sys-usb` holds;
-recheck the BDF, and that `sys-usb` is running.
+recheck the BDF, and that `sys-usb` is running. Every later SEQS run on this
+computer repeats that check, whichever qubes it builds.
 
 The build assigns the controller without resetting it. If `sys-usb-webcam`
 later fails to start because the controller cannot be reset, the reset check

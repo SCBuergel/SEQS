@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEQS reduced-assurance QR receive ceremony for a shared USB controller.
+# SEQS sequential-path QR scan on a USB controller shared with the keyboard.
 # Installed in dom0 and configured by /etc/seqs/qr-sequential.conf.
 set -Eeuo pipefail
 
@@ -53,13 +53,13 @@ staged="$(qvm-run --pass-io "$STAGING_QUBE" \
 case "$staged" in
 	ABSENT) ;;
 	PRESENT)
-		echo "ERROR: staging already contains an incoming key.asc; inspect and remove it before a new ceremony" >&2
+		echo "ERROR: $STAGING_QUBE already holds an incoming key.asc; inspect and remove it before a new scan" >&2
 		exit 1 ;;
 	*)
 		echo "ERROR: could not check $STAGING_QUBE for an old key.asc" >&2
 		exit 1 ;;
 esac
-# The camera side must stay offline at every ceremony, not only after setup:
+# The camera side must stay offline at every scan, not only after setup:
 # no NetVM, and no default disposable that qubes.OpenInVM could reach.
 for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
 	for pref in netvm default_dispvm; do
@@ -78,7 +78,7 @@ normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, 
 }
 
 cat <<EOF
-REDUCED-ASSURANCE SEQUENTIAL USB CEREMONY
+SEQS SEQUENTIAL-PATH QR SCAN
 
 Controller:       dom0:$CONTROLLER
 Normal backend:   $NORMAL_USB_QUBE
