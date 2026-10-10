@@ -54,7 +54,7 @@ test, only while a desktop session is running.
 ## What you need
 
 - The test machine: a computer with Intel VT-x and VT-d (or the AMD
-  equivalents), wired to your home network.
+  equivalents), connected to your home network by cable or Wi-Fi.
 - A USB webcam for the test machine.
 - Your laptop on the same network, with a qube that you will use to control
   the test machine. Any Debian- or Fedora-based qube with network access
@@ -67,14 +67,13 @@ These settings let the machine restart without anyone at the keyboard.
 1. In the firmware (BIOS/UEFI) settings, enable VT-x and VT-d, and set the
    behaviour after a power loss to "power on". A smart plug can then restart
    the machine by switching its power off and on.
-2. In your router, give the test machine a fixed address, so that the address
-   you note in step 4 stays valid.
-3. Install Qubes OS from the [official ISO](https://www.qubes-os.org/downloads/)
-   with the installer's defaults, which include a normal (not disposable)
-   `sys-net`, `sys-usb`, and a Debian template. If the installer lets you skip
-   disk encryption, do so; otherwise every boot stops at the passphrase prompt
+2. Install Qubes OS from the [official ISO](https://www.qubes-os.org/downloads/)
+   with the installer's defaults. They include a Debian template and a
+   `sys-net` that is a normal qube, which the setup requires; `sys-firewall`
+   and `sys-usb` may be disposables. If the installer lets you skip disk
+   encryption, do so; otherwise every boot stops at the passphrase prompt
    until someone types it.
-4. Plug the webcam into the test machine.
+3. Plug the webcam into the test machine.
 
 ## 2. Show your laptop's test key as a QR code
 
@@ -146,7 +145,10 @@ This copies the script into dom0 as `t.sh` and runs it. The script:
 5. Shows the fingerprint of the key it read and asks `Allow these keys?`.
    Answer `y` only if the `SHA256:` value matches the one on your laptop.
 6. Sets up the forwarding rule, the qrexec service and policy, and the
-   automatic login, then checks that `test-ctl` can reach dom0.
+   automatic login, then checks that `test-ctl` can reach dom0. It also fixes
+   the MAC address (the network card's hardware address, as your router sees
+   it) that `sys-net` uses: by default, Qubes may present a different one
+   after each reboot, and the router would then hand out a new address.
 
 It ends with:
 
@@ -155,11 +157,18 @@ It ends with:
       address   192.168.1.50
       port      2222
       host key  SHA256:...
+      MAC       aa:bb:cc:dd:ee:ff  (reserve the address for it in your router)
 ```
 
 Note the address and the host key (the fingerprint that proves to your laptop
-that it reached `test-ctl` and not another machine). Do not reboot anything
-yet; step 4 includes a reboot of the test machine once the connection works.
+that it reached `test-ctl` and not another machine).
+
+Then, in your router's DHCP settings, reserve the shown address for the shown
+MAC address. Without this reservation, the router may give the test machine a
+different address after a reboot, and your laptop no longer finds it.
+
+Do not reboot anything yet; step 4 includes a reboot of the test machine once
+the connection works.
 
 If a step fails, the script stops with an `ERROR:` line that says why. Fix the
 cause and run `bash t.sh` again; each rerun resumes and replaces earlier
@@ -189,6 +198,7 @@ ADDR=192.168.1.50
 mkdir -p ~/.ssh && grep -qx 'Host seqs-test' ~/.ssh/config 2>/dev/null || cat >> ~/.ssh/config <<EOF
 Host seqs-test
   HostName $ADDR
+  HostKeyAlias seqs-test
   Port 2222
   User user
   IdentityFile ~/.ssh/seqs-test
@@ -202,8 +212,10 @@ continue. Type `yes` only if it matches the host key the test machine showed.
 The output is the list of running qubes on the test machine, produced by its
 dom0.
 
-If the test machine's address changes later, edit the `HostName` line in
-`~/.ssh/config`.
+`HostKeyAlias seqs-test` makes SSH remember the host key under the name
+`seqs-test` instead of under the address. If the address changes, you edit
+only the `HostName` line in `~/.ssh/config`, and SSH still checks that it
+reaches the same `test-ctl`.
 
 ### Reboot the test machine once
 
@@ -227,8 +239,23 @@ then run the same command again in the controlling qube on your laptop:
 ssh seqs-test dom0 qvm-ls --running
 ```
 
-It should list the running qubes as before. If the test machine stops at the
-disk passphrase prompt, it was installed with disk encryption (see
+It should list the running qubes as before.
+
+If `ssh` instead reports `No route to host`, the test machine is either still
+starting or has a new address because the router reservation is missing. To
+find it, run this in the controlling qube on your laptop, with the first three
+parts of your network's addresses:
+
+```bash
+for i in $(seq 1 254); do (timeout 1 bash -c "exec 3<>/dev/tcp/192.168.1.$i/2222" 2>/dev/null && echo "192.168.1.$i") & done; wait
+```
+
+It prints each address that accepts connections on port 2222. Put the
+address in the `HostName` line, and reserve it in your router as described in
+[3. Run the setup on the test machine](#3-run-the-setup-on-the-test-machine).
+
+If the test machine stops at the disk passphrase prompt, it was installed
+with disk encryption (see
 [1. Prepare the test machine](#1-prepare-the-test-machine)): type the
 passphrase, and expect to do so after every restart.
 
@@ -356,7 +383,8 @@ bash t.sh --remove
 ```
 
 This removes `test-ctl`, the forwarding rule, the qrexec service and policy,
-and the automatic login. It refuses to remove a file or qube that the script
+and the automatic login, and returns `sys-net`'s MAC address to the Qubes
+default. It refuses to remove a file or qube that the script
 did not create. Reboot afterwards to end the automatic desktop session.
 
 ## Options

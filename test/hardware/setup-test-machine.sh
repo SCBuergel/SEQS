@@ -439,6 +439,27 @@ rm -f "\$cur"
 EOF
 }
 
+# pinMac MODE -- "pin" fixes the MAC address sys-net's active connection uses
+# now, so that the router can reserve an address for it: Qubes' NetworkManager
+# default ("stable") may present a new MAC after a reboot. "unpin" returns the
+# connection to that default.
+pinMac() {
+	local value='"$(cat "/sys/class/net/$dev/address")"'
+	[ "$1" = "pin" ] || value='""'
+	runIn "${NET_VM}" root <<EOF || echo "WARNING: could not ${1} the MAC address in ${NET_VM}."
+dev="\$(ip -4 -o route get 1.1.1.1 | sed -nE 's/.* dev ([^ ]+).*/\1/p')"
+[ -n "\$dev" ] || exit 0
+con="\$(nmcli -t -f NAME,DEVICE connection show --active | awk -F: -v d="\$dev" '\$2 == d { print \$1; exit }')"
+[ -n "\$con" ] || exit 0
+case "\$(nmcli -g connection.type connection show "\$con")" in
+	802-11-wireless) prop=802-11-wireless.cloned-mac-address ;;
+	802-3-ethernet) prop=802-3-ethernet.cloned-mac-address ;;
+	*) exit 0 ;;
+esac
+nmcli connection modify "\$con" "\$prop" ${value}
+EOF
+}
+
 configureDom0() {
 	refuseUnmarked "${RPC_FILE}"
 	refuseUnmarked "${POLICY_FILE}"
@@ -491,15 +512,23 @@ selfTest() {
 }
 
 summary() {
-	local hostkey
+	local hostkey mac
 	hostkey="$(qvm-run --pass-io --no-gui "${CTL_VM}" \
 		'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub' 2>/dev/null | sanitize | awk '{ print $2 }')"
+	# The network card belongs to sys-net, so this is the hardware address the
+	# router sees; reserving the LAN address for it keeps the address stable.
+	# shellcheck disable=SC2016 # expanded in sys-net, not here
+	mac="$(qvm-run --pass-io --no-gui "${NET_VM}" \
+		'cat "/sys/class/net/$(ip -4 -o route get 1.1.1.1 | sed -nE "s/.* dev ([^ ]+).*/\1/p")/address"' \
+		2>/dev/null | sanitize)"
+	[[ "${mac}" =~ ^([0-9a-f]{2}:){5}[0-9a-f]{2}$ ]] || mac="<unknown>"
 	cat <<EOF
 
 ==> Done. Write these down for your laptop:
       address   ${LAN_IP:-<${NET_VM} LAN address>}
       port      ${PORT}
       host key  ${hostkey:-<unknown>}
+      MAC       ${mac}  (reserve the address for it in your router)
     Connections are accepted from ${ALLOW_FROM}.
 EOF
 	if [ "${AUTOLOGIN}" -eq 1 ]; then
@@ -517,6 +546,7 @@ removeAll() {
 		qvm-remove --force -- "${CTL_VM}" || die "qvm-remove ${CTL_VM} failed."
 	fi
 	configureNet remove
+	pinMac unpin
 	local f
 	for f in "${POLICY_FILE}" "${RPC_FILE}" "${LIGHTDM_FILE}"; do
 		if sudo test -e "${f}"; then
@@ -601,6 +631,7 @@ read -rp "Allow these keys? [y/N] " answer </dev/tty || die "no terminal -- abor
 case "${answer}" in y|Y) ;; *) die "not confirmed -- aborting." ;; esac
 installKeys
 configureNet install
+pinMac pin
 configureDom0
 if [ "${AUTOLOGIN}" -eq 1 ]; then
 	configureDesktop
