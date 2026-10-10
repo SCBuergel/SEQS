@@ -23,12 +23,16 @@ command -v systemctl >/dev/null || { echo "ERROR: systemctl is unavailable" >&2;
 exposed=0
 teardown_and_poweroff() {
 	local rc=$?
-	trap - EXIT HUP INT QUIT TERM
+	# Once teardown has started, no signal may stop it short of the power-off;
+	# the ignored signals are inherited by the commands below.
+	trap - EXIT
+	trap '' HUP INT QUIT TERM
 	set +e
 	qvm-kill -- "$SCANNER_QUBE" >/dev/null 2>&1
 	qvm-kill -- "$WEBCAM_USB_QUBE" >/dev/null 2>&1
 	# A clean shutdown commits the received file to the staging qube's disk
 	# before the power-off; qvm-shutdown kills the qube if it ignores this.
+	echo "Shutting down $STAGING_QUBE."
 	qvm-shutdown --wait -- "$STAGING_QUBE" >/dev/null 2>&1
 	if [ "$exposed" -eq 1 ]; then
 		echo "Camera phase ended (status $rc). Powering off; do not reconnect USB input before power is off."
