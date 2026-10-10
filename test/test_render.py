@@ -145,7 +145,7 @@ def test_dom0_happy_path():
             check("qubes.OpenInVM  *  %s  %s  deny" % (subject, target) in suppress,
                   "open-in-qube handoff to %s must be denied for %s" % (target, subject))
         for service in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
-                        "qubes.VMExec", "qubes.VMExecGUI"):
+                        "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert"):
             check("%s  *  %s  @dispvm  deny" % (service, subject) in suppress,
                   "%s to a disposable must be denied for %s" % (service, subject))
     check("qubes.OpenURL  *  A-wallet-ledger  @dispvm  deny" in suppress
@@ -324,7 +324,8 @@ def test_dom0_sequential_qr_mode():
           "camera disposables must be denied dom0 input")
     for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
         for service in ("qubes.OpenInVM ", "qubes.StartApp ", "qubes.GetImageRGBA",
-                        "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI"):
+                        "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI",
+                        "qubes.PdfConvert"):
             check("%s   *  %s  @dispvm   deny" % (service.ljust(18), subject) in deny,
                   "camera-side qube %s must not reach a disposable via %s" % (subject, service.strip()))
     for state in ("seqs-webcam-usb-backend", "seqs-qr-scanner"):

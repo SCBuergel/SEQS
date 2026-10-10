@@ -702,7 +702,7 @@ grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
 You should see `deny` lines for `qubes.OpenURL` and for these disposable
 services from each of `A-qr-display`, `@dispvm:A-qr-display`, and
 `D-qr-display`: `qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`,
-`qubes.VMShell`, `qubes.VMExec`, and `qubes.VMExecGUI`.
+`qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -730,11 +730,15 @@ qvm-pci list --assignments
 
 The controller can appear on two lines: one with the qubes that hold it right
 now, if any, and one with the assigned qubes, marked with `*`. On the
-dedicated-controller path, your controller
-must be assigned only to `sys-usb-webcam`. On the sequential path, it is
-assigned to both `sys-usb` and `sys-usb-webcam`. Qubes refuses to start a qube
-whose controller another running qube holds, and the script stops `sys-usb`
-before starting `sys-usb-webcam`.
+dedicated-controller path, your controller must be assigned only to
+`sys-usb-webcam`, and no other controller may be assigned to `sys-usb-webcam`:
+a build with a different BDF leaves that controller assigned to it, so give it
+back to `sys-usb` with steps 3 and 4 of the recovery under
+[Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
+On the sequential path, the controller is assigned to both `sys-usb` and
+`sys-usb-webcam`. Qubes refuses to start a qube whose controller another
+running qube holds, and the script stops `sys-usb` before starting
+`sys-usb-webcam`.
 
 ### Receiving computer: check the qrexec policies
 

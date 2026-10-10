@@ -306,6 +306,9 @@ seqs-policy-qr-input-deny:
         qubes.VMShell        *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExec         *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExecGUI      *  {{ webcam_usb_qube }}  @dispvm   deny
+        # qubes.PdfConvert comes from the PDF converter, a default dom0 package,
+        # whose own policy allows it into a disposable without asking.
+        qubes.PdfConvert     *  {{ webcam_usb_qube }}  @dispvm   deny
         # Qubes 4.3 matches a @dispvm:<template> source against no running
         # qube (qrexec parser, DispVMTemplate.match); these lines are kept for
         # a release that does. The named qubes above and below are what the
@@ -326,6 +329,7 @@ seqs-policy-qr-input-deny:
         qubes.VMShell        *  {{ webcam_scanner_qube }}  @dispvm   deny
         qubes.VMExec         *  {{ webcam_scanner_qube }}  @dispvm   deny
         qubes.VMExecGUI      *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.PdfConvert     *  {{ webcam_scanner_qube }}  @dispvm   deny
 {% else %}
 seqs-policy-qr-input-deny:
   cmd.run:
@@ -436,7 +440,8 @@ seqs-policy-browser-suppress:
         # boundary, not just at each qube's xdg config. The @dispvm lines
         # state the disposable target explicitly.
         # Offline qubes also lose every service that the Qubes default policy
-        # lets into a new disposable without asking; that disposable normally
+        # lets into a new disposable without asking (qubes.PdfConvert through
+        # the PDF converter's own default policy); that disposable normally
         # has network access. Their unset default_dispvm is
         # the primary control; these denies are a second layer.
         # Existing strict denies for SEQS-managed qubes are preserved across
@@ -452,6 +457,7 @@ seqs-policy-browser-suppress:
         qubes.VMShell  *  {{ vm }}  @dispvm  deny
         qubes.VMExec  *  {{ vm }}  @dispvm  deny
         qubes.VMExecGUI  *  {{ vm }}  @dispvm  deny
+        qubes.PdfConvert  *  {{ vm }}  @dispvm  deny
         {%- endif %}
         {%- endfor %}
 {% else %}

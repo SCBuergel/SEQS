@@ -53,9 +53,10 @@ qvm-check --running -q -- "$WEBCAM_USB_QUBE" && {
 qvm-check --running -q -- "$SCANNER_QUBE" && {
 	echo "ERROR: $SCANNER_QUBE is already running" >&2; exit 1;
 }
-# The staging qube's answer is only compared, never printed.
+# The staging qube's answer is only compared, never printed. The scanner name
+# was charset-checked above, so it is safe inside the remote command.
 staged="$(qvm-run --pass-io "$STAGING_QUBE" \
-	'if test -e "$HOME/QubesIncoming/seqs-qr-scanner/key.asc"; then echo PRESENT; else echo ABSENT; fi' \
+	"if test -e \"\$HOME/QubesIncoming/$SCANNER_QUBE/key.asc\"; then echo PRESENT; else echo ABSENT; fi" \
 	</dev/null 2>/dev/null)" || staged=''
 case "$staged" in
 	ABSENT) ;;
@@ -83,6 +84,10 @@ done
 normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\t\n')" || {
 	echo "ERROR: cannot list the USB devices of $NORMAL_USB_QUBE" >&2; exit 1;
 }
+# A stopped backend lists nothing, which must not read as "no devices".
+if ! qvm-check --running -q -- "$NORMAL_USB_QUBE"; then
+	normal_devices="  ($NORMAL_USB_QUBE is not running, so its devices cannot be listed)"
+fi
 
 cat <<EOF
 SEQS SEQUENTIAL-PATH QR SCAN
