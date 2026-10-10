@@ -158,8 +158,9 @@ It ends with:
 ```
 
 Note the address and the host key (the fingerprint that proves to your laptop
-that it reached `test-ctl` and not another machine). Then reboot the test
-machine once, so that the automatic login takes effect.
+that it reached `test-ctl` and not another machine). Nothing needs a reboot
+now: the automatic desktop login starts with the next reboot of the test
+machine, and you are already logged in.
 
 If a step fails, the script stops with an `ERROR:` line that says why. Fix the
 cause and run `bash t.sh` again; each rerun resumes and replaces earlier
@@ -193,6 +194,11 @@ ssh seqs-test dom0 qvm-ls --running
 On the first connection, SSH shows a host key fingerprint and asks whether to
 continue. Type `yes` only if it matches the host key the test machine showed.
 The output is the list of running qubes on the test machine, produced by dom0.
+
+Once this works, reboot the test machine, wait a minute, and run the last
+command again. It should work without anyone touching the test machine: the
+reboot checks that `test-ctl` starts by itself, that `sys-net` restores the
+forwarding rule, and that dom0 logs in to the desktop automatically.
 
 If the test machine's address changes later, edit the `HostName` line in
 `~/.ssh/config`.

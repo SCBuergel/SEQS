@@ -503,7 +503,9 @@ summary() {
     Connections are accepted from ${ALLOW_FROM}.
 EOF
 	if [ "${AUTOLOGIN}" -eq 1 ]; then
-		echo "    Reboot once so that the desktop logs in automatically."
+		echo "    Automatic desktop login starts with the next reboot of this machine;"
+		echo "    nothing needs a reboot now. Reboot once later to check that remote"
+		echo "    access comes back on its own."
 	fi
 }
 
