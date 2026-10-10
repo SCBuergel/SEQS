@@ -8,6 +8,7 @@
 #   reset    delete all SEQS qubes and dom0 state (dom0-test.sh reset)
 #   install  run setup-qubes.sh for the selection (dom0-test.sh install)
 #   check    verify what was built (dom0-test.sh check)
+#   lifecycle restart qubes: cleanup on boot/shutdown, persistent state
 #   rerun    install and check again: a second run must converge quickly
 #
 # Usage: test/hardware/system-test.sh [--qubes LIST | --all] [--no-rerun]
@@ -34,7 +35,7 @@ while [ "$#" -gt 0 ]; do
 		--no-rerun) RERUN=0 ;;
 		--force-rerun) FORCE_RERUN=1 ;;
 		--host) [ "$#" -gt 1 ] || { echo "--host needs a name" >&2; exit 2; }; HOST="$2"; shift ;;
-		-h|--help) sed -n '3,21p' "$0"; exit 0 ;;
+		-h|--help) sed -n '3,22p' "$0"; exit 0 ;;
 		*) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -152,6 +153,7 @@ main() {
 	if phase sync sync && phase reset dom0 reset; then
 		phase install dom0 install "${SELECTION}"
 		phase check dom0 check
+		phase lifecycle dom0 lifecycle
 		if [ "${RERUN}" -eq 1 ]; then
 			[ "${FORCE_RERUN}" -eq 0 ] || phase invalidate dom0 invalidate
 			phase rerun-install dom0 install "${SELECTION}"

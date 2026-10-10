@@ -182,9 +182,12 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
 - The stable release is version- and hash-pinned and its detached signature is
   checked against an embedded key, but the key was sourced from the GnosisVPN
   project. Review the fingerprint through an independent channel.
-- The package's post-install behavior may configure its own APT repository.
-  Once the temporary policy is removed, later package updates use the normal
-  Qubes UpdateVM and are not restricted by the temporary domain-only proxy.
+- The package configures upstream's APT repository on two mirrors. SEQS pins
+  both so that only the `gnosisvpn` package can come from them, checks that
+  the repository keyring holds exactly the pinned key, and locks that keyring.
+  Once the temporary policy is removed, later `gnosisvpn` updates use the
+  normal Qubes UpdateVM, are not restricted by the temporary domain-only
+  proxy, and can move past the version SEQS pinned.
 - The DNS helper expects the interface to be named `wg0_gnosisvpn`. A future
   GnosisVPN release that renames it requires a reviewed component update.
 - Only IPv4 DNS servers are accepted. Missing or unusable openresolv data uses

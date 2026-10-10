@@ -274,9 +274,14 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code) drops it
   a reviewed SEQS update rather than being installed automatically, and
   upstream deletes superseded packages, so a stale pin fails closed with
   HTTP 404 until updated. The
-  package runs maintainer scripts as root and may configure an APT repository;
-  later updates use the normal Qubes UpdateVM, not the temporary domain-only
-  proxy. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
+  package runs maintainer scripts as root and configures upstream's APT
+  repository (mirrors `download.vpn.gnosis.eth.limo` and
+  `download.gnosisvpn.io`). SEQS pins both mirrors so that only the
+  `gnosisvpn` package can come from them, requires the installed repository
+  keyring to hold exactly the pinned key, and locks it with `chattr +i`, as
+  for the other third-party repositories. Later `gnosisvpn` updates from that
+  repository use the normal Qubes UpdateVM, not the temporary domain-only
+  proxy, and can move past the reviewed SEQS pin. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
   back to Cloudflare `1.1.1.1` and Google `8.8.8.8`; those providers can
   observe queries, although the helper verifies that they route through the
   tunnel and installs an output leak guard. The VPN qube retains upstream

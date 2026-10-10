@@ -32,7 +32,42 @@ install -d -m 0700 "${tmp}/gnupg"
 gpg --batch --homedir "${tmp}/gnupg" \
 	--import "${ASSET_DIR}/gnosisvpn-public-key.asc" >/dev/null
 gpg --batch --homedir "${tmp}/gnupg" --verify g.deb.asc g.deb
+# The package installs upstream's APT repository (two mirrors) and its
+# keyring. A rerun finds that keyring locked by the chattr +i below; the
+# package rewrites it, so unlock it first.
+KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
 sudo env GNOSISVPN_NETWORK=jura-prod apt install ./g.deb -y
+
+# Treat that repository like every other third-party one: its keyring must
+# hold exactly the pinned key, only the gnosisvpn package may come from it,
+# and the keyring is locked against rewrite by later maintainer scripts.
+repo_fpr="$(
+	gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null |
+		awk -F: '$1 == "pub" { p = 1; n++ } $1 == "fpr" && p { print $10; p = 0 } END { if (n != 1) print "count:" n }'
+)"
+[[ "${repo_fpr}" = "${GNOSISVPN_KEY_FPR}" ]] || {
+	echo "ERROR: ${KEYRING} does not hold exactly the pinned GnosisVPN key (got: ${repo_fpr:-none})" >&2
+	exit 1
+}
+sudo tee /etc/apt/preferences.d/gnosisvpn.pref > /dev/null <<'EOF'
+Package: *
+Pin: origin "download.vpn.gnosis.eth.limo"
+Pin-Priority: -1
+
+Package: gnosisvpn
+Pin: origin "download.vpn.gnosis.eth.limo"
+Pin-Priority: 500
+
+Package: *
+Pin: origin "download.gnosisvpn.io"
+Pin-Priority: -1
+
+Package: gnosisvpn
+Pin: origin "download.gnosisvpn.io"
+Pin-Priority: 500
+EOF
+sudo chattr +i "${KEYRING}"
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall

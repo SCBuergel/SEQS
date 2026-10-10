@@ -12,6 +12,8 @@
 #                                catalogue names) or "all", answering its
 #                                prompts with y; output is time-stamped
 #   dom0-test.sh check           verify what the last install built
+#   dom0-test.sh lifecycle       restart qubes: transient-directory cleanup on
+#                                boot and shutdown, and state that must persist
 #   dom0-test.sh invalidate      empty the completion markers in every built
 #                                qube, so the next install runs every
 #                                component script again
@@ -178,6 +180,171 @@ print(" ".join(data.get(sys.argv[1], {}).get("components", [])))
 ' "$1" <<< "${CATALOGUE_JSON}"
 }
 
+# pillarValue KEY -- one scalar pillar value, as Salt sees it in dom0.
+pillarValue() {
+	sudo qubesctl --dom0-only --out=json pillar.get "$1" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+except ValueError:
+    sys.exit(0)
+print(d.get("local", "") if isinstance(d, dict) else d)'
+}
+
+# catField RECIPE FIELD -- one catalogue field of RECIPE ("True"/"False" for
+# flags, empty when absent).
+catField() {
+	python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+except ValueError:
+    sys.exit(0)
+v = data.get("local", data).get(sys.argv[1], {}).get(sys.argv[2], "")
+print(v)
+' "$1" "$2" <<< "${CATALOGUE_JSON}"
+}
+
+# checkSetup KIND VM RECIPE -- the qube settings SEQS declares, as qvm-prefs
+# reports them, and the template menu entries.
+checkSetup() {
+	local kind="$1" vm="$2" recipe="$3" want got comp
+	case "${kind}" in
+		template)
+			isNone "$(qvm-prefs -- "${vm}" netvm 2>/dev/null)" \
+				&& pass "${vm}: template has no netvm" || fail "${vm}: template has a netvm"
+			for comp in $(componentsFor "${recipe}"); do
+				sudo test -f "${SALT_TREE}/files/components/${comp}/menu.desktop" || continue
+				qvm-run --pass-io --no-gui "${vm}" "test -f /usr/share/applications/${comp}.desktop" </dev/null >/dev/null 2>&1 \
+					&& pass "${vm}: menu entry for ${comp}" || fail "${vm}: menu entry for ${comp} is missing"
+			done
+			;;
+		app)
+			want="$(catField "${recipe}" label)"
+			got="$(qvm-prefs -- "${vm}" label 2>/dev/null)"
+			[ -z "${want}" ] || [ "${got}" = "${want}" ] \
+				&& pass "${vm}: label ${got}" || fail "${vm}: label is '${got}', catalogue says '${want}'"
+			if [ "$(catField "${recipe}" dispvm_template)" = "True" ]; then
+				[ "$(qvm-prefs -- "${vm}" template_for_dispvms 2>/dev/null)" = "True" ] \
+					&& pass "${vm}: is a disposable template" || fail "${vm}: template_for_dispvms is not set"
+			fi
+			if [ "$(catField "${recipe}" network_provider)" = "True" ]; then
+				[ "$(qvm-prefs -- "${vm}" provides_network 2>/dev/null)" = "True" ] \
+					&& pass "${vm}: provides network" || fail "${vm}: provides_network is not set"
+			fi
+			# Link handoff: set in qubes that hand links to the browser qube,
+			# absent where offline or no_handoff closes that path.
+			got="$(qvm-run --pass-io --no-gui "${vm}" 'xdg-settings get default-web-browser' 2>/dev/null </dev/null)"
+			if [ "$(catField "${recipe}" offline)" = "True" ] || [ "$(catField "${recipe}" no_handoff)" = "True" ] \
+					|| [ "${vm}" = "${BROWSER_VM}" ]; then
+				[ "${got}" != "${BROWSER_DESKTOP}" ] && pass "${vm}: links are not handed to ${BROWSER_VM}" \
+					|| fail "${vm}: hands links to ${BROWSER_VM} although it must not"
+			else
+				[ "${got}" = "${BROWSER_DESKTOP}" ] && pass "${vm}: hands links to ${BROWSER_VM}" \
+					|| fail "${vm}: default browser is '${got}', not the handoff to ${BROWSER_VM}"
+			fi
+			;;
+		disposable)
+			want="A-${vm#D-}"
+			got="$(qvm-prefs -- "${vm}" template 2>/dev/null)"
+			[ "${got}" = "${want}" ] && pass "${vm}: based on ${want}" || fail "${vm}: based on '${got}', not ${want}"
+			;;
+	esac
+}
+
+# PIN_CHECK -- run with python3 as root in a template: every third-party APT
+# source (not Debian or Qubes) must be blocked by a Package: * /
+# Pin-Priority: -1 rule apart from an allowlist, and up to five packages it
+# offers outside the allowlist must not be installable from it.
+PIN_CHECK='
+import glob, re, subprocess, sys
+from urllib.parse import urlparse
+bad, checked = [], []
+# Third-party origins: every APT source host that is not Debian or Qubes.
+hosts = set()
+for f in glob.glob("/etc/apt/sources.list.d/*.list") + glob.glob("/etc/apt/sources.list.d/*.sources"):
+    active = "\n".join(l for l in open(f).read().splitlines() if not l.lstrip().startswith("#"))
+    for url in re.findall(r"(?:tor\+)?https?://[^\s\]]+", active):
+        host = urlparse(url.split("+", 1)[-1]).hostname or ""
+        qubes_onion = re.fullmatch(r"deb\.qubesos[a-z2-7]{49}\.onion", host)
+        if host and not qubes_onion and not re.search(r"(^|\.)(debian\.org|debian\.net|qubes-os\.org)$", host):
+            hosts.add(host)
+pins = {}
+for f in glob.glob("/etc/apt/preferences.d/*"):
+    for block in open(f).read().split("\n\n"):
+        d = dict(l.split(":", 1) for l in block.strip().splitlines() if ":" in l)
+        m = re.match(r"\s*origin \"?([^\"\s]+)", d.get("Pin", ""))
+        if not m:
+            continue
+        p = pins.setdefault(m.group(1), {"blocked": False, "allow": set()})
+        pkgs, prio = d.get("Package", "").split(), d.get("Pin-Priority", "").strip()
+        if pkgs == ["*"] and prio == "-1":
+            p["blocked"] = True
+        elif prio != "-1":
+            p["allow"].update(pkgs)
+for origin in sorted(hosts):
+    p = pins.get(origin)
+    if not p or not p["blocked"]:
+        bad.append("%s: third-party source without a Package: * / Pin-Priority: -1 block" % origin)
+        continue
+    names = set()
+    for lst in glob.glob("/var/lib/apt/lists/*%s*_Packages" % origin):
+        names.update(re.findall(r"^Package: (\S+)", open(lst).read(), re.M))
+    if not names:
+        bad.append("%s: no package list found, so the pin cannot be checked" % origin)
+        continue
+    outside = sorted(names - p["allow"])
+    for pkg in outside[:5]:
+        out = subprocess.run(["apt-cache", "policy", pkg], capture_output=True, text=True).stdout
+        cand = re.search(r"Candidate: (\S+)", out)
+        cand = cand.group(1) if cand else "(none)"
+        if cand == "(none)":
+            continue
+        sec = re.search(r"^ (?:\*\*\*| {3}) %s .*\n((?: {8}.*\n)*)" % re.escape(cand), out, re.M)
+        if sec and origin in sec.group(1):
+            bad.append("%s: %s %s is installable although not allowlisted" % (origin, pkg, cand))
+    checked.append("%s (%d of %d outside the allowlist)" % (origin, min(5, len(outside)), len(outside)))
+print("PIN-CHECKED " + "; ".join(checked))
+for b in bad:
+    print("PIN-FAIL " + b)
+sys.exit(1 if bad else 0)
+'
+
+# checkTemplateApt VM RECIPE -- the template can still update through the
+# Qubes updates proxy, its locked keyrings are locked, and third-party
+# repositories can only ship their allowlisted packages.
+checkTemplateApt() {
+	local vm="$1" recipe="$2" out comp script path
+	local -a paths=()
+	out="$(qvm-run --pass-io --no-gui -u root "${vm}" 'apt-get update -q 2>&1' </dev/null 2>&1)"
+	if grep -qE '^(E:|Err:)' <<< "${out}"; then
+		fail "${vm}: apt-get update failed: $(grep -E '^(E:|Err:)' <<< "${out}" | head -n 2 | tr '\n' ' ')"
+	else
+		pass "${vm}: apt-get update works through the updates proxy"
+		grep -E '^W:' <<< "${out}" | head -n 3 | sed "s/^/NOTE: ${vm} apt: /"
+	fi
+	for comp in $(componentsFor "${recipe}"); do
+		script="${SALT_TREE}/files/components/${comp}/template-vm.sh"
+		case "${comp}" in brave|brave-extension-*) script="${SALT_TREE}/files/lib/brave.sh" ;; esac
+		sudo test -f "${script}" && sudo grep -q 'chattr +i' "${script}" || continue
+		while IFS= read -r path; do
+			paths+=("${path}")
+		done < <(sudo grep -oiE 'keyring="/[^"]+"' "${script}" | cut -d'"' -f2)
+	done
+	for path in $(printf '%s\n' "${paths[@]}" | sort -u); do
+		if qvm-run --pass-io --no-gui -u root "${vm}" "lsattr -d ${path} | cut -d' ' -f1 | grep -q i" </dev/null >/dev/null 2>&1; then
+			pass "${vm}: ${path} is locked (immutable)"
+		else
+			fail "${vm}: ${path} is not locked"
+		fi
+	done
+	if out="$(qvm-run --pass-io --no-gui -u root "${vm}" 'python3 -' <<< "${PIN_CHECK}" 2>&1)"; then
+		pass "${vm}: third-party repositories are pinned: $(sed -n 's/^PIN-CHECKED //p' <<< "${out}")"
+	else
+		fail "${vm}: repository pinning: $(grep -E 'PIN-FAIL|Error' <<< "${out}" | head -n 3 | tr '\n' ' ')"
+	fi
+}
+
 # checkMarkers VM ROLE RECIPE -- every component left its .done marker.
 checkMarkers() {
 	local vm="$1" role="$2" comps comp have missing=""
@@ -298,6 +465,9 @@ check() {
 	fi
 	CATALOGUE_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:catalogue 2>/dev/null)"
 	EXTENSIONS_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:brave_extensions 2>/dev/null)"
+	BROWSER_VM="$(pillarValue seqs:browser_vm)"
+	BROWSER_DESKTOP="$(pillarValue seqs:browser_desktop)"
+	[ -n "${BROWSER_VM}" ] && [ -n "${BROWSER_DESKTOP}" ] || fail "could not read browser_vm and browser_desktop from the pillar"
 
 	while read -r kind name recipe flags; do
 		case "${kind}" in ''|\#*) continue ;; esac
@@ -322,6 +492,8 @@ check() {
 				else
 					ours=1
 					checkMarkers "${name}" template "${recipe}"
+					checkSetup template "${name}" "${recipe}"
+					checkTemplateApt "${name}" "${recipe}"
 				fi
 				;;
 			app)
@@ -330,8 +502,10 @@ check() {
 					|| fail "${name} is based on ${tpl:-?}, not on a SEQS template"
 				qvm-check --running --quiet -- "${name}" >/dev/null 2>&1 || ours=1
 				checkMarkers "${name}" app "${recipe}"
+				checkSetup app "${name}" "${recipe}"
 				smoke "${name}" "${recipe}"
 				;;
+			disposable) checkSetup disposable "${name}" "${recipe}" ;;
 		esac
 		if [[ " ${flags} " == *" offline "* ]]; then
 			if isNone "${nv}" && isNone "${dv}"; then
@@ -384,6 +558,102 @@ check() {
 	[ "${FAILS}" -eq 0 ]
 }
 
+# ---- lifecycle ----------------------------------------------------------------
+
+# inQube VM CMD -- run CMD as the user in VM (starting it if needed).
+inQube() {
+	qvm-run --pass-io --no-gui "$1" "$2" </dev/null 2>/dev/null
+}
+
+# restart VM [kill] -- shut VM down cleanly, or kill it so that no shutdown
+# hook runs, then start it again.
+restart() {
+	if [ "${2:-}" = "kill" ]; then
+		qvm-kill -- "$1" >/dev/null 2>&1
+	else
+		qvm-shutdown --wait -- "$1" >/dev/null 2>&1
+	fi
+	qvm-start --skip-if-running -- "$1" >/dev/null 2>&1
+}
+
+SEED='mkdir -p ~/QubesIncoming/seqs-src ~/Downloads/seqs-sub ~/Documents && echo x > ~/QubesIncoming/seqs-src/f && echo x > ~/Downloads/seqs-a && echo x > ~/Downloads/seqs-sub/b && echo keep > ~/Documents/seqs-keep && sync'
+CLEAN='[ ! -e ~/QubesIncoming ] && [ -d ~/Downloads ] && [ -z "$(ls -A ~/Downloads)" ] && [ -f ~/Documents/seqs-keep ]'
+
+# lifecycle -- restart real qubes and check what must disappear and what
+# must survive: the transient-directory cleanup on boot and shutdown, its
+# absence in templates and preserve_incoming qubes, and private state that
+# components keep through bind-dirs.
+lifecycle() {
+	local kind name recipe flags subject="" tpl way dir comp
+	CATALOGUE_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:catalogue 2>/dev/null)"
+	while read -r kind name recipe flags; do
+		[ "${kind}" = "app" ] || continue
+		if [ "$(catField "${recipe}" preserve_incoming)" = "True" ]; then
+			inQube "${name}" 'mkdir -p ~/QubesIncoming/seqs-src && echo x > ~/QubesIncoming/seqs-src/f'
+			restart "${name}"
+			inQube "${name}" 'test -f ~/QubesIncoming/seqs-src/f' \
+				&& pass "${name}: QubesIncoming survives a restart (preserve_incoming)" \
+				|| fail "${name}: QubesIncoming was wiped although preserve_incoming is set"
+			inQube "${name}" 'rm -rf ~/QubesIncoming/seqs-src'
+			qvm-shutdown --wait -- "${name}" >/dev/null 2>&1
+			continue
+		fi
+		[ -n "${subject}" ] || subject="${name}"
+		for comp in $(componentsFor "${recipe}"); do
+			case "${comp}" in
+				gnosisvpn) dir=/var/lib/gnosisvpn ;;
+				docker) dir=/var/lib/docker ;;
+				*) continue ;;
+			esac
+			qvm-run --pass-io --no-gui -u root "${name}" "echo x > ${dir}/seqs-persist" </dev/null >/dev/null 2>&1
+			restart "${name}"
+			if qvm-run --pass-io --no-gui -u root "${name}" "test -f ${dir}/seqs-persist && rm -f ${dir}/seqs-persist" </dev/null >/dev/null 2>&1; then
+				pass "${name}: ${dir} survives a restart"
+			else
+				fail "${name}: ${dir} was lost on restart"
+			fi
+			qvm-shutdown --wait -- "${name}" >/dev/null 2>&1
+		done
+	done < <(sudo cat "${STATE_DIR}/targets")
+
+	if [ -z "${subject}" ]; then
+		echo "No app qube with the cleanup service in this selection."
+	else
+		# stop-hook: the shutdown cleanup alone, run in the live qube, so the
+		# files are gone before the qube is off; kill: no shutdown hook runs,
+		# so only the boot cleanup can remove them; shutdown: the normal path.
+		for way in stop-hook kill shutdown; do
+			inQube "${subject}" "${SEED}" || fail "${subject}: could not create the test files"
+			inQube "${subject}" '[ -f ~/QubesIncoming/seqs-src/f ] && [ -f ~/Downloads/seqs-a ]' \
+				|| fail "${subject}: test files vanished while the qube was running"
+			if [ "${way}" = "stop-hook" ]; then
+				qvm-run --pass-io --no-gui -u root "${subject}" 'systemctl stop seqs-cleanup.service' </dev/null >/dev/null 2>&1
+			else
+				restart "${subject}" "${way}"
+			fi
+			if inQube "${subject}" "${CLEAN}"; then
+				pass "${subject}: QubesIncoming and Downloads wiped after ${way}, other files kept"
+			else
+				fail "${subject}: cleanup after ${way} is wrong: $(inQube "${subject}" 'ls -A ~/QubesIncoming ~/Downloads ~/Documents/seqs-keep 2>&1' | tr '\n' ' ')"
+			fi
+		done
+		qvm-run --pass-io --no-gui -u root "${subject}" 'systemctl start seqs-cleanup.service' </dev/null >/dev/null 2>&1
+		inQube "${subject}" 'rm -f ~/Documents/seqs-keep'
+		qvm-shutdown --wait -- "${subject}" >/dev/null 2>&1
+
+		# The template carries the cleanup service but must not run it.
+		tpl="$(qvm-prefs -- "${subject}" template 2>/dev/null)"
+		inQube "${tpl}" 'mkdir -p ~/Downloads && echo x > ~/Downloads/seqs-template-keep'
+		restart "${tpl}"
+		inQube "${tpl}" 'test -f ~/Downloads/seqs-template-keep' \
+			&& pass "${tpl}: the cleanup leaves the template's Downloads alone" \
+			|| fail "${tpl}: the cleanup wiped the template's Downloads"
+		inQube "${tpl}" 'rm -f ~/Downloads/seqs-template-keep'
+		qvm-shutdown --wait -- "${tpl}" >/dev/null 2>&1
+	fi
+	[ "${FAILS}" -eq 0 ]
+}
+
 # ---- invalidate ---------------------------------------------------------------
 
 # invalidate -- an empty marker never matches a content hash, so the next
@@ -421,5 +691,6 @@ case "${1:-}" in
 	install) install "${2:-}" ;;
 	check) check ;;
 	invalidate) invalidate ;;
-	*) sed -n '3,20p' "$0"; exit 2 ;;
+	lifecycle) lifecycle ;;
+	*) sed -n '3,22p' "$0"; exit 2 ;;
 esac
