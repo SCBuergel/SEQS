@@ -727,8 +727,9 @@ In a dom0 terminal of the receiving computer, run:
 qvm-pci list --assignments
 ```
 
-Assigned qubes are marked with `*`; an unmarked name is a qube that is using
-the controller right now. On the dedicated-controller path, your controller
+The controller can appear on two lines: one with the qubes that hold it right
+now, if any, and one with the assigned qubes, marked with `*`. On the
+dedicated-controller path, your controller
 must be assigned only to `sys-usb-webcam`. On the sequential path, it is
 assigned to both `sys-usb` and `sys-usb-webcam`. Qubes refuses to start a qube
 whose controller another running qube holds, and the script stops `sys-usb`
@@ -1032,7 +1033,8 @@ script again. Otherwise, type `START` in capital letters. After that:
    and is copied only to `A-qr-staging`. A webcam that itself shows up as
    several USB devices is refused every time; use a webcam that shows up as a
    single device.
-4. When told to, unplug the webcam. Do not reconnect the keyboard or mouse.
+4. Unplug the webcam when the script reports that the copy completed, or
+   when it reports an error. Do not reconnect the keyboard or mouse.
 5. The computer powers off, whether the scan worked or not.
 
 Once the computer is off, remove every power source you can: unplug the power

@@ -47,6 +47,28 @@ def state_arg(parsed, state_id, function, key):
     return next(item[key] for item in parsed[state_id][function] if key in item)
 
 
+def unresolved_requisites(parsed):
+    """State IDs named in a `require` that this render does not contain.
+
+    Salt fails a state whose requisite is missing, so a requisite that is only
+    rendered under some selections must be guarded by the same condition.
+    """
+    missing = []
+    for state_id, body in parsed.items():
+        if not isinstance(body, dict):
+            continue
+        for args in body.values():
+            if not isinstance(args, list):
+                continue
+            for item in args:
+                if isinstance(item, dict) and "require" in item:
+                    for ref in item["require"]:
+                        for target in ref.values():
+                            if target not in parsed:
+                                missing.append("%s -> %s" % (state_id, target))
+    return missing
+
+
 # ---------------------------------------------------------------------------
 # Pillar slicing
 # ---------------------------------------------------------------------------
@@ -320,6 +342,31 @@ def test_dom0_sequential_qr_mode():
     unassign = backend.find("qvm-pci unassign sys-usb-webcam dom0:00_14.0")
     check(0 <= unassign < backend.find("qvm-pci attach --persistent"),
           "a rerun must drop the old webcam assignment before recreating it")
+    check("qvm-pci unassign --port sys-usb-webcam dom0:00_14.0" in backend,
+          "an assignment carried over from Qubes 4.2 matches only by port")
+    check(unresolved_requisites(parsed) == [],
+          "every requisite must resolve: %r" % unresolved_requisites(parsed))
+
+
+def test_dom0_qr_mode_without_camera_in_selection():
+    case("dom0.sls: a later run that does not select qr-camera still renders")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "sequential",
+        "webcam_usb_controller": "00_14.0",
+        "webcam_usb_no_strict_reset": False,
+    })
+    sc = Scenario(sys_usb=True, selection="qr-staging",
+                  existing_qubes=["A-brave", "A-qr-camera"],
+                  tagged_qubes=["A-brave", "A-qr-camera"])
+    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed,
+          "an existing A-qr-camera satisfies the webcam pre-flight")
+    check("seqs-app-qr-camera" not in parsed,
+          "qr-camera is not built when it is not selected")
+    check(unresolved_requisites(parsed) == [],
+          "webcam states must not require the unrendered qr-camera state: %r"
+          % unresolved_requisites(parsed))
 
 
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
@@ -376,6 +423,12 @@ def test_dom0_dedicated_qr_uses_device_api():
     check('qvm-start -- "$current"' in backend
           and 'qvm-check --running -q -- "$current"' in backend,
           "dedicated mode must restart only the running qubes it stopped")
+    check('[ "$current" = dom0 ] && continue' in backend,
+          "dedicated mode must skip dom0, whose qvm-pci list shows every device")
+    check('qvm-pci unassign --port "$current" dom0:03_00.0' in backend,
+          "dedicated mode must also drop assignments carried over from 4.2")
+    check(unresolved_requisites(parsed) == [],
+          "every requisite must resolve: %r" % unresolved_requisites(parsed))
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
     check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny
           and "qubes.OpenURL        *  @dispvm:A-qr-camera  @anyvm    deny" in deny,

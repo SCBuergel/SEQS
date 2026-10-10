@@ -766,10 +766,12 @@ seqs-webcam-usb-backend:
         qvm-features -- {{ webcam_usb_qube }} seqs-managed 1
 {% if webcam_mode == 'dedicated' %}
         # Remove live attachments and persistent assignments from other qubes.
-        # PCI devices are managed by qvm-pci/qvm-device, not qvm-prefs.
+        # PCI devices are managed by qvm-pci/qvm-device, not qvm-prefs. dom0
+        # is skipped: qvm-pci list dom0 shows every device dom0 exposes.
         stopped=''
         for current in $(qvm-ls --raw-list); do
           printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
+          [ "$current" = dom0 ] && continue
           [ "$current" = "{{ webcam_usb_qube }}" ] && continue
           if qvm-pci list "$current" 2>/dev/null | awk '$1 == "dom0:{{ webcam_controller }}" { found=1 } END { exit !found }'; then
             if qvm-check --running -q -- "$current"; then
@@ -778,7 +780,10 @@ seqs-webcam-usb-backend:
             qvm-shutdown --wait "$current" || true
             qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
           fi
+          # An assignment made on Qubes 4.2 and carried into 4.3 records no
+          # device identity; only the --port form matches it there.
           qvm-pci unassign "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
+          qvm-pci unassign --port "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
         done
         # Restart only the former owners that were running (normally sys-usb),
         # now without the controller, so USB input on its other controllers
@@ -798,8 +803,10 @@ seqs-webcam-usb-backend:
         qvm-shutdown --wait {{ webcam_usb_qube }} || true
         # Drop an earlier webcam assignment so that a rerun can recreate it
         # with the configured reset option; Qubes refuses a duplicate. Qubes
-        # 4.3 removes it with unassign, 4.2 with detach of the halted qube.
+        # 4.3 removes it with unassign (--port for one made on 4.2), 4.2 with
+        # detach of the halted qube.
         qvm-pci unassign {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
+        qvm-pci unassign --port {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
         qvm-pci detach {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
 {% if webcam_mode == 'sequential' %}
         # Strict reset by default, or no-strict-reset only when
@@ -812,8 +819,12 @@ seqs-webcam-usb-backend:
 {% if webcam_mode == 'dedicated' %}
     - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_usb_qube }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i=1; i<=NF; i++) { token=$i; sub(/^\*/, "", token); if (token == vm) found=1 } } END { exit !found }'
 {% endif %}
+{# qr-camera is built in this run or was verified to exist in the pre-flight;
+   a requisite on a state that this run does not render would fail. #}
+{% if 'qr-camera' in qmap %}
     - require:
       - qvm: seqs-app-qr-camera
+{% endif %}
 {% endif %}
 
 {% if webcam_mode == 'sequential' %}
@@ -830,8 +841,10 @@ seqs-qr-sequential-scanner:
         qvm-features -- {{ webcam_sequential_scanner }} appmenus-dispvm ''
         qvm-features -- {{ webcam_sequential_scanner }} seqs-managed 1
     - unless: n="$(qvm-prefs -- {{ webcam_sequential_scanner }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_sequential_scanner }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; }
+{% if 'qr-camera' in qmap %}
     - require:
       - qvm: seqs-app-qr-camera
+{% endif %}
 
 seqs-qr-sequential-config-dir:
   file.directory:
