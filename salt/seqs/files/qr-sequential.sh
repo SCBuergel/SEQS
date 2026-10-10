@@ -13,7 +13,7 @@ for value in "$NORMAL_USB_QUBE" "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUB
 		echo "ERROR: unsafe qube name in $CONF" >&2; exit 1;
 	}
 done
-[[ "$CONTROLLER" =~ ^[0-9A-Fa-f]{2}_[0-9A-Fa-f]{2}\.[0-7]$ ]] || {
+[[ "$CONTROLLER" =~ ^[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]$ ]] || {
 	echo "ERROR: invalid controller BDF in $CONF" >&2; exit 1;
 }
 

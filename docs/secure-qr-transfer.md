@@ -130,10 +130,10 @@ The **receiving computer** needs:
 - the hardware lookups described below; and
 - SEQS installed with the `qr-camera` qube selected, plus `qr-staging` on the
   weaker of the two hardware setups described below. This creates
-  `A-qr-camera`, the offline disposable template for the camera disposables
-  that run `zbarcam` (the QR scanner program), and `sys-usb-webcam`, a USB
-  qube (a qube that owns USB hardware and passes individual devices to other
-  qubes) that handles only the webcam.
+  `A-qr-camera`, an offline disposable template; `seqs-qr-scanner`, the
+  disposable started from it that runs `zbarcam` (the QR scanner program);
+  and `sys-usb-webcam`, a USB qube (a qube that owns USB hardware and passes
+  individual devices to other qubes) that handles only the webcam.
 
 Both key qubes should be offline: a key qube with a NetVM (the qube that gives
 it network access) keeps the plaintext `master.key` one software bug away from
@@ -616,7 +616,8 @@ For the dedicated-controller path:
 {%- set webcam_usb_no_strict_reset = False %}
 ```
 
-Replace the example BDF with your own, without the `dom0:` prefix.
+Replace the example BDF with your own, exactly as the controller list shows
+it, without the `dom0:` prefix.
 `webcam_usb_no_strict_reset = True` lets Qubes hand the controller to
 `sys-usb-webcam` without a strict reset. On the sequential path, set it to
 `True` only if the
@@ -650,15 +651,14 @@ Select `qr-display` on the sending computer. On the receiving computer, select
 dedicated-controller path. Add the other role's qubes too if the computer will
 send in both directions.
 
-On the receiving computer, the build creates `sys-usb-webcam`. On the
-sequential path it also creates `seqs-qr-scanner` (a disposable that scans the
-QR code), `A-qr-staging` (a persistent offline qube that keeps the encrypted
-file while the computer is off), and the dom0 script
-`/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential
-path, the build stops with `Configured controller is not attached to sys-usb`
-if the configured BDF is not a controller that the running `sys-usb` holds;
-recheck the BDF, and that `sys-usb` is running. Every later SEQS run on this
-computer repeats that check, whichever qubes it builds.
+On the receiving computer, the build creates `sys-usb-webcam` and
+`seqs-qr-scanner`. On the sequential path it also creates `A-qr-staging` (a
+persistent offline qube that keeps the encrypted file while the computer is
+off) and the dom0 script `/usr/local/sbin/seqs-qr-sequential` that runs the
+scan. On the sequential path, the build stops with `Configured controller is
+not attached to sys-usb` if the configured BDF is not a controller that the
+running `sys-usb` holds; recheck the BDF, and that `sys-usb` is running. Every
+later SEQS run on this computer repeats that check, whichever qubes it builds.
 
 The build assigns the controller without resetting it. If `sys-usb-webcam`
 later fails to start because the controller cannot be reset, the reset check
@@ -711,14 +711,14 @@ sequential path, `A-qr-staging`, in the same way. If you no longer have that
 output, check them with `qvm-prefs` as on the sending computer. On the
 sequential path, the scan script also refuses to start if `sys-usb-webcam`,
 `seqs-qr-scanner`, or `A-qr-staging` has a NetVM or a default disposable, at
-every transfer. On the dedicated-controller path, check `sys-usb-webcam`
-yourself; in a dom0 terminal of the receiving computer, run:
+every transfer. On the dedicated-controller path, check `sys-usb-webcam` and
+`seqs-qr-scanner` yourself; in a dom0 terminal of the receiving computer, run:
 
 ```bash
-qvm-prefs sys-usb-webcam netvm; qvm-prefs sys-usb-webcam default_dispvm
+for q in sys-usb-webcam seqs-qr-scanner; do qvm-prefs $q netvm; qvm-prefs $q default_dispvm; done
 ```
 
-Each must print nothing, `None`, or `none`.
+Each of the four output lines must be empty, `None`, or `none`.
 
 ### Receiving computer: check the controller assignment
 
@@ -748,12 +748,15 @@ grep -E 'qr-camera|qr-staging' /etc/qubes/policy.d/28-browser-suppress.policy
 
 The first file must deny the input services (`qubes.InputKeyboard`,
 `qubes.InputMouse`, `qubes.InputTablet`) and `qubes.OpenURL` from
-`sys-usb-webcam`, `@dispvm:A-qr-camera`, and, on the sequential path,
-`seqs-qr-scanner`; it must also deny the disposable services listed for the
-sending computer from `sys-usb-webcam` and `seqs-qr-scanner`, and
-`qubes.Filecopy` from `sys-usb-webcam`. The `grep` lines must deny
-`qubes.OpenURL` and the disposable services from `A-qr-camera`,
-`@dispvm:A-qr-camera`, and, on the sequential path, `A-qr-staging`.
+`sys-usb-webcam`, `seqs-qr-scanner`, and `@dispvm:A-qr-camera`; it must also
+deny the disposable services listed for the sending computer from
+`sys-usb-webcam` and `seqs-qr-scanner`, and `qubes.Filecopy` from
+`sys-usb-webcam`. The `grep` lines must deny `qubes.OpenURL` and the
+disposable services from `A-qr-camera`, `@dispvm:A-qr-camera`, and, on the
+sequential path, `A-qr-staging`. A rule whose source is `@dispvm:A-qr-camera`
+matches no running qube on Qubes 4.3, so a disposable that you start from
+`A-qr-camera` yourself is not covered; the transfer uses only the named qubes
+that the rules list.
 
 On the sequential path, also run:
 
@@ -947,12 +950,12 @@ use step 4b.
    and the internal devices you recorded for this controller, unplug the webcam
    and stop, as described under
    [check the dedicated controller with the webcam](#receiving-computer-check-the-dedicated-controller-with-the-webcam).
-4. Open a terminal in a new disposable based on `A-qr-camera`: from its
-   entry in the Qubes menu, or, if the menu offers no terminal for it, by
-   running `qvm-run --dispvm=A-qr-camera x-terminal-emulator` in a dom0
+4. Open a terminal in `seqs-qr-scanner`, the camera disposable: choose a
+   terminal under `seqs-qr-scanner` in the Qubes menu, or, if the menu offers
+   none, run `qvm-run seqs-qr-scanner x-terminal-emulator` in a dom0
    terminal.
-5. Attach only the webcam to that disposable with the Devices widget.
-6. In the disposable's terminal, run:
+5. Attach only the webcam to `seqs-qr-scanner` with the Devices widget.
+6. In the `seqs-qr-scanner` terminal, run:
 
    ```bash
    (
@@ -972,8 +975,8 @@ use step 4b.
    The camera disposable can open copy dialogs on its own, so cancel any other
    dialog from it, and treat such a dialog like a fingerprint mismatch in
    step 5.
-7. After the copy succeeds, unplug the webcam and shut down the camera
-   disposable and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
+7. After the copy succeeds, unplug the webcam and shut down `seqs-qr-scanner`
+   and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
    Domains widget that both have stopped before you take out the paper.
 
 If `sys-usb` handled the webcam at any point since the receiving computer last
@@ -1090,10 +1093,10 @@ from the source's `key.asc`, before GnuPG reads it.
 
 First check that the webcam is unplugged and that every camera and webcam qube
 on the receiving computer, including `A-qr-staging`, has stopped. Qubes puts
-received files in `~/QubesIncoming/<sender>`, where the sender is the camera
-disposable (a name like `disp1234`) or `A-qr-staging`; `ls ~/QubesIncoming`
-in the target key qube shows it. In a terminal in the target key qube, replace
-`<sender>` with that name and `<target-dir>` with the directory where
+received files in `~/QubesIncoming/<sender>`, where the sender is
+`seqs-qr-scanner` on the dedicated-controller path and `A-qr-staging` on the
+sequential path. In a terminal in the target key qube, replace `<sender>` with
+that name and `<target-dir>` with the directory where
 `master.key` should end up, and run:
 
 ```bash

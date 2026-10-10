@@ -43,7 +43,7 @@
 {% set webcam_usb_qube = seqs.get('webcam_usb_qube', 'sys-usb-webcam') %}
 {% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', '') %}
 {% set webcam_normal_usb_qube = seqs.get('webcam_normal_usb_qube', 'sys-usb') %}
-{% set webcam_sequential_scanner = seqs.get('webcam_sequential_scanner', 'seqs-qr-scanner') %}
+{% set webcam_scanner_qube = seqs.get('webcam_scanner_qube', 'seqs-qr-scanner') %}
 {% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}
 
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
@@ -92,10 +92,12 @@
 {% if webcam_mode in ['dedicated', 'sequential'] and not webcam_controller %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' requires webcam_usb_controller") %}
 {% endif %}
-{% if webcam_controller and webcam_controller | regex_match('^[0-9A-Fa-f]{2}_[0-9A-Fa-f]{2}\.[0-7]$') is none %}
-{%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a qvm-pci BDF such as 03_00.0)") %}
+{# Lowercase only: qvm-pci lists and matches BDFs in lowercase, and the
+   ownership checks below compare them as strings. #}
+{% if webcam_controller and webcam_controller | regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]$') is none %}
+{%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a lowercase BDF as listed by qvm-pci, such as 03_00.0)") %}
 {% endif %}
-{% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_sequential_scanner', webcam_sequential_scanner), ('webcam_staging_qube', webcam_staging_qube)] %}
+{% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube), ('webcam_staging_qube', webcam_staging_qube)] %}
 {%   if value | regex_match(name_re) is none %}
 {%     do errors.append(field ~ " '" ~ value ~ "' has an unsafe name") %}
 {%   endif %}
@@ -118,7 +120,7 @@
 {% if webcam_mode == 'sequential' and salt['cmd.retcode']('qvm-check -q -- ' ~ webcam_normal_usb_qube) != 0 %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
-{% for special in [webcam_usb_qube] + ([webcam_sequential_scanner] if webcam_mode == 'sequential' else []) %}
+{% for special in [webcam_usb_qube, webcam_scanner_qube] %}
 {%   if webcam_mode in ['dedicated', 'sequential'] and salt['cmd.retcode']('qvm-check -q -- ' ~ special) == 0 and salt['cmd.shell']('qvm-features -- ' ~ special ~ ' seqs-managed 2>/dev/null') | trim != '1' %}
 {%     do errors.append("special qube '" ~ special ~ "' already exists but is not marked seqs-managed -- refusing to adopt it") %}
 {%   endif %}
@@ -304,24 +306,26 @@ seqs-policy-qr-input-deny:
         qubes.VMShell        *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExec         *  {{ webcam_usb_qube }}  @dispvm   deny
         qubes.VMExecGUI      *  {{ webcam_usb_qube }}  @dispvm   deny
+        # Qubes 4.3 matches a @dispvm:<template> source against no running
+        # qube (qrexec parser, DispVMTemplate.match); these lines are kept for
+        # a release that does. The named qubes above and below are what the
+        # transfer uses on both paths.
         qubes.OpenURL        *  @dispvm:{{ webcam_scanner_dvm }}  @anyvm    deny
         qubes.InputKeyboard  *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
         qubes.InputMouse     *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
         qubes.InputTablet    *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
-{% if webcam_mode == 'sequential' %}
-        qubes.InputKeyboard  *  {{ webcam_sequential_scanner }}  @adminvm  deny
-        qubes.InputMouse     *  {{ webcam_sequential_scanner }}  @adminvm  deny
-        qubes.InputTablet    *  {{ webcam_sequential_scanner }}  @adminvm  deny
-        qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @anyvm    deny
-        qubes.OpenURL        *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @anyvm    deny
-        qubes.OpenInVM       *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.StartApp       *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.GetImageRGBA   *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.VMShell        *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.VMExec         *  {{ webcam_sequential_scanner }}  @dispvm   deny
-        qubes.VMExecGUI      *  {{ webcam_sequential_scanner }}  @dispvm   deny
-{% endif %}
+        qubes.InputKeyboard  *  {{ webcam_scanner_qube }}  @adminvm  deny
+        qubes.InputMouse     *  {{ webcam_scanner_qube }}  @adminvm  deny
+        qubes.InputTablet    *  {{ webcam_scanner_qube }}  @adminvm  deny
+        qubes.OpenURL        *  {{ webcam_scanner_qube }}  @anyvm    deny
+        qubes.OpenURL        *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.OpenInVM       *  {{ webcam_scanner_qube }}  @anyvm    deny
+        qubes.OpenInVM       *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.StartApp       *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.GetImageRGBA   *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.VMShell        *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.VMExec         *  {{ webcam_scanner_qube }}  @dispvm   deny
+        qubes.VMExecGUI      *  {{ webcam_scanner_qube }}  @dispvm   deny
 {% else %}
 seqs-policy-qr-input-deny:
   cmd.run:
@@ -340,8 +344,8 @@ seqs-policy-qr-filecopy:
     - mode: '0644'
     - contents: |
         # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
-        qubes.Filecopy  *  {{ webcam_sequential_scanner }}  {{ webcam_staging_qube }}  allow
-        qubes.Filecopy  *  {{ webcam_sequential_scanner }}  @anyvm  deny
+        qubes.Filecopy  *  {{ webcam_scanner_qube }}  {{ webcam_staging_qube }}  allow
+        qubes.Filecopy  *  {{ webcam_scanner_qube }}  @anyvm  deny
 {% else %}
 seqs-policy-qr-filecopy:
   cmd.run:
@@ -373,7 +377,9 @@ seqs-policy-browser:
 {% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') %}
 {%   set subjects = [papp ~ name] %}
 {#   Disposables are separate policy subjects: a rule for A-x covers neither a
-     disposable spawned from it (@dispvm:A-x) nor the named disposable D-x. #}
+     disposable spawned from it (@dispvm:A-x) nor the named disposable D-x.
+     Qubes 4.3 matches the @dispvm:A-x source against no running qube; it is
+     kept for a release that does, and D-x is what the QR guide uses. #}
 {%   if q.get('dispvm_template') %}
 {%     do subjects.append('@dispvm:' ~ papp ~ name) %}
 {%   endif %}
@@ -825,27 +831,29 @@ seqs-webcam-usb-backend:
     - require:
       - qvm: seqs-app-qr-camera
 {% endif %}
-{% endif %}
 
-{% if webcam_mode == 'sequential' %}
-seqs-qr-sequential-scanner:
+# The named camera disposable scans on both paths. Policy rules name it,
+# because Qubes 4.3 matches a @dispvm:<template> source against no qube.
+seqs-qr-scanner:
   cmd.run:
     - name: |
         set -e
-        if ! qvm-check -q -- {{ webcam_sequential_scanner }}; then
-          qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_sequential_scanner }}
+        if ! qvm-check -q -- {{ webcam_scanner_qube }}; then
+          qvm-create -C DispVM -t {{ webcam_scanner_dvm }} -l red {{ webcam_scanner_qube }}
         fi
-        qvm-prefs -- {{ webcam_sequential_scanner }} netvm none
-        qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm none
-        qvm-prefs -- {{ webcam_sequential_scanner }} autostart false
-        qvm-features -- {{ webcam_sequential_scanner }} appmenus-dispvm ''
-        qvm-features -- {{ webcam_sequential_scanner }} seqs-managed 1
-    - unless: n="$(qvm-prefs -- {{ webcam_sequential_scanner }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_sequential_scanner }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_sequential_scanner }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; }
+        qvm-prefs -- {{ webcam_scanner_qube }} netvm none
+        qvm-prefs -- {{ webcam_scanner_qube }} default_dispvm none
+        qvm-prefs -- {{ webcam_scanner_qube }} autostart false
+        qvm-features -- {{ webcam_scanner_qube }} appmenus-dispvm ''
+        qvm-features -- {{ webcam_scanner_qube }} seqs-managed 1
+    - unless: n="$(qvm-prefs -- {{ webcam_scanner_qube }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_scanner_qube }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_scanner_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; }
 {% if 'qr-camera' in qmap %}
     - require:
       - qvm: seqs-app-qr-camera
 {% endif %}
+{% endif %}
 
+{% if webcam_mode == 'sequential' %}
 seqs-qr-sequential-config-dir:
   file.directory:
     - name: /etc/seqs
@@ -866,7 +874,7 @@ seqs-qr-sequential-config:
         CONTROLLER='{{ webcam_controller }}'
         NORMAL_USB_QUBE='{{ webcam_normal_usb_qube }}'
         WEBCAM_USB_QUBE='{{ webcam_usb_qube }}'
-        SCANNER_QUBE='{{ webcam_sequential_scanner }}'
+        SCANNER_QUBE='{{ webcam_scanner_qube }}'
         STAGING_QUBE='{{ webcam_staging_qube }}'
 
 seqs-qr-sequential-script:

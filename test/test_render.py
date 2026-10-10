@@ -311,7 +311,7 @@ def test_dom0_sequential_qr_mode():
     check("seqs-validation-failed" not in parsed,
           "well-formed sequential configuration must pass validation")
     for state in ("seqs-policy-qr-input-deny", "seqs-policy-qr-filecopy",
-                  "seqs-webcam-usb-backend", "seqs-qr-sequential-scanner",
+                  "seqs-webcam-usb-backend", "seqs-qr-scanner",
                   "seqs-qr-sequential-config", "seqs-qr-sequential-script"):
         check(state in parsed, "sequential mode should render %s" % state)
     check("qubes.Filecopy" in text and "A-qr-staging" in text,
@@ -327,7 +327,7 @@ def test_dom0_sequential_qr_mode():
                         "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI"):
             check("%s   *  %s  @dispvm   deny" % (service.ljust(18), subject) in deny,
                   "camera-side qube %s must not reach a disposable via %s" % (subject, service.strip()))
-    for state in ("seqs-webcam-usb-backend", "seqs-qr-sequential-scanner"):
+    for state in ("seqs-webcam-usb-backend", "seqs-qr-scanner"):
         check("default_dispvm none" in state_arg(parsed, state, "cmd.run", "name"),
               "%s must clear the default disposable" % state)
     check("no-strict-reset=true" not in text,
@@ -423,7 +423,7 @@ def test_dom0_dedicated_qr_uses_device_api():
         "webcam_usb_controller": "03_00.0",
         "webcam_usb_no_strict_reset": False,
     })
-    _, parsed = render_state(
+    text, parsed = render_state(
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
     backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
     check("qvm-pci list" in backend and "qvm-pci unassign" in backend,
@@ -443,6 +443,17 @@ def test_dom0_dedicated_qr_uses_device_api():
     check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny
           and "qubes.OpenURL        *  @dispvm:A-qr-camera  @anyvm    deny" in deny,
           "dedicated mode must also close the browser handoff for camera-side qubes")
+    # Qubes 4.3 matches a @dispvm:<template> source against no running qube,
+    # so the dedicated path scans in the named disposable, which rules can name.
+    check("seqs-qr-scanner" in parsed,
+          "dedicated mode must create the named scanner disposable")
+    check("qubes.OpenURL        *  seqs-qr-scanner  @anyvm    deny" in deny
+          and "qubes.InputKeyboard  *  seqs-qr-scanner  @adminvm  deny" in deny,
+          "dedicated mode must deny the handoff and input from the named scanner")
+    check("qubes.Filecopy  *  seqs-qr-scanner" not in text,
+          "dedicated mode must leave the scanner's file copy at the default ask")
+    check(unresolved_requisites(parsed) == [],
+          "every requisite must resolve: %r" % unresolved_requisites(parsed))
 
 
 def test_dom0_named_disposable():
@@ -563,6 +574,14 @@ def test_dom0_validation_catches_bad_config():
         "config_errors from pillar compilation must abort the dom0 apply")
     check(_validation_fails(_bad_pillar(browser_suppress_prune=["bad name"])),
           "unsafe browser-suppression prune name must fail validation")
+    for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8"):
+        check(_validation_fails(_bad_pillar(
+            webcam_usb_mode="sequential", webcam_usb_controller=bdf,
+            webcam_scanner_dvm="A-qr-camera")),
+            "controller '%s' is not a lowercase qvm-pci BDF and must fail" % bdf)
+    check(_validation_fails(_bad_pillar(
+        webcam_usb_mode="disabled", webcam_usb_controller="00_14.0")),
+        "a controller with the mode disabled must fail validation")
     check(_validation_fails(_bad_pillar(base_template="no-such-template")),
         "a missing base template must fail validation")
     check(_validation_fails(_bad_pillar(
