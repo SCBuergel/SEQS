@@ -503,9 +503,8 @@ summary() {
     Connections are accepted from ${ALLOW_FROM}.
 EOF
 	if [ "${AUTOLOGIN}" -eq 1 ]; then
-		echo "    Automatic desktop login starts with the next reboot of this machine;"
-		echo "    nothing needs a reboot now. Reboot once later to check that remote"
-		echo "    access comes back on its own."
+		echo "    Do not reboot yet: step 4 of test/hardware/README.md connects your"
+		echo "    laptop first, then reboots this machine once."
 	fi
 }
 

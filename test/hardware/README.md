@@ -158,19 +158,25 @@ It ends with:
 ```
 
 Note the address and the host key (the fingerprint that proves to your laptop
-that it reached `test-ctl` and not another machine). Nothing needs a reboot
-now: the automatic desktop login starts with the next reboot of the test
-machine, and you are already logged in.
+that it reached `test-ctl` and not another machine). Do not reboot anything
+yet; step 4 includes a reboot of the test machine once the connection works.
 
 If a step fails, the script stops with an `ERROR:` line that says why. Fix the
 cause and run `bash t.sh` again; each rerun resumes and replaces earlier
 settings. A rerun first waits for any package installation still running in
-`test-ctl`, for example after you stopped the script with Ctrl+C. Without a webcam, the script can instead read keys from an HTTPS
-URL, such as the list GitHub publishes at
-`https://github.com/<account>.keys`:
+`test-ctl`, for example after you stopped the script with Ctrl+C.
+
+Without a webcam, the script can instead read keys from an HTTPS URL, such as
+the list GitHub publishes at `https://github.com/<account>.keys`:
 `bash t.sh --ssh-keys-url https://github.com/<account>.keys`.
 
 ## 4. Connect from your laptop
+
+This step connects your laptop to the test machine, then reboots the test
+machine once to check that the connection comes back without anyone at its
+keyboard.
+
+### Connect
 
 An entry in your SSH configuration lets every later command refer to the test
 machine as `seqs-test`.
@@ -193,15 +199,38 @@ ssh seqs-test dom0 qvm-ls --running
 
 On the first connection, SSH shows a host key fingerprint and asks whether to
 continue. Type `yes` only if it matches the host key the test machine showed.
-The output is the list of running qubes on the test machine, produced by dom0.
-
-Once this works, reboot the test machine, wait a minute, and run the last
-command again. It should work without anyone touching the test machine: the
-reboot checks that `test-ctl` starts by itself, that `sys-net` restores the
-forwarding rule, and that dom0 logs in to the desktop automatically.
+The output is the list of running qubes on the test machine, produced by its
+dom0.
 
 If the test machine's address changes later, edit the `HostName` line in
 `~/.ssh/config`.
+
+### Reboot the test machine once
+
+The setup is meant to survive restarts, including an unattended one such as
+switching a smart plug off and on: `test-ctl` starts by itself, `sys-net`
+restores the forwarding rule, and dom0 logs in to the desktop without a
+password. The automatic login takes effect only at the next boot, so this
+reboot both activates it and checks all three.
+
+Reboot the whole test machine, for example from its Qubes menu (log out, then
+restart) or in its dom0 terminal:
+
+```bash
+sudo reboot
+```
+
+Wait until the test machine shows its desktop without asking for a password,
+then run the same command again in the controlling qube on your laptop:
+
+```bash
+ssh seqs-test dom0 qvm-ls --running
+```
+
+It should list the running qubes as before. If the test machine stops at the
+disk passphrase prompt, it was installed with disk encryption (see
+[1. Prepare the test machine](#1-prepare-the-test-machine)): type the
+passphrase, and expect to do so after every restart.
 
 ## 5. Run the system test
 
