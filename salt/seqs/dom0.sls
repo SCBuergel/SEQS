@@ -258,28 +258,22 @@ for vm in qubesadmin.Qubes().domains:
 {%         endfor %}
 {%       endif %}
 {%     endif %}
-{#     Only selected entries are candidates for adoption/creation this run.
-       Adopt qubes carrying seqs-managed or an interrupted-run intent
-       marker; refuse unrelated same-named qubes before any state runs. #}
-{%     if name in qmap %}
-{%     set recipe = recipes.get(name, '') %}
-{%     set adopt_names = [ptpl ~ name, papp ~ name] %}
-{%     if q.get('named_disposable') and pdvm %}{% set adopt_names = adopt_names + [pdvm ~ name] %}{% endif %}
-{%     for vmname in adopt_names %}
-{%       if (vmname in inventory) %}
-{%         if not inventory.get(vmname, {}).get('managed')
-              and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
-{%           do errors.append("qube '" ~ vmname ~ "' already exists but is not marked seqs-managed -- refusing to adopt it (remove or rename it, or set: qvm-features " ~ vmname ~ " seqs-managed 1)") %}
-{%         elif inventory.get(vmname, {}).get('managed') %}
-{%           set existing_recipe = inventory.get(vmname, {}).get('recipe', '') %}
-{%           if existing_recipe and existing_recipe != recipe %}
-{%             do errors.append("qube '" ~ vmname ~ "' is managed for recipe '" ~ existing_recipe ~ "', not requested recipe '" ~ recipe ~ "' -- refusing to repurpose it") %}
-{%           endif %}
-{%         endif %}
-{%       endif %}
-{%     endfor %}
-{%     endif %}
 {%   endif %}
+{% endfor %}
+
+{# ── No-clobber: adopt a selected instance's qubes only if they carry
+     seqs-managed or an interrupted-run intent marker, and only for the
+     recipe they were built for. Iterates instances, not catalogue names,
+     so --postfix instances are covered too. ─────────────────────────── #}
+{% for name, q in qmap.items() %}
+{%   set recipe = recipes.get(name, '') %}
+{%   for vmname in [ptpl ~ name, papp ~ name] + ([pdvm ~ name] if q.get('named_disposable') and pdvm else []) if vmname in inventory %}
+{%     if not inventory[vmname].managed and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
+{%       do errors.append("qube '" ~ vmname ~ "' already exists but is not marked seqs-managed -- refusing to adopt it (remove or rename it, or set: qvm-features " ~ vmname ~ " seqs-managed 1)") %}
+{%     elif inventory[vmname].managed and inventory[vmname].recipe and inventory[vmname].recipe != recipe %}
+{%       do errors.append("qube '" ~ vmname ~ "' is managed for recipe '" ~ inventory[vmname].recipe ~ "', not requested recipe '" ~ recipe ~ "' -- refusing to repurpose it") %}
+{%     endif %}
+{%   endfor %}
 {% endfor %}
 
 {# ── Cleanup-dir validation (the generated script runs rm -rf as root) ── #}
@@ -441,9 +435,12 @@ seqs-policy-browser:
             and (concrete in inventory)
             and inventory.get(concrete, {}).get('managed') %}
 {%         do suppressed.append(vm) %}
-{#         A preserved qube without a NetVM is treated as offline. An empty
-           read also counts, which errs toward more denies. #}
-{%         if salt['cmd.shell']('qvm-prefs -- ' ~ concrete ~ ' netvm 2>/dev/null') | trim in ['', 'None', 'none'] %}
+{#         A preserved qube is offline if its recorded recipe is offline in
+           the catalogue, so a drifted NetVM cannot weaken its denies, or if
+           it has no NetVM. An empty read also counts, which errs toward more
+           denies. #}
+{%         if qcatalog.get(inventory[concrete].recipe, {}).get('offline')
+              or salt['cmd.shell']('qvm-prefs -- ' ~ concrete ~ ' netvm 2>/dev/null') | trim in ['', 'None', 'none'] %}
 {%           do offline_subjects.append(vm) %}
 {%         endif %}
 {%       endif %}

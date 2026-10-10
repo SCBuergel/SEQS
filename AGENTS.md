@@ -18,14 +18,15 @@ are documented in `test/README.md`.
 
 Judge every change to SEQS and to its tests by these criteria, in this order:
 
-1. It works.
-2. It is secure.
-3. It is fast.
-4. It is minimal, so that it stays easy to audit.
+1. It is secure.
+2. Nothing is wrong: code, tests, and docs match actual behaviour.
+3. Explanations are understandable for people.
+4. Explanations are as short as possible.
+5. Code is readable, short, and auditable.
 
-A faster or smaller design never justifies a weaker security property. Prefer
+Fix a flaw in code rather than documenting it when code can fix it. Prefer
 test-only scaffolding over adding flags or code paths to the product for the
-sake of testing, and report timing and size changes alongside pass/fail.
+sake of testing.
 
 ## Start here
 

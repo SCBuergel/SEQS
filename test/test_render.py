@@ -265,6 +265,20 @@ not.a.valid policy line
           "explicit prune must remove only the named preserved deny")
 
 
+def test_dom0_partial_upgrade_keeps_offline_denies_after_drift():
+    case("dom0.sls: a partial run keeps the offline denies of a catalogue-offline qube whose netvm drifted")
+    policy = "/etc/qubes/policy.d/28-browser-suppress.policy"
+    sc = Scenario(
+        selection="xournalpp", existing_qubes=["A-brave", "A-keepass"],
+        tagged_qubes=["A-brave", "A-keepass"], recipes={"A-keepass": "keepass"},
+        netvms={"A-keepass": "sys-firewall"},
+        file_contents={policy: "qubes.OpenURL * A-keepass @anyvm deny\n"})
+    _, parsed = render_state("dom0", "dom0", sc)
+    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
+    check("qubes.VMShell  *  A-keepass  @dispvm  deny" in contents,
+          "A-keepass is offline in the catalogue, so its disposable denies stay despite the drifted netvm")
+
+
 def test_dom0_refuses_unmanaged_qube():
     case("dom0.sls: refuses to adopt a same-named qube that isn't seqs-managed")
     # A-brave exists but is NOT tagged and has no intent marker -> must refuse.
@@ -339,6 +353,25 @@ def test_dom0_refuses_recipe_change():
                  tagged_qubes=["A-brave"], recipes={"A-brave": "brave"}))
     check("seqs-validation-failed" not in parsed,
           "a managed A-brave recorded as recipe 'brave' is adopted")
+
+
+def test_dom0_refuses_unmanaged_postfixed_qube():
+    case("dom0.sls: the no-clobber guard also covers --postfix instances")
+    # Selection line "<recipe> <instance>" is what the runner writes for --postfix.
+    # A-brave exists so that the browser check passes and only no-clobber can fail.
+    text, parsed = render_state("dom0", "dom0", Scenario(
+        selection="xournalpp xournalpp-beta", existing_qubes=["A-brave", "A-xournalpp-beta"],
+        tagged_qubes=["A-brave"]))
+    check("seqs-validation-failed" in parsed and "A-xournalpp-beta\\u0027 already exists but is not marked" in text,
+          "an existing untagged A-xournalpp-beta must trip the no-clobber guard")
+    text, parsed = render_state("dom0", "dom0", Scenario(
+        selection="xournalpp xournalpp-beta", existing_qubes=["A-brave", "A-xournalpp-beta"],
+        tagged_qubes=["A-brave", "A-xournalpp-beta"], recipes={"A-xournalpp-beta": "signal"}))
+    check("seqs-validation-failed" in parsed and "refusing to repurpose" in text,
+          "a postfixed instance recorded for another recipe must not be repurposed")
+    _, parsed = render_state("dom0", "dom0", Scenario(
+        selection="xournalpp xournalpp-beta", existing_qubes=["A-brave"], tagged_qubes=["A-brave"]))
+    check("seqs-validation-failed" not in parsed, "a fresh postfixed instance builds")
 
 
 def test_dom0_adopts_via_intent_marker():

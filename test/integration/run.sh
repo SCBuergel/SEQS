@@ -282,6 +282,7 @@ qubes.OpenInVM  *  A-keepass  @anyvm  deny
 qubes.OpenInVM  *  A-keepass  @dispvm  deny
 qubes.StartApp  *  A-keepass  @dispvm  deny
 qubes.GetImageRGBA  *  A-keepass  @dispvm  deny
+qubes.PdfConvert  *  A-keepass  @dispvm  deny
 qubes.OpenURL  *  @dispvm:A-keepass  @anyvm  deny
 qubes.OpenURL  *  D-keepass  @anyvm  deny
 qubes.OpenURL  *  A-wallet-ledger  @anyvm  deny
@@ -300,6 +301,7 @@ grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
 out="$(bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
+grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad "every SEQS deny for A-keepass, qubes.PdfConvert included, must be removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
 grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
