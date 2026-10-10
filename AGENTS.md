@@ -84,6 +84,8 @@ formatting or cleanup alongside a functional change.
 - `install-scripts/components/<name>/`: component template/app installation.
 - `install-scripts/lib/`: shared installer helpers.
 - `test/`: Qubes-free lint, render, unit, and mocked integration layers.
+- `test/hardware/`: dom0 remote-control setup for a dedicated test machine.
+  It deliberately breaks Qubes isolation; never use it on a real installation.
 
 ## Invariants
 

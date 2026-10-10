@@ -104,6 +104,9 @@ needs a real Salt run. Two options, in ascending fidelity:
    template — but it's minutes, not milliseconds, so keep it for pre-release,
    not every edit.
 
+   For a dedicated test machine that you drive over SSH instead of at its
+   keyboard, see [hardware/README.md](hardware/README.md).
+
 ---
 
 ## Adding tests when you change things

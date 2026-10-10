@@ -119,6 +119,73 @@ export NETVM_A_keepass="sys-firewall"
 if ( verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed a qube that still has a netvm"; else ok; fi
 unset NETVM_A_keepass
 
+echo "== test machine setup: input validation and generated qube scripts =="
+# test/hardware/setup-test-machine.sh interpolates these values into scripts
+# that run as root in test-ctl and sys-net, so its validators must hold.
+# Sourced in a subshell: it redefines sanitize()/die().
+(
+	SEQS_SOURCE_ONLY=1 source ./test/hardware/setup-test-machine.sh
+	t() { if "$@"; then echo 1; else echo 0; fi; }
+	for c in 192.168.1.0/24 10.0.0.0/8 192.168.1.7/32; do
+		[ "$(t validCidr "$c")" = 1 ] || echo "FAIL validCidr rejected $c"
+	done
+	for c in 0.0.0.0/0 10.0.0.0/7 256.1.1.1/24 192.168.1.0/33 "192.168.1.0/24;id" 192.168.1.0 "1.2.3.4/24 "; do
+		[ "$(t validCidr "$c")" = 0 ] || echo "FAIL validCidr accepted $c"
+	done
+	for p in 22 2222 65535; do [ "$(t validPort "$p")" = 1 ] || echo "FAIL validPort rejected $p"; done
+	for p in 0 65536 -1 22x ""; do [ "$(t validPort "$p")" = 0 ] || echo "FAIL validPort accepted $p"; done
+	[ "$(t validUrl https://github.com/someone.keys)" = 1 ] || echo "FAIL validUrl rejected a plain URL"
+	for u in http://github.com/x.keys "https://x/'y" 'https://x/$(id)' "https://x/ y" 'https://x/`id`' "https://x/;id"; do
+		[ "$(t validUrl "$u")" = 0 ] || echo "FAIL validUrl accepted $u"
+	done
+	for n in user test_user; do [ "$(t validUser "$n")" = 1 ] || echo "FAIL validUser rejected $n"; done
+	for n in root\;id "a b" Root ""; do [ "$(t validUser "$n")" = 0 ] || echo "FAIL validUser accepted $n"; done
+	for n in debian-13-xfce fedora-42-xfce; do [ "$(t validVmName "$n")" = 1 ] || echo "FAIL validVmName rejected $n"; done
+	for n in "a b" "x;id" "-x" ""; do [ "$(t validVmName "$n")" = 0 ] || echo "FAIL validVmName accepted $n"; done
+
+	k="${tmp}/keys"
+	printf '# laptop\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE fake@example\n\n' > "$k"
+	[ "$(t validKeys "$k")" = 1 ] || echo "FAIL validKeys rejected a plain key"
+	printf 'ecdsa-sha2-nistp256 AAAAE2VjZHNhFAKE==\n' > "$k"
+	[ "$(t validKeys "$k")" = 1 ] || echo "FAIL validKeys rejected an ecdsa key"
+	for bad_keys in '' '# only a comment\n' 'command="id" ssh-ed25519 AAAAFAKE\n' \
+			'ssh-ed25519 AAAA$(id)\n' 'ssh-dss AAAAFAKE\n' '<html>not found</html>\n'; do
+		printf "$bad_keys" > "$k"
+		[ "$(t validKeys "$k")" = 0 ] || echo "FAIL validKeys accepted [$bad_keys]"
+	done
+
+	# The default allowed range is derived from sys-net's own address.
+	[ "$(networkOf 192.168.1.50 24)" = 192.168.1.0/24 ] || echo "FAIL networkOf /24"
+	[ "$(networkOf 10.20.30.40 16)" = 10.20.0.0/16 ] || echo "FAIL networkOf /16"
+	[ "$(networkOf 172.16.5.9 32)" = 172.16.5.9/32 ] || echo "FAIL networkOf /32"
+	validCidr "$(networkOf 100.64.1.2 6)" && echo "FAIL a /6 LAN must not pass validCidr"
+
+	# The QR code carries "seqs-test-v1 <key line>"; anything else is refused.
+	key='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKE seqs-test'
+	[ "$(parseQrPayload "seqs-test-v1 ${key}")" = "${key}" ] || echo "FAIL parseQrPayload plain"
+	[ "$(parseQrPayload "$(printf 'seqs-test-v1 %s\r\nextra' "${key}")")" = "${key}" ] \
+		|| echo "FAIL parseQrPayload CR/LF"
+	for qr in "${key}" "https://example.com" "" "xseqs-test-v1 ${key}"; do
+		parseQrPayload "${qr}" >/dev/null && echo "FAIL parseQrPayload accepted [${qr}]"
+	done
+
+	# The scripts sent to test-ctl and sys-net must parse and carry the values.
+	runIn() { cat; }
+	ALLOW_FROM=192.168.1.0/24 PORT=2222 CTL_IP=10.137.0.42
+	configureCtl > "${tmp}/ctl.sh"
+	configureNet install > "${tmp}/net.sh"
+	configureNet remove > "${tmp}/netrm.sh"
+	for f in ctl net netrm; do
+		bash -n "${tmp}/${f}.sh" 2>/dev/null || echo "FAIL generated ${f} script does not parse"
+	done
+	grep -q 'dport 2222 dnat to 10.137.0.42:22' "${tmp}/net.sh" || echo "FAIL sys-net DNAT rule missing"
+	grep -q 'ip saddr 192.168.1.0/24 tcp dport 22 accept' "${tmp}/ctl.sh" || echo "FAIL test-ctl input rule missing"
+	if grep -q 'dnat to' "${tmp}/netrm.sh"; then echo "FAIL remove still installs the DNAT rule"; fi
+) > "${tmp}/testmachine.out" 2>&1
+if grep -q FAIL "${tmp}/testmachine.out"; then
+	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/testmachine.out")
+else ok; fi
+
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
