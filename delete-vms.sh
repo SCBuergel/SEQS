@@ -195,7 +195,8 @@ done
 # firewall is stale.
 for vm in "${found[@]}"; do
 	pin="${LIBVIRT_DIR}/${vm}.xml"
-	if head -n 1 -- "${pin}" 2>/dev/null | grep -q 'Managed by SEQS'; then
+	# The directory is readable by root only.
+	if sudo head -n 1 -- "${pin}" 2>/dev/null | grep -q 'Managed by SEQS'; then
 		sudo rm -f -- "${pin}"
 	fi
 	sudo rm -f -- "${STATE_DIR}/firewall/${vm}" "${INTENTS_DIR}/${vm}"

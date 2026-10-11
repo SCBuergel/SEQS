@@ -65,6 +65,7 @@ MUTATIONS = [
     ("delete-blockers", D, 'if [ "${#blockers[@]}" -gt 0 ]; then', 'if false; then'),
     ("delete-intent-marker", D, '|| sudo test -e "${INTENTS_DIR}/${candidate}"; then', '; then'),
     ("delete-inherit-errexit", D, "shopt -s inherit_errexit\n", ""),
+    ("delete-pin-sudo", D, "	if sudo head -n 1 --", "	if head -n 1 --"),
     ("delete-pin-unmarked", D, "| grep -q 'Managed by SEQS'; then", "| true; then"),
     # dom0.sls: names, offline, adoption, policy, pinning, cleanup paths.
     ("dom0-name-re", S, "{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\\\Z' %}", "{% set name_re = '^.*' %}"),

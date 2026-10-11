@@ -445,9 +445,12 @@ touch "${SEQS_STATE_DIR}/intents/A-notes"
 printf '%s\n' '{# Managed by SEQS (salt state seqs.dom0) #}' x > "${SEQS_LIBVIRT_DIR}/A-notes.xml"
 printf '%s\n' '<!-- operator -->' > "${SEQS_LIBVIRT_DIR}/Z-notes.xml"
 printf '%s\n' "A-notes halted" "Z-notes halted" > "${SEQS_MOCK_STATE}"
-out="$(SEQS_MOCK_UNMANAGED="A-notes" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
+out="$(SEQS_MOCK_UNMANAGED="A-notes" SEQS_MOCK_SUDO_LOG="${SBX}/sudo3.log" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -q "^A-notes " "${SEQS_MOCK_STATE}" && ok \
 	|| bad "a qube with a creation marker must be removed: ${out}"
+# On dom0 only root can read the pinning directory.
+grep -qF "head -n 1 -- ${SEQS_LIBVIRT_DIR}/A-notes.xml" "${SBX}/sudo3.log" && ok \
+	|| bad "the CPU-pinning file must be read through sudo"
 [ ! -e "${SEQS_STATE_DIR}/intents/A-notes" ] && ok || bad "the removed qube's creation marker must be deleted"
 [ ! -e "${SEQS_LIBVIRT_DIR}/A-notes.xml" ] && [ -e "${SEQS_LIBVIRT_DIR}/Z-notes.xml" ] && ok \
 	|| bad "only the CPU-pinning file SEQS wrote may be deleted"
