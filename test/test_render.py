@@ -122,9 +122,7 @@ def test_dom0_happy_path():
           "shipped config should pass pre-flight validation")
     check("seqs-targets" in parsed, "targets file state must be present")
     check("seqs-policy-browser" in parsed, "browser OpenURL policy must be present")
-    # keepass is offline + wallets are no_handoff -> a suppress policy exists
-    check("seqs-policy-browser-suppress" in parsed,
-          "suppress policy expected (offline/no_handoff qubes are configured)")
+    check("seqs-policy-browser-suppress" in parsed, "the tag-based suppress policy is always managed")
     # every configured qube gets a clone + app + tag state on a fresh dom0
     for name in ("brave", "keepass", "claude-code", "dev-full", "wallet-ledger"):
         check("seqs-clone-%s" % name in parsed, "expected clone state for %s" % name)
@@ -133,34 +131,32 @@ def test_dom0_happy_path():
     # keepass air-gap state
     check("seqs-offline-keepass" in parsed, "keepass should get an offline state")
     check("seqs-offline-brave" not in parsed, "brave must NOT be air-gapped")
-    # netvm=none does not gate qrexec, and a rule for A-x does not match a
-    # disposable spawned from it or the named disposable D-x. Every offline
-    # dispvm template must therefore deny OpenURL for all three subjects.
+    # netvm=none does not gate qrexec, so offline, no_handoff and firewalled
+    # qubes carry the seqs-no-handoff tag and the policy denies by tag; a
+    # disposable inherits the tag from its template, named or not.
     suppress = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    for subject in ("A-qr-camera", "@dispvm:A-qr-camera", "A-qr-display",
-                    "@dispvm:A-qr-display", "D-qr-display", "A-qr-staging"):
-        check("qubes.OpenURL  *  %s  @anyvm  deny" % subject in suppress,
-              "browser handoff must be denied for %s" % subject)
-        for target in ("@anyvm", "@dispvm"):
-            check("qubes.OpenInVM  *  %s  %s  deny" % (subject, target) in suppress,
-                  "open-in-qube handoff to %s must be denied for %s" % (target, subject))
-        for service in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
-                        "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert"):
-            check("%s  *  %s  @dispvm  deny" % (service, subject) in suppress,
-                  "%s to a disposable must be denied for %s" % (service, subject))
-    check("qubes.OpenURL  *  A-wallet-ledger  @dispvm  deny" in suppress
-          and "qubes.OpenInVM  *  A-wallet-ledger  @anyvm  deny" in suppress
-          and "qubes.VMShell  *  A-wallet-ledger  @dispvm  deny" in suppress
-          and "qubes.PdfConvert  *  A-wallet-ledger  @dispvm  deny" in suppress,
-          "networked no_handoff qubes must not reach a networked disposable either")
+    for target in ("@anyvm", "@dispvm"):
+        for service in ("qubes.OpenURL", "qubes.OpenInVM"):
+            check("%s  *  @tag:seqs-no-handoff  %s  deny" % (service, target) in suppress,
+                  "%s to %s must be denied by tag" % (service, target))
+    for service in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
+                    "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert"):
+        check("%s  *  @tag:seqs-no-handoff  @dispvm  deny" % service in suppress,
+              "%s to a disposable must be denied by tag" % service)
+    for vm in ("A-keepass", "A-qr-camera", "A-qr-display", "D-qr-display", "A-qr-staging",
+               "A-wallet-ledger", "A-wireguard", "A-gnosisvpn"):
+        sid = "seqs-handoff-tag-" + vm
+        check(sid in parsed and "add seqs-no-handoff" in state_arg(parsed, sid, "cmd.run", "name"),
+              "%s must be tagged seqs-no-handoff" % vm)
+    check("del seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-A-signal", "cmd.run", "name"),
+          "a handoff qube must not carry the tag")
+    check(not unresolved_requisites(parsed), "tag states must require rendered states only")
     offline = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
     check("default_dispvm none" in offline,
           "an offline qube must lose its (networked) default disposable")
     named = state_arg(parsed, "seqs-disposable-prefs-qr-display", "cmd.run", "name")
     check("default_dispvm none" in named,
           "a named offline disposable must lose its default disposable")
-    check("@dispvm:A-keepass" not in suppress and "D-keepass" not in suppress,
-          "non-disposable offline qubes get only their own deny")
     camera_state = parsed["seqs-app-qr-camera"]["qvm.vm"]
     camera_prefs = next(x["prefs"] for x in camera_state if "prefs" in x)
     check(any(p.get("template_for_dispvms") is True for p in camera_prefs),
@@ -223,61 +219,38 @@ def test_dom0_idempotent_rerun():
     check("seqs-targets" in parsed, "targets file is still (re)written on re-run")
 
 
-def test_dom0_partial_upgrade_preserves_strict_browser_denies():
-    case("dom0.sls: partial upgrades preserve only strict denies for managed qubes")
-    policy = "/etc/qubes/policy.d/28-browser-suppress.policy"
-    old = """\
-qubes.OpenURL * A-keepass @anyvm deny
-qubes.OpenURL * A-old-wallet @anyvm deny
-qubes.OpenURL * @dispvm:A-old-wallet @anyvm deny
-qubes.OpenURL * D-old-wallet @anyvm deny
-qubes.OpenURL * @dispvm:A-unmanaged @anyvm deny
-qubes.OpenURL * A-unmanaged @anyvm deny
-qubes.OpenURL * A-danger @anyvm allow
-not.a.valid policy line
-"""
-    pillar = _bad_pillar(
-        qubes={"qr-display": {"label": "black", "components": ["qr-display"],
-                              "offline": True, "dispvm_template": True}},
-        browser_suppress_prune=[])
+def test_dom0_partial_run_tags_unselected_managed_qubes():
+    case("dom0.sls: a partial run tags every managed qube from its recipe, selected or not")
     sc = Scenario(
-        existing_qubes=["A-brave", "A-keepass", "A-old-wallet", "A-unmanaged"],
-        tagged_qubes=["A-keepass", "A-old-wallet"],
-        file_contents={policy: old})
-    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
-    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    check("A-qr-display" in contents, "new offline qube deny must be emitted")
-    check("A-keepass" in contents and "A-old-wallet" in contents,
-          "strict denies for existing managed qubes must survive a partial upgrade")
-    check("@dispvm:A-old-wallet" in contents,
-          "a preserved @dispvm: deny must survive when its template is managed")
-    check("qubes.VMShell  *  A-old-wallet  @dispvm  deny" in contents,
-          "a preserved networked no_handoff qube keeps its disposable denies")
-    check("D-old-wallet" not in contents,
-          "a D- deny must not be preserved when that disposable does not exist")
-    check("A-unmanaged" not in contents,
-          "deny for an untagged qube must not be imported")
-    check("A-danger" not in contents and "not.a.valid" not in contents,
-          "allow and arbitrary policy lines must not be imported")
-
-    pillar["browser_suppress_prune"] = ["old-wallet"]
-    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
-    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    check("A-keepass" in contents and "A-old-wallet" not in contents,
-          "explicit prune must remove only the named preserved deny")
-
-
-def test_dom0_partial_upgrade_keeps_disposable_denies():
-    case("dom0.sls: a partial run keeps every deny of a preserved qube, whatever its netvm")
-    policy = "/etc/qubes/policy.d/28-browser-suppress.policy"
-    sc = Scenario(
-        selection="xournalpp", existing_qubes=["A-brave", "A-keepass"],
-        tagged_qubes=["A-brave", "A-keepass"], recipes={"A-keepass": "keepass"},
-        file_contents={policy: "qubes.OpenURL * A-keepass @anyvm deny\n"})
+        selection="xournalpp",
+        existing_qubes=["A-brave", "A-keepass", "A-wallet-ledger", "A-signal", "D-qr-display", "A-unmanaged"],
+        tagged_qubes=["A-brave", "A-keepass", "A-wallet-ledger", "A-signal", "D-qr-display"],
+        recipes={"A-brave": "brave", "A-keepass": "keepass", "A-wallet-ledger": "wallet-ledger",
+                 "A-signal": "signal", "D-qr-display": "qr-display"})
     _, parsed = render_state("dom0", "dom0", sc)
-    contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    check("qubes.VMShell  *  A-keepass  @dispvm  deny" in contents,
-          "a preserved qube keeps its disposable denies")
+    for vm in ("A-keepass", "A-wallet-ledger", "D-qr-display"):
+        sid = "seqs-handoff-tag-" + vm
+        check(sid in parsed and "add seqs-no-handoff" in state_arg(parsed, sid, "cmd.run", "name"),
+              "unselected managed %s must keep the seqs-no-handoff tag" % vm)
+    check("del seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-A-signal", "cmd.run", "name"),
+          "an unselected handoff qube must not carry the tag")
+    check("seqs-handoff-tag-A-unmanaged" not in parsed, "a qube SEQS does not manage is never tagged")
+    check(not unresolved_requisites(parsed), "tag states of unselected qubes must not require absent states")
+    policy_requires = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "require")
+    for vm in ("A-keepass", "A-wallet-ledger", "D-qr-display"):
+        check({"cmd": "seqs-handoff-tag-" + vm} in policy_requires,
+              "the tag policy must wait for the %s tag, or a failed tag leaves it unprotected" % vm)
+    check({"cmd": "seqs-handoff-tag-A-signal"} not in policy_requires,
+          "the policy must not wait for a tag removal")
+
+
+def test_dom0_tags_managed_qube_without_recipe():
+    case("dom0.sls: a managed qube built before recipes were recorded is tagged by its base name")
+    sc = Scenario(selection="xournalpp", existing_qubes=["A-brave", "A-keepass"],
+                  tagged_qubes=["A-brave", "A-keepass"], recipes={"A-brave": "brave"})
+    _, parsed = render_state("dom0", "dom0", sc)
+    check("add seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-A-keepass", "cmd.run", "name"),
+          "a recipe-less managed A-keepass must still be tagged")
 
 
 def test_dom0_refuses_unmanaged_qube():
@@ -538,6 +511,9 @@ def test_dom0_dedicated_qr_uses_device_api():
           "dedicated mode must skip dom0, whose qvm-pci list shows every device")
     check('qvm-pci unassign --port "$current" dom0:03_00.0' in backend,
           "dedicated mode must also drop assignments carried over from 4.2")
+    for vm in ("sys-usb-webcam", "seqs-qr-scanner"):
+        check("add seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-" + vm, "cmd.run", "name"),
+              "the webcam qube %s must be tagged" % vm)
     check(unresolved_requisites(parsed) == [],
           "every requisite must resolve: %r" % unresolved_requisites(parsed))
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
@@ -673,8 +649,6 @@ def test_dom0_validation_catches_bad_config():
     check(_validation_fails(_bad_pillar(
         config_errors=["duplicate qube name 'brave'"])),
         "config_errors from pillar compilation must abort the dom0 apply")
-    check(_validation_fails(_bad_pillar(browser_suppress_prune=["bad name"])),
-          "unsafe browser-suppression prune name must fail validation")
     for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8"):
         check(_validation_fails(_bad_pillar(
             webcam_usb_mode="sequential", webcam_usb_controller=bdf,
@@ -724,8 +698,7 @@ def test_dom0_firewall_states():
     check("rpc.example.com" in txt and "dstports=443" in txt,
           "firewall rule should translate host:port into a qvm-firewall accept")
     unless = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", "unless")
-    suppress = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    check("qubes.VMShell  *  A-wallet  @dispvm  deny" in suppress and "qubes.OpenURL  *  A-wallet  @anyvm  deny" in suppress,
+    check("add seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-A-wallet", "cmd.run", "name"),
           "a firewall key implies no_handoff: no way past the allowlist through handoff or a disposable")
     check("qvm-firewall --raw -- A-wallet list" in unless,
           "the skip test must compare the qube's current rules, so hand edits are reverted")

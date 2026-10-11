@@ -35,7 +35,6 @@ new_sandbox() {
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG SEQS_MOCK_APPMENUS_LOG
-	unset SEQS_BROWSER_SUPPRESS_POLICY
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
@@ -273,45 +272,17 @@ echo "== scenario: delete-vms.sh touches only the named D-/A-/Z- qubes =="
 new_sandbox
 export SEQS_MOCK_STATE="${SBX}/qubes.state"
 printf '%s\n' "A-keepass running" "Z-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
-export SEQS_BROWSER_SUPPRESS_POLICY="${SBX}/28-browser-suppress.policy"
-cat > "${SEQS_BROWSER_SUPPRESS_POLICY}" <<'EOF'
-# Managed by SEQS (test)
-qubes.OpenURL  *  A-keepass  @anyvm  deny
-qubes.OpenURL  *  A-keepass  @dispvm  deny
-qubes.OpenInVM  *  A-keepass  @anyvm  deny
-qubes.OpenInVM  *  A-keepass  @dispvm  deny
-qubes.StartApp  *  A-keepass  @dispvm  deny
-qubes.GetImageRGBA  *  A-keepass  @dispvm  deny
-qubes.PdfConvert  *  A-keepass  @dispvm  deny
-qubes.OpenURL  *  @dispvm:A-keepass  @anyvm  deny
-qubes.OpenURL  *  D-keepass  @anyvm  deny
-qubes.OpenURL  *  A-wallet-ledger  @anyvm  deny
-qubes.OpenInVM  *  A-wallet-ledger  @dispvm  deny
-EOF
 # Dry-run: announces itself, exits 0, changes nothing.
 out="$(bash "${REPO}/delete-vms.sh" --dry-run keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "dry-run exited non-zero ($rc)"
 grep -q "dry-run: not killing or removing" <<<"$out" && ok || bad "expected the dry-run notice"
-grep -q "would remove stale browser deny for A-keepass" <<<"$out" && ok \
-	|| bad "dry-run should report browser-policy cleanup"
 grep -qxF "A-keepass running" "${SEQS_MOCK_STATE}" && ok || bad "dry-run must not touch the inventory"
-grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
-	|| bad "dry-run must not alter browser policy"
 # Real run: A-keepass (running) and Z-keepass go, unrelated A-brave stays.
 out="$(bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
-grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad "every SEQS deny for A-keepass, qubes.PdfConvert included, must be removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
-grep -q "A-keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
-	"stale A-keepass browser deny should have been removed" || ok
-grep -q "keepass" "${SEQS_BROWSER_SUPPRESS_POLICY}" && bad \
-	"stale @dispvm:A-keepass and D-keepass browser denies should have been removed" || ok
-grep -q "A-wallet-ledger" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
-	|| bad "unrelated browser deny was removed"
-grep -q "qubes.OpenInVM  \*  A-wallet-ledger  @dispvm  deny" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
-	|| bad "unrelated OpenInVM deny was removed"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
@@ -351,17 +322,6 @@ d_line="$(grep -n '^  D-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
 a_line="$(grep -n '^  A-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
 [ -n "$d_line" ] && [ -n "$a_line" ] && [ "$d_line" -lt "$a_line" ] \
 	&& ok || bad "the disposable D-qr-display must be removed before its A- template"
-# An unmarked policy is outside SEQS ownership and must remain byte-for-byte.
-cat > "${SEQS_BROWSER_SUPPRESS_POLICY}" <<'EOF'
-qubes.OpenURL  *  A-ghost  @anyvm  deny
-EOF
-cp "${SEQS_BROWSER_SUPPRESS_POLICY}" "${SBX}/unmarked.before"
-out="$(bash "${REPO}/delete-vms.sh" ghost 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] && ok || bad "no-match cleanup exited non-zero ($rc)"
-grep -q "stale browser deny.*unmarked policy" <<<"$out" && ok \
-	|| bad "expected warning for an unmarked policy"
-cmp -s "${SBX}/unmarked.before" "${SEQS_BROWSER_SUPPRESS_POLICY}" && ok \
-	|| bad "unmarked browser policy must not be changed"
 # Unsafe name: refused before anything is looked up.
 out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
@@ -384,7 +344,6 @@ printf '%s\n' "A-ctl running" "sys-net running" "sys-firewall running" \
 export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d"
 export SEQS_ETC_DIR="${SBX}/etc/seqs" SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequential"
 export SEQS_TMP_DIR="${SBX}/tmp" SEQS_TEST_DELETE_VMS="${REPO}/delete-vms.sh"
-export SEQS_BROWSER_SUPPRESS_POLICY="${SEQS_POLICY_DIR}/28-browser-suppress.policy"
 mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_POLICY_DIR}" \
 	"${SEQS_ETC_DIR}" "${SBX}/sbin" "${SEQS_TMP_DIR}/seqs-stage.x"
 touch "${SEQS_QR_SCRIPT}"

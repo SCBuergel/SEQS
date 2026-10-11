@@ -1,8 +1,7 @@
 # Deleting SEQS qubes
 
 `delete-vms.sh` permanently deletes the app and template qubes belonging to a
-SEQS base name, including the data stored in them, and removes the deny rules
-SEQS wrote for them. Use it when intentionally removing a
+SEQS base name, including the data stored in them. Use it when intentionally removing a
 configured qube or when a clean rebuild is required; ordinary upgrades do not
 require deletion.
 
@@ -32,8 +31,8 @@ Review what would happen without changing anything:
 ~/d.sh --dry-run keepass
 ```
 
-The output lists the matching qubes, the qubes whose network would be
-disconnected, and the policy entries that would be removed. Check every name,
+The output lists the matching qubes and the qubes whose network would be
+disconnected. Check every name,
 then perform the deletion:
 
 ```bash
@@ -71,21 +70,9 @@ For each supplied base name, the helper:
    (`D-`) before the `A-` template it derives from, and `A-` before its `Z-`
    template — permanently removing the qube and its volumes. A removal failure
    stops the script.
-6. Only after `A-<name>` is absent, removes from
-   `/etc/qubes/policy.d/28-browser-suppress.policy` the `deny` rules that SEQS
-   wrote for `A-<name>`, `@dispvm:A-<name>`, and `D-<name>`, such as:
 
-   ```text
-   qubes.OpenURL  *  A-<name>  @anyvm  deny
-   ```
-
-The policy edit occurs only when the file contains the `Managed by SEQS`
-marker. The helper rewrites it through a same-directory temporary, preserves
-its ownership, permissions, and security context when supported, and replaces
-it atomically. It never removes arbitrary policy lines or modifies an unmarked
-file; an unmarked stale rule produces a warning for manual review. If the qubes
-are already absent, running the helper still cleans stale rules from a marked
-policy.
+The helper changes no policy file: the dom0 handoff denies match the
+`seqs-no-handoff` tag, which disappears with the qube.
 
 `--dry-run` performs the same discovery but does not kill qubes, remove volumes,
-or rewrite policy files.
+or change any `netvm` property.

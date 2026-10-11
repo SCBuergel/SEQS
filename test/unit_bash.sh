@@ -47,6 +47,18 @@ else
 	printf '  skip: setsid not available\n'
 fi
 
+echo "== isManaged() accepts only a SEQS header line =="
+sudo() { "$@"; }
+tmpf="$(mktemp)"
+printf '# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.\nx\n' > "${tmpf}"
+isManaged "${tmpf}" && ok || bad "a SEQS header must count as managed"
+printf '# my rules, not Managed by SEQS\nqubes.OpenURL * @anyvm @anyvm allow\n' > "${tmpf}"
+isManaged "${tmpf}" && bad "the marker inside an operator comment must not count" || ok
+printf 'qubes.OpenURL * @anyvm @anyvm allow\n# Managed by SEQS\n' > "${tmpf}"
+isManaged "${tmpf}" && bad "the marker on a later line must not count" || ok
+rm -f "${tmpf}"
+unset -f sudo
+
 echo "== joinCsv() =="
 eq "joinCsv" "$(joinCsv a b c)" "a,b,c"
 eq "joinCsv one" "$(joinCsv solo)" "solo"

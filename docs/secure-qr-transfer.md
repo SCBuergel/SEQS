@@ -700,13 +700,15 @@ lets into a disposable without asking, as a second layer behind the unset
 default disposable. In a dom0 terminal of the sending computer, run:
 
 ```bash
-grep qr-display /etc/qubes/policy.d/28-browser-suppress.policy
+qvm-tags A-qr-display list; qvm-tags D-qr-display list
+cat /etc/qubes/policy.d/28-browser-suppress.policy
 ```
 
-You should see `deny` lines for `qubes.OpenURL` and for these disposable
-services from each of `A-qr-display`, `@dispvm:A-qr-display`, and
-`D-qr-display`: `qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`,
-`qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert`.
+Both tag lists must include `seqs-no-handoff`; a disposable started from
+`A-qr-display` inherits it. The policy file must deny, from
+`@tag:seqs-no-handoff`, `qubes.OpenURL` and these disposable services:
+`qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`,
+`qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -751,7 +753,7 @@ of the receiving computer, run:
 
 ```bash
 cat /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
-grep -E 'qr-camera|qr-staging' /etc/qubes/policy.d/28-browser-suppress.policy
+qvm-tags A-qr-camera list
 ```
 
 The first file must deny the input services (`qubes.InputKeyboard`,
@@ -759,12 +761,12 @@ The first file must deny the input services (`qubes.InputKeyboard`,
 `sys-usb-webcam`, `seqs-qr-scanner`, and `@dispvm:A-qr-camera`; it must also
 deny the disposable services listed for the sending computer from
 `sys-usb-webcam` and `seqs-qr-scanner`, and `qubes.Filecopy` from
-`sys-usb-webcam`. The `grep` lines must deny `qubes.OpenURL` and the
-disposable services from `A-qr-camera`, `@dispvm:A-qr-camera`, and, on the
-sequential path, `A-qr-staging`. A rule whose source is `@dispvm:A-qr-camera`
-matches no running qube on Qubes 4.3, so a disposable that you start from
-`A-qr-camera` yourself is not covered; the transfer uses only the named qubes
-that the rules list.
+`sys-usb-webcam`. The `@dispvm:A-qr-camera` rule matches no running qube on
+Qubes 4.3; the scan runs in the qubes the file names. The tag list must
+include `seqs-no-handoff`, which applies the `28-browser-suppress.policy`
+denies checked on the sending computer to `A-qr-camera` and to disposables
+started from it; on the sequential path, `qvm-tags A-qr-staging list` must
+include it too.
 
 On the sequential path, also run:
 

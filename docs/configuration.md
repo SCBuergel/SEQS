@@ -97,10 +97,13 @@ flags:
   `no_handoff`, and the runner re-verifies both after the dom0 apply. Use for
   wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
-  at the qube's xdg config and via dom0 qrexec deny rules for `qubes.OpenURL`.
-  dom0 also denies `qubes.OpenInVM` and every other service that the Qubes
-  default policy lets into a disposable without asking, because a networked
-  disposable would be another way out. Such a qube cannot open files in other
+  at the qube's xdg config and in dom0, which tags the qube `seqs-no-handoff`
+  and denies `qubes.OpenURL` from that tag. Every build sets or removes the
+  tag on all SEQS-built qubes of the catalogue, selected or not, and
+  disposables started from a tagged qube inherit it. dom0 also denies
+  `qubes.OpenInVM` and every other service that the Qubes default policy lets
+  into a disposable without asking, because a networked disposable would be
+  another way out. Such a qube cannot open files in other
   qubes or start a disposable; copy files with `qvm-copy` instead.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
@@ -144,26 +147,6 @@ tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
 verification, and runtime checks.
 
 Duplicate names abort the pre-flight.
-
-Browser-suppression denies are additive across partial upgrades. When a run
-configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules
-(and regenerates their disposable denies) for existing qubes carrying the
-`seqs-managed` feature; it never imports arbitrary
-policy text or allow rules. To deliberately forget a preserved entry, add its
-base name to `browser_suppress_prune`, for example:
-
-```jinja
-{%- set browser_suppress_prune = ['old-wallet'] %}
-```
-
-A qube that is still configured with `offline` or `no_handoff` remains denied
-even if named in the prune list. Remove that flag as well when intentionally
-re-enabling browser handoff.
-
-`delete-vms.sh <name>` removes the deny rules SEQS wrote for that qube
-immediately after it is gone, without running a full build. It updates only a
-policy carrying the `Managed by SEQS` marker; an unmarked policy is left
-unchanged with a warning for manual review.
 
 ## Secure QR USB modes
 

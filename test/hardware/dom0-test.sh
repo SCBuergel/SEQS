@@ -205,6 +205,12 @@ print(v)
 ' "$1" "$2" <<< "${CATALOGUE_JSON}"
 }
 
+# noHandoff RECIPE -- the catalogue closes this recipe's link handoff.
+noHandoff() {
+	[ "$(catField "$1" offline)" = "True" ] || [ "$(catField "$1" no_handoff)" = "True" ] \
+		|| [ -n "$(catField "$1" firewall)" ]
+}
+
 # checkSetup KIND VM RECIPE -- the qube settings SEQS declares, as qvm-prefs
 # reports them, and the template menu entries.
 checkSetup() {
@@ -460,6 +466,25 @@ refused() {
 	done
 }
 
+# hasTag VM -- VM carries seqs-no-handoff, which the dom0 policy denies by.
+hasTag() {
+	qvm-tags -- "$1" list 2>/dev/null | grep -qx seqs-no-handoff \
+		&& pass "$1: tagged seqs-no-handoff" || fail "$1: not tagged seqs-no-handoff"
+}
+
+# unnamedDisposableRefused TEMPLATE -- a disposable started by hand from a
+# disposable template inherits the tag, so its link handoff is refused too.
+unnamedDisposableRefused() {
+	local out
+	out="$(qvm-run --dispvm="$1" --pass-io --no-gui \
+		"echo https://example.com | timeout 20 qrexec-client-vm ${BROWSER_VM} qubes.OpenURL; echo rc=\$?" 2>&1 </dev/null)"
+	if grep -qi "refused" <<< "${out}"; then
+		pass "a disposable started from $1: qubes.OpenURL to ${BROWSER_VM} is refused"
+	else
+		fail "a disposable started from $1 could hand a link to ${BROWSER_VM}: $(tail -n 1 <<< "${out}")"
+	fi
+}
+
 # qrRoundTrip -- the QR transfer without the webcam: A-qr-display encodes a
 # random payload, dom0 carries the image, A-qr-camera decodes it.
 qrRoundTrip() {
@@ -525,10 +550,13 @@ check() {
 				checkSetup app "${name}" "${recipe}"
 				checkMenu app "${name}" "${recipe}"
 				smoke "${name}" "${recipe}"
-				# An offline or no_handoff qube can hand nothing to the browser
-				# qube and start no disposable through any service the default
-				# policy allows: a networked disposable would be a way out.
-				if [ "$(catField "${recipe}" offline)" = "True" ] || [ "$(catField "${recipe}" no_handoff)" = "True" ]; then
+				# An offline, no_handoff, or firewalled qube can hand nothing to
+				# the browser qube and start no disposable through any service
+				# the default policy allows: a networked disposable would be a
+				# way out.
+				if noHandoff "${recipe}"; then
+					hasTag "${name}"
+					[ "$(catField "${recipe}" dispvm_template)" != "True" ] || unnamedDisposableRefused "${name}"
 					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM
 					refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
 						qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
@@ -536,6 +564,7 @@ check() {
 				;;
 			disposable)
 				checkSetup disposable "${name}" "${recipe}"
+				! noHandoff "${recipe}" || hasTag "${name}"
 				checkMenu disposable "${name}" "${recipe}"
 				;;
 		esac

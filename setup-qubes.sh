@@ -48,6 +48,12 @@ POLICY_FILES=(
 
 # ---- Helpers ----------------------------------------------------------------
 
+# isManaged FILE -- SEQS wrote FILE: its first line starts with the marker.
+# The marker elsewhere, such as in an operator's comment, does not count.
+isManaged() {
+	sudo head -n 1 -- "$1" 2>/dev/null | grep -q "^# ${MANAGED_MARKER}"
+}
+
 # sanitize -- strip terminal-control bytes from anything reaching the dom0
 # terminal (C0 controls except TAB/LF, raw 8-bit C1 via iconv, UTF-8-encoded
 # C1 via sed). qubesctl output embeds strings produced inside target qubes,
@@ -392,7 +398,7 @@ confirmPolicyTakeover() {
 		if [ "${usb_applies}" -eq 0 ] && [ "${p}" = "/etc/qubes/policy.d/30-user-input.policy" ]; then
 			continue
 		fi
-		if [ -e "${p}" ] && ! sudo grep -q "${MANAGED_MARKER}" "${p}"; then
+		if [ -e "${p}" ] && ! isManaged "${p}"; then
 			unmanaged+=("${p}")
 		fi
 	done
@@ -514,7 +520,7 @@ prepareGnosisPrerequisites() {
 
 cleanupGnosisUpdateProxy() {
 	if sudo test -f "${GNOSIS_UPDATE_POLICY}" \
-		&& sudo grep -q "${MANAGED_MARKER}" "${GNOSIS_UPDATE_POLICY}"; then
+		&& isManaged "${GNOSIS_UPDATE_POLICY}"; then
 		sudo rm -f "${GNOSIS_UPDATE_POLICY}" || true
 	fi
 	if qvm-check -q -- "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 \
@@ -568,7 +574,7 @@ setupGnosisUpdateProxy() {
 	[ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ] || return 0
 
 	if sudo test -e "${GNOSIS_UPDATE_POLICY}" \
-		&& ! sudo grep -q "${MANAGED_MARKER}" "${GNOSIS_UPDATE_POLICY}"; then
+		&& ! isManaged "${GNOSIS_UPDATE_POLICY}"; then
 		die "${GNOSIS_UPDATE_POLICY} exists but is not managed by SEQS"
 	fi
 	if qvm-check -q -- "${GNOSIS_UPDATE_PROXY}" >/dev/null 2>&1 \

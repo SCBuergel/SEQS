@@ -6,7 +6,6 @@
 {% set pdvm = seqs.get('prefix_disposable', '') %}
 {% set base_template = seqs.get('base_template', '') %}
 {% set browser_vm = seqs.get('browser_vm', '') %}
-{% set browser_suppress_prune = seqs.get('browser_suppress_prune', []) %}
 {% set qcatalog = seqs.get('catalogue', seqs.get('qubes', {})) %}
 {% set selection_file = '/var/lib/seqs/selection' %}
 {% set selection_raw = salt['cmd.shell']('cat ' ~ selection_file ~ ' 2>/dev/null') %}
@@ -151,15 +150,6 @@ for vm in qubesadmin.Qubes().domains:
 {% for e in seqs.get('config_errors', []) %}
 {%   do errors.append(e) %}
 {% endfor %}
-{% if browser_suppress_prune is string or browser_suppress_prune is not sequence %}
-{%   do errors.append('browser_suppress_prune must be a list of qube base names') %}
-{% else %}
-{%   for name in browser_suppress_prune %}
-{%     if name | regex_match(name_re) is none %}
-{%       do errors.append("browser_suppress_prune contains unsafe name '" ~ name ~ "'") %}
-{%     endif %}
-{%   endfor %}
-{% endif %}
 
 {# ── Pillar present at all? ─────────────────────────────────────────────── #}
 {% if not qcatalog or not base_template or not browser_vm or not ptpl or not papp %}
@@ -385,58 +375,48 @@ seqs-policy-browser:
     - contents: |
         # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
         # Link-handoff: any qube may open http/https links in {{ browser_vm }}.
-        # Denies for offline/no-handoff qubes live in 28-browser-suppress.policy,
-        # which is evaluated first.
+        # Denies for qubes tagged seqs-no-handoff live in
+        # 28-browser-suppress.policy, which is evaluated first.
         qubes.OpenURL  *  @anyvm  {{ browser_vm }}  allow
 
-{# Preserve strict deny rules for existing SEQS-managed qubes during partial
-   upgrade runs. Only the exact rule shape below is imported; arbitrary policy
-   text and allow rules are never carried forward. Explicit prune entries use
-   config base names and affect preserved entries, not currently configured
-   offline/no_handoff qubes. #}
-{% set suppressed = [] %}
-{#  A firewall allowlist implies no_handoff: otherwise the qube could reach
-    the browser qube or a networked disposable past its own allowlist. #}
-{% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
-{%   set subjects = [papp ~ name] %}
-{#   Disposables are separate policy subjects: a rule for A-x covers neither a
-     disposable spawned from it (@dispvm:A-x) nor the named disposable D-x.
-     Qubes 4.3 matches the @dispvm:A-x source against no running qube; it is
-     kept for a release that does, and D-x is what the QR guide uses. #}
-{%   if q.get('dispvm_template') %}
-{%     do subjects.append('@dispvm:' ~ papp ~ name) %}
+{# ── No-handoff tag. Offline, no_handoff, and firewalled qubes carry the tag
+     seqs-no-handoff, and 28-browser-suppress.policy denies by that tag. A
+     disposable inherits its template's tags when it is created, so the denies
+     also cover every disposable started from such a qube, named or not. Every
+     SEQS-managed app qube and named disposable is tagged from its catalogue
+     recipe, selected or not, so a partial run never leaves one unprotected;
+     a qube built before SEQS recorded recipes falls back to its base name.
+     A selected qube without the flag loses the tag. #}
+{% set handoff_tags = {} %}
+{% for vm, info in inventory.items() if info.managed and vm | regex_match(name_re) is not none %}
+{%   set base = vm[papp | length:] if papp and vm.startswith(papp) else (vm[pdvm | length:] if pdvm and vm.startswith(pdvm) else '') %}
+{%   set r = qcatalog.get(info.recipe or base) if base else none %}
+{%   if r %}
+{%     do handoff_tags.update({vm: {'want': r.get('offline') or r.get('no_handoff') or r.get('firewall') is not none, 'require': ''}}) %}
 {%   endif %}
-{%   if q.get('named_disposable') and pdvm %}
-{%     do subjects.append(pdvm ~ name) %}
-{%   endif %}
-{%   for vm in subjects %}
-{%     do suppressed.append(vm) %}
-{%   endfor %}
 {% endfor %}
-{% set suppress_policy = '/etc/qubes/policy.d/28-browser-suppress.policy' %}
-{% if salt['file.file_exists'](suppress_policy) %}
-{%   for line in salt['file.read'](suppress_policy).splitlines() %}
-{%     set fields = line.split() %}
-{%     if fields | length == 5 and fields[0] == 'qubes.OpenURL' and fields[1] == '*' and fields[3] == '@anyvm' and fields[4] == 'deny' %}
-{%       set vm = fields[2] %}
-{#       Accept the three shapes written above; existence and the managed
-         marker are checked on the concrete qube behind each one. #}
-{%       set concrete = vm[8:] if vm.startswith('@dispvm:') else vm %}
-{%       set base = '' %}
-{%       if papp and concrete.startswith(papp) %}
-{%         set base = concrete[(papp | length):] %}
-{%       elif pdvm and concrete == vm and concrete.startswith(pdvm) %}
-{%         set base = concrete[(pdvm | length):] %}
-{%       endif %}
-{%       if base and concrete | regex_match(name_re) is not none and base not in browser_suppress_prune and vm not in suppressed
-            and (concrete in inventory)
-            and inventory.get(concrete, {}).get('managed') %}
-{%         do suppressed.append(vm) %}
-{%       endif %}
-{%     endif %}
-{%   endfor %}
+{% for name, q in qmap.items() %}
+{%   set want = q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
+{%   do handoff_tags.update({papp ~ name: {'want': want, 'require': 'qvm: seqs-app-' ~ name}}) %}
+{%   if q.get('named_disposable') and pdvm %}
+{%     do handoff_tags.update({pdvm ~ name: {'want': want, 'require': 'cmd: seqs-disposable-prefs-' ~ name}}) %}
+{%   endif %}
+{% endfor %}
+{% if webcam_mode in ['dedicated', 'sequential'] %}
+{%   do handoff_tags.update({webcam_usb_qube: {'want': true, 'require': 'cmd: seqs-webcam-usb-backend'},
+                             webcam_scanner_qube: {'want': true, 'require': 'cmd: seqs-qr-scanner'}}) %}
 {% endif %}
-{% if suppressed %}
+{% for vm, t in handoff_tags.items() %}
+seqs-handoff-tag-{{ vm }}:
+  cmd.run:
+    - name: qvm-tags -- {{ vm }} {{ 'add' if t.want else 'del' }} seqs-no-handoff
+    - {{ 'unless' if t.want else 'onlyif' }}: qvm-tags -- {{ vm }} list | grep -qx seqs-no-handoff
+{%   if t.require %}
+    - require:
+      - {{ t.require }}
+{%   endif %}
+{% endfor %}
+
 seqs-policy-browser-suppress:
   file.managed:
     - name: /etc/qubes/policy.d/28-browser-suppress.policy
@@ -445,37 +425,30 @@ seqs-policy-browser-suppress:
     - mode: '0644'
     - contents: |
         # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
-        # Deny qubes.OpenURL from every 'offline' / 'no_handoff' qube to ANY
-        # target. Evaluated before 29-browser.policy, so the deny fires before
-        # the @anyvm allow rule -- the opt-out is enforced at the dom0
-        # boundary, not just at each qube's xdg config. The @dispvm lines
-        # state the disposable target explicitly.
-        # They also lose every service that the Qubes default policy lets
-        # into a new disposable without asking (qubes.PdfConvert through the
-        # PDF converter's own default policy): that disposable normally has
-        # network access, so it would be a way out past no_handoff and any
-        # firewall allowlist. For offline qubes the unset default_dispvm is
-        # the primary control and these denies are a second layer.
-        # Existing strict denies for SEQS-managed qubes are preserved across
-        # partial upgrades; use browser_suppress_prune to remove stale entries.
-        {%- for vm in suppressed %}
-        qubes.OpenURL  *  {{ vm }}  @anyvm  deny
-        qubes.OpenURL  *  {{ vm }}  @dispvm  deny
-        qubes.OpenInVM  *  {{ vm }}  @anyvm  deny
-        qubes.OpenInVM  *  {{ vm }}  @dispvm  deny
-        qubes.StartApp  *  {{ vm }}  @dispvm  deny
-        qubes.GetImageRGBA  *  {{ vm }}  @dispvm  deny
-        qubes.VMShell  *  {{ vm }}  @dispvm  deny
-        qubes.VMExec  *  {{ vm }}  @dispvm  deny
-        qubes.VMExecGUI  *  {{ vm }}  @dispvm  deny
-        qubes.PdfConvert  *  {{ vm }}  @dispvm  deny
-        {%- endfor %}
-{% else %}
-# No offline/no_handoff qubes configured: remove only our managed policy.
-seqs-policy-browser-suppress:
-  cmd.run:
-    - name: rm -f /etc/qubes/policy.d/28-browser-suppress.policy
-    - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/28-browser-suppress.policy
+        # Qubes tagged seqs-no-handoff (offline, no_handoff, and firewalled SEQS
+        # qubes, and every disposable started from them) may hand no link to
+        # any qube, open nothing in another qube, and start no disposable
+        # through the services the Qubes default policy allows without asking
+        # (qubes.PdfConvert through the PDF converter's own policy): the browser
+        # qube or a networked disposable would be a way out past no_handoff and
+        # any firewall allowlist. Evaluated before 29-browser.policy.
+        qubes.OpenURL  *  @tag:seqs-no-handoff  @anyvm  deny
+        qubes.OpenURL  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.OpenInVM  *  @tag:seqs-no-handoff  @anyvm  deny
+        qubes.OpenInVM  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.StartApp  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.GetImageRGBA  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.VMShell  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.VMExec  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.VMExecGUI  *  @tag:seqs-no-handoff  @dispvm  deny
+        qubes.PdfConvert  *  @tag:seqs-no-handoff  @dispvm  deny
+{# A failed tag keeps the previous policy instead of a deny nobody matches. #}
+{% set wanted = handoff_tags | dictsort | selectattr('1.want') | map('first') | list %}
+{% if wanted %}
+    - require:
+{%   for vm in wanted %}
+      - cmd: seqs-handoff-tag-{{ vm }}
+{%   endfor %}
 {% endif %}
 
 {# Qubes 4.3 USB-keyboard override; skip without deleting on other releases. #}
