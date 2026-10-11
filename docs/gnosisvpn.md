@@ -54,9 +54,11 @@ a default-deny firewall allowing only DNS and TCP 443 to
 runner follows its validated DispVM-to-AppVM template chain to the underlying
 TemplateVM used to create the temporary AppVM. The temporary AppVM uses the
 UpdateVM as its NetVM when the UpdateVM provides network itself, such as
-`sys-firewall`, and otherwise the UpdateVM's NetVM. A Whonix gateway as
-UpdateVM (updates over Tor) is untested: it may not enforce the temporary
-AppVM's firewall.
+`sys-firewall`, and otherwise the UpdateVM's NetVM. With a Whonix gateway as
+UpdateVM (updates over Tor) the runner refuses to build GnosisVPN: behind the
+gateway the temporary AppVM's firewall is not enforced, and the download
+fails. To build it anyway, set `sys-firewall` as UpdateVM for that run; the
+download then leaves without Tor.
 
 Upstream currently recommends piping
 `https://download.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable

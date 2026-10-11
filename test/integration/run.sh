@@ -139,6 +139,14 @@ out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes gnosisvpn 2
 [ "$rc" -eq 0 ] && grep -qx "seqs-gnosisvpn-update-proxy disp-updates" "${SEQS_MOCK_NETVM_STATE}" && ok \
 	|| bad "the proxy must use a network-providing UpdateVM as its NetVM ($rc): $(cat "${SEQS_MOCK_NETVM_STATE}")"
 unset SEQS_MOCK_NETVM_STATE
+# A Whonix gateway as UpdateVM enforces no client firewall: refuse before the
+# proxy exists.
+echo "debian-13-xfce whonix-gw 1" > "${SBX}/features"
+: > "${SEQS_MOCK_QVM_CREATE_LOG}"
+out="$(SEQS_MOCK_FEATURES="${SBX}/features" run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "is a Whonix gateway" <<<"$out" \
+	&& ! grep -q seqs-gnosisvpn-update-proxy "${SEQS_MOCK_QVM_CREATE_LOG}" && ok \
+	|| bad "a Whonix UpdateVM must stop the GnosisVPN build before the proxy exists"
 rm -rf "${SBX}"
 
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───

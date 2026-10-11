@@ -592,6 +592,11 @@ setupGnosisUpdateProxy() {
 	[[ "${updatevm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
 		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
 	proxy_template="$(resolveTemplateVM "${updatevm}")"
+	# Behind a Whonix gateway (updates over Tor) the proxy's firewall is not
+	# enforced, and a proxy built on the gateway template cannot download
+	# (both seen on Qubes 4.3 with Whonix 18), so refuse instead.
+	[ "$(qvm-features -- "${proxy_template}" whonix-gw 2>/dev/null)" != "1" ] \
+		|| die "the UpdateVM ${updatevm} is a Whonix gateway (updates over Tor); the temporary GnosisVPN download proxy cannot be restricted to its domain behind it. To build gnosisvpn, set a non-Tor UpdateVM for this run (qubes-prefs updatevm sys-firewall), knowing the download then leaves without Tor."
 	# Download over the UpdateVM's route: through the UpdateVM itself when it
 	# provides network (such as sys-firewall), otherwise through its NetVM.
 	if [ "$(qvm-prefs -- "${updatevm}" provides_network 2>/dev/null)" = "True" ]; then

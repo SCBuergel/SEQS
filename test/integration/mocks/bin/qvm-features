@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Mock qvm-features. Reading seqs-managed prints 1 for a D-/A-/Z- qube not
-# listed in SEQS_MOCK_UNMANAGED; every other call succeeds silently.
+# listed in SEQS_MOCK_UNMANAGED; SEQS_MOCK_FEATURES may hold "<vm> <feature>
+# <value>" lines; every other call succeeds silently.
 args=()
 for a in "$@"; do [ "$a" = "--" ] || args+=("$a"); done
+if [ "${#args[@]}" -eq 2 ] && [ -n "${SEQS_MOCK_FEATURES:-}" ] \
+	&& awk -v v="${args[0]}" -v f="${args[1]}" '$1 == v && $2 == f { print $3; x=1 } END { exit !x }' "${SEQS_MOCK_FEATURES}"; then
+	exit 0
+fi
 if [ "${#args[@]}" -eq 2 ] && [ "${args[1]}" = "seqs-managed" ] && [[ "${args[0]}" =~ ^[DAZ]- ]]; then
 	[[ " ${SEQS_MOCK_UNMANAGED:-} " == *" ${args[0]} "* ]] || echo 1
 fi

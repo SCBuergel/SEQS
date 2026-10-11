@@ -46,6 +46,7 @@ numbers and dom0 shows nothing else:
    #!/usr/bin/env bash
    set -euo pipefail
    IFACE="${1:-wg0_gnosisvpn}"
+   sudo wg show "$IFACE" >/dev/null   # no interface: print nothing, tray shows n/a
    get_bytes() {
      sudo wg show "$IFACE" transfer | awk '{rx+=$2; tx+=$3} END {print rx+0, tx+0}'
    }
@@ -70,62 +71,42 @@ numbers and dom0 shows nothing else:
 
 ## CPU pinning for `A-gnosisvpn`
 
-The mixnet is CPU-intensive. This pins the qube to the two P-cores (physical
-cores 0 and 2) on the i7-1265U.
+The mixnet is CPU-intensive. This gives the qube two vCPUs, pins them to two
+physical cores, and raises its scheduler weight, every time it starts. Pick
+the cores for your CPU: on the i7-1265U, cores 0 and 2 are performance cores;
+`xl info` in dom0 lists the cores Xen uses.
 
-**One-time setup (dom0)**
+In a dom0 terminal, set the vCPU count:
 
-Set vCPU count:
 ```bash
 qvm-prefs A-gnosisvpn vcpus 2
 ```
 
-Create the xenstore watcher, which pins the qube's vCPUs again on every
-xenstore event while it runs:
-```bash
-sudo vim /usr/local/bin/watch-gnosisvpn.sh
-```
-```bash
-#!/bin/bash
-xenstore-watch /local/domain | while read event; do
-    if xl list A-gnosisvpn &>/dev/null; then
-        xl vcpu-pin A-gnosisvpn 0 0
-        xl vcpu-pin A-gnosisvpn 1 2
-        xl sched-credit2 -d A-gnosisvpn -w 512
-    fi
-done
-```
-```bash
-sudo chmod +x /usr/local/bin/watch-gnosisvpn.sh
+Then create `/etc/qubes/templates/libvirt/xen/by-name/A-gnosisvpn.xml` (a
+per-qube addition to the Xen configuration that Qubes applies at each start;
+create the directory with `sudo mkdir -p` first) with this content:
+
+```xml
+{% extends 'libvirt/xen.xml' %}
+{% block cpu %}
+    {{ super() }}
+    <cputune>
+        <shares>512</shares>
+        <vcpupin vcpu='0' cpuset='0'/>
+        <vcpupin vcpu='1' cpuset='2'/>
+    </cputune>
+{% endblock %}
 ```
 
-Create and enable the systemd service:
-```bash
-sudo vim /etc/systemd/system/watch-gnosisvpn.service
-```
-```ini
-[Unit]
-Description=Watch and pin A-gnosisvpn CPUs
-After=xenstored.service
+Restart the qube, then check in dom0:
 
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/watch-gnosisvpn.sh
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now watch-gnosisvpn.service
-```
-
-**Verify**
 ```bash
 xl vcpu-list A-gnosisvpn
-# Affinity should show: 0 / all and 2 / all
+xl sched-credit2 -d A-gnosisvpn
 ```
+
+The affinity column should show `0 / all` and `2 / all`, and the weight 512.
+Delete the file and restart the qube to undo it.
 
 ## Firewall between app VMs
 

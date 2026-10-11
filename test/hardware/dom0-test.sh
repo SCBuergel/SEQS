@@ -476,9 +476,10 @@ hasTag() {
 
 # policyDecision SERVICE SOURCE TARGET -- what dom0's qrexec policy decides,
 # evaluated without running anything: AllowResolution, AskResolution, or
-# AccessDenied.
+# AccessDenied. Runs as root, as the qrexec daemon does, so that a policy file
+# readable only by root counts too.
 policyDecision() {
-	python3 - "$@" 2>/dev/null <<'PY'
+	sudo python3 - "$@" 2>/dev/null <<'PY'
 import pathlib, sys
 from qrexec.policy.parser import FilePolicy, Request
 from qrexec.utils import get_system_info
