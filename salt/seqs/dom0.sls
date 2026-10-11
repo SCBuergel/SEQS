@@ -281,6 +281,39 @@ for vm in qubesadmin.Qubes().domains:
 {%   endfor %}
 {% endfor %}
 
+{# ── CPU pinning ('cpu_pinning' key): a per-qube libvirt file that Qubes
+     applies at every start. Values are interpolated into that file, so they
+     must be plain integers, and the cores must exist on this machine. ── #}
+{% set libvirt_dir = '/etc/qubes/templates/libvirt/xen/by-name' %}
+{% set pin_marker = '{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}' %}
+{% set host_cpus = salt['cmd.shell']("xl info 2>/dev/null | awk '$1 == \"nr_cpus\" { print $3 }'") %}
+{% for name, q in qmap.items() %}
+{%   set pin = q.get('cpu_pinning') %}
+{%   set pin_file = libvirt_dir ~ '/' ~ papp ~ name ~ '.xml' %}
+{%   if pin is not none %}
+{%     set cpus = pin.get('cpus') if pin is mapping else none %}
+{%     if pin is not mapping or cpus is string or cpus is not sequence or not cpus
+          or (pin.keys() | reject('in', ['cpus', 'weight']) | list) %}
+{%       do errors.append("qube '" ~ name ~ "': 'cpu_pinning' must be {'cpus': [core, ...]} with an optional 'weight'") %}
+{%     elif host_cpus | regex_match('^[0-9]+$') is none %}
+{%       do errors.append("qube '" ~ name ~ "': could not read the number of CPUs from 'xl info' to check 'cpu_pinning'") %}
+{%     else %}
+{%       for c in cpus if c is not integer or c < 0 or c >= host_cpus | int %}
+{%         do errors.append("qube '" ~ name ~ "': cpu_pinning core '" ~ c ~ "' is not one of this machine's cores 0-" ~ (host_cpus | int - 1)) %}
+{%       endfor %}
+{%       if cpus | unique | list | length != cpus | length %}
+{%         do errors.append("qube '" ~ name ~ "': cpu_pinning lists a core twice") %}
+{%       endif %}
+{%       if pin.get('weight') is not none and (pin.weight is not integer or pin.weight < 1 or pin.weight > 65535) %}
+{%         do errors.append("qube '" ~ name ~ "': cpu_pinning weight must be an integer from 1 to 65535") %}
+{%       endif %}
+{%     endif %}
+{%     if salt['file.file_exists'](pin_file) and not salt['file.read'](pin_file).startswith(pin_marker) %}
+{%       do errors.append("'" ~ pin_file ~ "' exists and was not written by SEQS -- remove it, or remove cpu_pinning from '" ~ name ~ "'") %}
+{%     endif %}
+{%   endif %}
+{% endfor %}
+
 {# ── Cleanup-dir validation (the generated script runs rm -rf as root) ── #}
 {% for e in cleanup_dirs %}
 {%   if e.get('mode') not in ['folder', 'contents'] %}
@@ -589,6 +622,9 @@ seqs-app-{{ name }}:
 {%   if q.get('network_provider') %}
       - provides_network: True
 {%   endif %}
+{%   if q.get('cpu_pinning') %}
+      - vcpus: {{ q.cpu_pinning.cpus | length }}
+{%   endif %}
 {%   if (not app_tagged) or (not tpl_exists) %}
     - require:
 {%     if not app_tagged %}
@@ -674,6 +710,43 @@ seqs-firewall-clear-{{ name }}:
         rm -f /var/lib/seqs/firewall/{{ app }}
     - require:
       - qvm: seqs-app-{{ name }}
+{%   endif %}
+
+{%   set pin = q.get('cpu_pinning') %}
+{%   set pin_file = libvirt_dir ~ '/' ~ app ~ '.xml' %}
+{%   if pin %}
+# The qube's vCPUs are pinned to the configured cores, and its Xen scheduler
+# weight set, by a per-qube libvirt file that Qubes applies at every start;
+# no daemon is involved. A running qube picks it up at its next start.
+seqs-cpu-pinning-{{ name }}:
+  file.managed:
+    - name: {{ pin_file }}
+    - makedirs: True
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        {{ pin_marker }}
+        {{ "{% extends 'libvirt/xen.xml' %}" }}
+        {{ "{% block cpu %}" }}
+            {{ "{{ super() }}" }}
+            <cputune>
+{%-    if pin.get('weight') %}
+                <shares>{{ pin.weight }}</shares>
+{%-    endif %}
+{%-    for c in pin.cpus %}
+                <vcpupin vcpu='{{ loop.index0 }}' cpuset='{{ c }}'/>
+{%-    endfor %}
+            </cputune>
+        {{ "{% endblock %}" }}
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   elif salt['file.file_exists'](pin_file) %}
+# 'cpu_pinning' was removed: delete the file SEQS wrote, never another one.
+seqs-cpu-pinning-clear-{{ name }}:
+  cmd.run:
+    - name: rm -f -- {{ pin_file }}
+    - onlyif: head -n 1 {{ pin_file }} | grep -qF 'Managed by SEQS'
 {%   endif %}
 
 {%   if not app_tagged %}

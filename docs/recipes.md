@@ -71,42 +71,21 @@ numbers and dom0 shows nothing else:
 
 ## CPU pinning for `A-gnosisvpn`
 
-The mixnet is CPU-intensive. This gives the qube two vCPUs, pins them to two
-physical cores, and raises its scheduler weight, every time it starts. Pick
-the cores for your CPU: on the i7-1265U, cores 0 and 2 are performance cores;
-`xl info` in dom0 lists the cores Xen uses.
+The mixnet is CPU-intensive. Pin the qube to two physical cores with the
+`cpu_pinning` catalogue key (see [configuration](configuration.md)), for
+example on the i7-1265U, whose cores 0 and 2 are performance cores:
 
-In a dom0 terminal, set the vCPU count:
-
-```bash
-qvm-prefs A-gnosisvpn vcpus 2
+```python
+{'name': 'gnosisvpn', ..., 'cpu_pinning': {'cpus': [0, 2], 'weight': 512}},
 ```
 
-Then create `/etc/qubes/templates/libvirt/xen/by-name/A-gnosisvpn.xml` (a
-per-qube addition to the Xen configuration that Qubes applies at each start;
-create the directory with `sudo mkdir -p` first) with this content:
-
-```xml
-{% extends 'libvirt/xen.xml' %}
-{% block cpu %}
-    {{ super() }}
-    <cputune>
-        <shares>512</shares>
-        <vcpupin vcpu='0' cpuset='0'/>
-        <vcpupin vcpu='1' cpuset='2'/>
-    </cputune>
-{% endblock %}
-```
-
-Restart the qube, then check in dom0:
+After the build and a restart of the qube, check in a dom0 terminal:
 
 ```bash
 xl vcpu-list A-gnosisvpn
-xl sched-credit2 -d A-gnosisvpn
 ```
 
-The affinity column should show `0 / all` and `2 / all`, and the weight 512.
-Delete the file and restart the qube to undo it.
+The affinity column should show `0 / all` and `2 / all`.
 
 ## Firewall between app VMs
 

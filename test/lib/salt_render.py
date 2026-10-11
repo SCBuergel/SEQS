@@ -84,7 +84,9 @@ class Scenario:
         selection="@all",        # runtime catalogue selection, one name per line
         recipes=None,            # name -> seqs-recipe feature of existing qubes
         qubesd_up=True,          # False: the qube inventory query returns nothing
+        host_cpus="4",           # what `xl info` reports as nr_cpus
     ):
+        self.host_cpus = host_cpus
         self.recipes = dict(recipes or {})
         self.qubesd_up = qubesd_up
         self.existing_qubes = set(existing_qubes or [])
@@ -127,6 +129,8 @@ class Scenario:
             return self.top_content
         if "qubes-release" in cmd:
             return self.release
+        if "xl info" in cmd:
+            return self.host_cpus
         m = re.search(r"qvm-features\s+--\s+(\S+)\s+seqs-managed", cmd)
         if m:
             return "1" if m.group(1) in self.tagged_qubes else ""

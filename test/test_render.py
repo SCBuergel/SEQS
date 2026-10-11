@@ -1014,6 +1014,72 @@ def test_qube_template_repairs_interrupted_dpkg():
     _, app = render_state("qube", "A-keepass")
     check("seqs-dpkg-repair" not in app, "an app qube must not run the dpkg repair")
 
+
+def _pinned(pin, sc=None):
+    """Render dom0 with cpu_pinning set on signal (selected with brave)."""
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["catalogue"]["signal"]["cpu_pinning"] = pin
+    return render_state("dom0", "dom0", sc or Scenario(selection="signal\nbrave"), pillar_seqs=pillar)[1]
+
+
+def _errors(parsed):
+    if "seqs-validation-failed" not in parsed:
+        return ""
+    return state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment")
+
+
+PIN_FILE = "/etc/qubes/templates/libvirt/xen/by-name/A-signal.xml"
+
+
+def test_dom0_cpu_pinning():
+    case("dom0.sls: cpu_pinning writes a per-qube libvirt file and sets the vCPU count")
+    parsed = _pinned({"cpus": [0, 2], "weight": 512})
+    check("seqs-validation-failed" not in parsed, "a valid cpu_pinning must pass: %s" % _errors(parsed))
+    body = state_arg(parsed, "seqs-cpu-pinning-signal", "file.managed", "contents")
+    check(state_arg(parsed, "seqs-cpu-pinning-signal", "file.managed", "name") == PIN_FILE,
+          "the file must be the qube's by-name libvirt template")
+    check(body.startswith("{# Managed by SEQS") and "{% extends 'libvirt/xen.xml' %}" in body
+          and "{{ super() }}" in body, "the file must carry the marker and extend Qubes' template")
+    check("<vcpupin vcpu='0' cpuset='0'/>" in body and "<vcpupin vcpu='1' cpuset='2'/>" in body
+          and "<shares>512</shares>" in body, "each vCPU must be pinned to its core, with the weight")
+    prefs = state_arg(parsed, "seqs-app-signal", "qvm.vm", "prefs")
+    check({"vcpus": 2} in prefs, "the qube must get one vCPU per pinned core")
+    check(not unresolved_requisites(parsed), "the pinning state must require rendered states only")
+    plain = _pinned({"cpus": [1]})
+    check("<shares>" not in state_arg(plain, "seqs-cpu-pinning-signal", "file.managed", "contents"),
+          "without a weight the file sets none")
+
+
+def test_dom0_cpu_pinning_rejects_bad_values():
+    case("dom0.sls: cpu_pinning values are validated before they reach the libvirt file")
+    for pin, msg in (({"cpus": [4]}, "not one of this machine's cores"),
+                     ({"cpus": [-1]}, "not one of this machine's cores"),
+                     ({"cpus": ["0"]}, "not one of this machine's cores"),
+                     ({"cpus": [0, 0]}, "lists a core twice"),
+                     ({"cpus": []}, "must be {'cpus'"),
+                     ({"cpus": "0,2"}, "must be {'cpus'"),
+                     ([0, 2], "must be {'cpus'"),
+                     ({"cpus": [0], "pin": 1}, "must be {'cpus'"),
+                     ({"cpus": [0], "weight": 0}, "weight must be an integer"),
+                     ({"cpus": [0], "weight": "512'/><x"}, "weight must be an integer")):
+        check(msg in _errors(_pinned(pin)), "cpu_pinning %r must be refused with '%s'" % (pin, msg))
+    check("could not read the number of CPUs" in _errors(
+        _pinned({"cpus": [0]}, Scenario(selection="signal\nbrave", host_cpus=""))),
+        "an unreadable xl info must fail closed")
+    foreign = Scenario(selection="signal\nbrave", file_contents={PIN_FILE: "<!-- mine -->\n"})
+    check("was not written by SEQS" in _errors(_pinned({"cpus": [0]}, foreign)),
+          "an existing pinning file SEQS did not write must not be overwritten")
+
+
+def test_dom0_cpu_pinning_removed():
+    case("dom0.sls: removing cpu_pinning deletes only the file SEQS wrote")
+    sc = Scenario(selection="signal\nbrave", existing_files=[PIN_FILE])
+    _, parsed = render_state("dom0", "dom0", sc)
+    clear = parsed.get("seqs-cpu-pinning-clear-signal")
+    check(clear is not None and "grep -qF 'Managed by SEQS'" in state_arg(
+        parsed, "seqs-cpu-pinning-clear-signal", "cmd.run", "onlyif"),
+          "a leftover pinning file must be removed only if SEQS wrote it")
+
 BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
                      "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]
 

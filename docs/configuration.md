@@ -127,6 +127,15 @@ flags; a duplicate name aborts the pre-flight:
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
   `cleanup_dirs` (by default `~/QubesIncoming` and `~/Downloads`). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
+- `'cpu_pinning': {'cpus': [0, 2], 'weight': 512}` — gives the app qube one
+  vCPU per listed physical core, pins them to those cores, and optionally
+  raises its Xen scheduler weight (1-65535; the default is 256). dom0 writes
+  `/etc/qubes/templates/libvirt/xen/by-name/A-<name>.xml`, a per-qube addition
+  to the Xen configuration that Qubes applies at every start, so a running
+  qube changes at its next start. The cores must exist on this machine (`xl
+  info` in dom0 lists them); the pre-flight refuses others, and refuses to
+  overwrite such a file that SEQS did not write. Removing the key deletes the
+  file; the vCPU count stays.
 
 ## WireGuard NetVM
 
