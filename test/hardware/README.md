@@ -376,7 +376,10 @@ ssh seqs-test dom0 qvm-ls --running
 ssh seqs-test dom0 < my-check.sh
 ```
 
-The second form runs the local file `my-check.sh` in dom0. There is no
+The second form runs the local file `my-check.sh` in dom0. Use it for anything
+with quotes, `;`, or pipes: in the first form, the shell in `test-ctl` splits
+the command before `dom0` receives it, so `ssh seqs-test dom0 'a; b'` runs `b`
+in `test-ctl`, not in dom0. There is no
 terminal on the dom0 side, so a command that waits for typed input cannot be
 answered this way; the system test gives the runner a terminal for this
 reason.

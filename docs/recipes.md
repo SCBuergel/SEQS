@@ -156,48 +156,42 @@ xl vcpu-list A-gnosisvpn
 
 ## Firewall between app VMs
 
-*(TODO: script this)*
+Qubes blocks connections between qubes. This recipe opens one TCP port from a
+source qube to a target qube, for example a local RPC server (port 45750) that
+a wallet qube should reach. Both qubes get a dedicated firewall qube, so the
+rule does not affect other qubes. Tested on Qubes 4.3, where `sys-firewall` is
+a disposable: its own files are reset at every start, so the rule lives in a
+dedicated disposable template instead.
 
-For some use cases it is useful to allow selective connections between
-individual app VMs. This setup limits port 45750 for TCP traffic between two
-qubes. One example is the [RPCh server](https://access.rpch.net/) running within
-the `A-docker` app VM that should be accessible from an `A-wallets` app VM. Find
-the two IPs and set the iptables in the net VM. Since the default `sys-firewall`
-qube does not persist its `/rw` folder, the following is required to persist the
-settings between reboots (as suggested [on the Qubes Forum](https://forum.qubes-os.org/t/help-sys-firewall-has-no-persistence-rc-local-gets-wiped-on-reboot/19184/4)):
-
-1. In dom0 find the IP addresses of both app VMs:
+1. In dom0, create the firewall qube from clones of the stock ones, and find
+   the two qubes' addresses:
+   ```bash
+   qvm-clone default-dvm app-sys-firewall
+   qvm-clone sys-firewall sys-firewall-lab
+   qvm-prefs sys-firewall-lab template app-sys-firewall
+   qvm-prefs <source> ip
+   qvm-prefs <target> ip
    ```
-   qvm-ls -n | grep -E 'A-wallets|A-docker'
+2. In a terminal of `app-sys-firewall` (not of `sys-firewall-lab`), allow the
+   connection through the firewall qube, then shut `app-sys-firewall` down:
+   ```bash
+   echo 'nft add rule ip qubes custom-forward ip saddr SOURCE_IP ip daddr TARGET_IP tcp dport 45750 ct state new accept' | sudo tee -a /rw/config/qubes-firewall-user-script
+   sudo chmod 755 /rw/config/qubes-firewall-user-script
    ```
-2. Clone your base disposable-VM template (e.g. `debian-13-xfce-dvm`), rename it
-   `app-sys-firewall`.
-3. Clone `sys-firewall`, rename it `sys-firewall-lab`.
-4. Change the template of `sys-firewall-lab` from the disposable-VM template
-   (e.g. `debian-13-xfce-dvm`) to `app-sys-firewall`.
-5. Configure changes on `sys-firewall-lab` by opening a terminal in it:
+3. In a terminal of the target qube, accept the connection there as well;
+   without this step the target still refuses it:
+   ```bash
+   echo 'nft add rule ip qubes custom-input ip saddr SOURCE_IP tcp dport 45750 accept' | sudo tee -a /rw/config/rc.local
+   sudo chmod 755 /rw/config/rc.local
    ```
-   echo "iptables -I FORWARD 2 -s IP_WALLETS -d IP_DOCKER -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
-   ```
-   e.g.
-   ```
-   echo "iptables -I FORWARD 2 -s 10.137.0.55 -d 10.137.0.51 -p tcp --dport 45750 -j ACCEPT" | sudo tee -a /rw/config/qubes-firewall-user-script
-   ```
-6. Restart `sys-firewall-lab`.
-7. Configure both `A-docker` and `A-wallets` to use `sys-firewall-lab` as their
-   net qube, from the dom0 terminal:
-   ```
-   qvm-prefs A-docker netvm sys-firewall-lab
-   qvm-prefs A-wallets netvm sys-firewall-lab
-   ```
-8. Now the wallet qube should be able to use the RPCh server on the other app
-   VM. Test e.g. by calling the RPCh app VM via command line:
-   ```
-   curl 10.137.0.51:45750/?exit-provider=https://primary.gnosis-chain.rpc.hoprtech.net -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+4. In dom0, connect both qubes to the firewall qube, then restart them:
+   ```bash
+   qvm-prefs <source> netvm sys-firewall-lab
+   qvm-prefs <target> netvm sys-firewall-lab
    ```
 
-If you re-install either qube, remember to update the entry in
-`/rw/config/qubes-firewall-user-script` with the respective new IPs.
+The source qube can now reach port 45750 of the target, and nothing else of it.
+If either qube is re-created, its address changes; update both rules.
 
 ## Get rid of lags in LibreOffice
 
