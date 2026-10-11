@@ -54,6 +54,14 @@ else
 fi
 
 echo
+echo "== embedded signing keys: expiry =="
+if python3 test/key_expiry.py; then
+	note "ok   no embedded signing key expires within 30 days"
+else
+	fail=1
+fi
+
+echo
 if [ "$fail" -eq 0 ]; then
 	echo "lint: PASS"
 else

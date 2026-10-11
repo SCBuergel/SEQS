@@ -19,6 +19,10 @@ under a second, on any Linux box (or CI), with **no Qubes at all**.
 ./test/run-tests.sh prove      # do the new tests fail against the committed code?
 ```
 
+The lint layer also warns when an embedded signing key expires within 180
+days, and fails within 30, so a renewed key gets embedded before installs and
+template updates break.
+
 `prove` runs the working tree's tests against the product code of the last
 commit (or a commit you name) in a temporary git worktree. A test written for a
 change must fail there; one that passes would also have passed without the
