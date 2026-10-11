@@ -177,7 +177,7 @@ USB/QR setup has hardware and policy checks in
 | Add a new `qube_catalog` entry and select it | Creates and provisions its missing `Z-*` and `A-*` qubes |
 | Select recipes with `--postfix NAME` | Creates or converges separate `Z-<recipe>-NAME` and `A-<recipe>-NAME` instances |
 | Change a supported label, firewall, policy, or generated dom0 file, or add `offline` | Reapplies the declared setting |
-| Remove `offline` | Keeps the qube without a NetVM and default disposable; set them with `qvm-prefs` if you want it networked |
+| Remove `offline` | Keeps the qube without a NetVM and default disposable (set them with `qvm-prefs` if you want it networked), but re-enables link handoff and disposables unless `no_handoff` or `firewall` is set |
 | Add a component to an existing qube | Runs the new component because it has no completion marker |
 | Change a component's files (installer, pinned version, key) or the shared libraries | Runs the component again over its earlier installation |
 | Rerun with no change to a component | Skips it: its completion marker records the same content hash |

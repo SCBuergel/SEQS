@@ -219,9 +219,12 @@ mkdir -p "${evil}/salt"
 ln -s /etc/passwd "${evil}/salt/steal"   # symlink entry -> non-regular, must reject
 export SEQS_MOCK_TAR="${SBX}/evil.tar"
 tar -C "${evil}" -cf "${SEQS_MOCK_TAR}" salt
+tmp_before="$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)"
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
 grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
+[ "$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)" = "${tmp_before}" ] && ok \
+	|| bad "a refused archive must leave no temporary files in /tmp"
 [ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
 # tar warns about an unknown pax keyword and quotes it; its escape bytes must
 # not reach the dom0 terminal.
@@ -350,8 +353,10 @@ out="$(bash "${REPO}/delete-vms.sh" --dry-run keepass 2>&1)"; rc=$?
 grep -q "dry-run: not killing or removing" <<<"$out" && ok || bad "expected the dry-run notice"
 grep -qxF "A-keepass running" "${SEQS_MOCK_STATE}" && ok || bad "dry-run must not touch the inventory"
 # Real run: A-keepass (running) and Z-keepass go, unrelated A-brave stays.
-out="$(bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+out="$(SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
+grep -qxF "rm -f -- /var/lib/seqs/firewall/A-keepass " "${SBX}/sudo.log" && ok \
+	|| bad "the removed qube's recorded firewall must be deleted"
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"

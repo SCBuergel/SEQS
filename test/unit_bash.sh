@@ -85,19 +85,8 @@ eq "joinCsv" "$(joinCsv a b c)" "a,b,c"
 eq "joinCsv one" "$(joinCsv solo)" "solo"
 
 echo "== tar-entry validation accepts the real repo tree, rejects hostile entries =="
-# Build the exact archive setup-qubes.sh fetches, then run the SAME validation
-# loop the script uses (extracted here to keep it in lockstep -- if the script
-# changes the regex, update this string).
-validate_tar() {  # reads `tar -tvf`-style lines on stdin, returns 1 on reject
-	local perms f_owner f_size f_date f_time path extra
-	while read -r perms f_owner f_size f_date f_time path extra; do
-		[ -n "${extra}" ] && return 1
-		case "${perms:0:1}" in d|-) ;; *) return 1 ;; esac
-		[[ "${path}" == *..* ]] && return 1
-		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] || return 1
-	done
-	return 0
-}
+# validateTarListing dies (exits) on a rejected entry, so run it in a subshell.
+validate_tar() { ( validateTarListing ) 2>/dev/null; }
 # Real tree must pass.
 if tar -cf - salt install-scripts | tar -tvf - | validate_tar; then ok
 else bad "validation rejected the real repo tree"; fi
@@ -108,6 +97,14 @@ reject '-rw-r--r-- user 0 2020-01-01 00:00 salt/../etc/passwd'     # .. traversa
 reject '-rw-r--r-- user 0 2020-01-01 00:00 /etc/passwd'           # absolute path
 reject '-rw-r--r-- user 0 2020-01-01 00:00 salt/a b'              # whitespace in name
 reject '-rw-r--r-- user 0 2020-01-01 00:00 other/thing'          # outside allowed roots
+
+echo "== SAFE_NAME accepts plain names only =="
+for n in keepass A-brave sys-usb_2 a.b; do
+	[[ "${n}" =~ ${SAFE_NAME} ]] && ok || bad "SAFE_NAME rejected the safe name [${n}]"
+done
+for n in '' - -h . .. a/b 'a b' '*' 'a;b' $'a\nb' '$(x)'; do
+	[[ "${n}" =~ ${SAFE_NAME} ]] && bad "SAFE_NAME accepted the unsafe name [${n}]" || ok
+done
 
 echo "== readTargets() parses the targets file, rejects unsafe names =="
 tmp="$(mktemp -d)"

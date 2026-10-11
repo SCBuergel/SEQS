@@ -134,15 +134,10 @@ def test_dom0_happy_path():
     # netvm=none does not gate qrexec, so offline, no_handoff and firewalled
     # qubes carry the seqs-no-handoff tag and the policy denies by tag; a
     # disposable inherits the tag from its template, named or not.
-    suppress = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
-    for target in ("@anyvm", "@dispvm"):
-        for service in ("qubes.OpenURL", "qubes.OpenInVM"):
-            check("%s  *  @tag:seqs-no-handoff  %s  deny" % (service, target) in suppress,
-                  "%s to %s must be denied by tag" % (service, target))
-    for service in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
-                    "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert"):
-        check("%s  *  @tag:seqs-no-handoff  @dispvm  deny" % service in suppress,
-              "%s to a disposable must be denied by tag" % service)
+    suppress = policy_rules(state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents"))
+    for service, target in ESCAPE_ROUTES:
+        check((service, "*", "@tag:seqs-no-handoff", target, "deny") in suppress,
+              "%s to %s must be denied by tag" % (service, target))
     for vm in ("A-keepass", "A-qr-camera", "A-qr-display", "D-qr-display", "A-qr-staging",
                "A-wallet-ledger", "A-wireguard", "A-gnosisvpn"):
         sid = "seqs-handoff-tag-" + vm
@@ -306,6 +301,18 @@ def test_dom0_inventory_fails_closed():
           "no qube may be created without an inventory")
 
 
+# Every service the Qubes default policy lets out of a qube without asking,
+# with its target; listed independently of dom0.sls.
+ESCAPE_ROUTES = [(s, t) for s in ("qubes.OpenURL", "qubes.OpenInVM") for t in ("@anyvm", "@dispvm")] + [
+    (s, "@dispvm") for s in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
+                             "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert")]
+
+
+def policy_rules(text):
+    """The rules of a qrexec policy file as token tuples, ignoring spacing and comments."""
+    return {tuple(line.split()) for line in text.splitlines() if line.strip() and not line.startswith("#")}
+
+
 def test_dom0_browser_required_only_for_handoff():
     case("dom0.sls: the browser qube is required only when a selected qube hands links to it")
     # Fresh dom0: A-brave does not exist. Offline and no_handoff qubes never
@@ -320,6 +327,10 @@ def test_dom0_browser_required_only_for_handoff():
     _, parsed = render_state("dom0", "dom0", Scenario(selection="signal", existing_qubes=["A-brave"]))
     check("seqs-validation-failed" not in parsed,
           "an existing A-brave satisfies a handoff qube")
+    pillar = _bad_pillar(catalogue={"wallet": {"label": "gray", "components": ["brave"], "firewall": ["dns"]}})
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="wallet"), pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed,
+          "a firewalled qube never hands links off, so it needs no browser qube")
 
 
 def test_dom0_component_menu_entries():
@@ -417,17 +428,13 @@ def test_dom0_sequential_qr_mode():
         check(state in parsed, "sequential mode should render %s" % state)
     check("qubes.Filecopy" in text and "A-qr-staging" in text,
           "scanner filecopy must be restricted to offline staging")
-    deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
+    deny_text = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
+    deny = policy_rules(deny_text)
+    check("*  @dispvm:" not in deny_text, "a @dispvm:<template> source matches nothing on Qubes 4.3")
     for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
-        check("qubes.OpenURL        *  %s  @anyvm    deny" % subject in deny,
-              "camera-side qube %s must not reach the browser handoff" % subject)
-    check("*  @dispvm:" not in deny, "a @dispvm:<template> source matches nothing on Qubes 4.3")
-    for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
-        for service in ("qubes.OpenInVM ", "qubes.StartApp ", "qubes.GetImageRGBA",
-                        "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI",
-                        "qubes.PdfConvert"):
-            check("%s   *  %s  @dispvm   deny" % (service.ljust(18), subject) in deny,
-                  "camera-side qube %s must not reach a disposable via %s" % (subject, service.strip()))
+        for service, target in ESCAPE_ROUTES:
+            check((service, "*", subject, target, "deny") in deny,
+                  "camera-side qube %s must not reach %s via %s" % (subject, target, service))
     for state in ("seqs-webcam-usb-backend", "seqs-qr-scanner"):
         check("default_dispvm none" in state_arg(parsed, state, "cmd.run", "name"),
               "%s must clear the default disposable" % state)
@@ -641,7 +648,7 @@ def _bad_pillar(**overrides):
         "browser_desktop": "open-links-in-browser-qube.desktop",
         "component_timeout": 900,
         "config_errors": [],
-        "qubes": {"brave": {"label": "red", "components": ["brave"]}},
+        "catalogue": {"brave": {"label": "red", "components": ["brave"]}},
         "brave_extensions": {"rabby": "acmacodkjbdgmoleebolmdjonilkdbch"},
         "cleanup_dirs": [],
     }
@@ -649,73 +656,81 @@ def _bad_pillar(**overrides):
     return base
 
 
-def _validation_fails(pillar):
+def _rejected(expected, pillar):
+    """True if the pre-flight refuses PILLAR with an error containing EXPECTED."""
+    return expected in _validation_error(pillar)
+
+
+def _validation_error(pillar):
+    """The pre-flight's error text for PILLAR, or '' if validation passes."""
     _, parsed = render_state("dom0", "dom0", Scenario(), pillar_seqs=pillar)
-    return "seqs-validation-failed" in parsed
+    if "seqs-validation-failed" not in parsed:
+        return ""
+    return state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment")
 
 
 def test_dom0_validation_catches_bad_config():
     case("dom0.sls: pre-flight validation rejects malformed pillar")
-    check(_validation_fails(_bad_pillar(
-        qubes={"brave": {"label": "chartreuse", "components": ["brave"]}})),
+    check(_rejected("has unknown label 'chartreuse'", _bad_pillar(
+        catalogue={"brave": {"label": "chartreuse", "components": ["brave"]}})),
         "unknown label must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"brave": {"label": "red", "components": ["does-not-exist"]}})),
+    check(_rejected("references unknown component 'does-not-exist'", _bad_pillar(
+        catalogue={"brave": {"label": "red", "components": ["does-not-exist"]}})),
         "unknown component must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"bad name": {"label": "red", "components": ["brave"]}})),
+    check(_rejected("qube name 'bad name' is unsafe", _bad_pillar(
+        catalogue={"bad name": {"label": "red", "components": ["brave"]}})),
         "unsafe qube name must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"brave": {"label": "red", "components": ["brave-extension-nope"]}})),
+    check(_rejected("references unknown Brave extension 'nope'", _bad_pillar(
+        catalogue={"brave": {"label": "red", "components": ["brave-extension-nope"]}})),
         "reference to an undefined Brave extension must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"x": {"label": "gray", "components": ["brave"],
+    check(_rejected("sets both 'offline' and 'firewall'", _bad_pillar(
+        catalogue={"x": {"label": "gray", "components": ["brave"],
                      "offline": True, "firewall": ["dns"]}})),
         "offline + firewall is contradictory and must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"x": {"label": "gray", "components": ["brave"],
+    check(_rejected("invalid firewall entry 'not a host!!'", _bad_pillar(
+        catalogue={"x": {"label": "gray", "components": ["brave"],
                      "firewall": ["not a host!!"]}})),
         "malformed firewall entry must fail validation")
-    check(_validation_fails(_bad_pillar(
+    check(_rejected("duplicate qube name 'brave'", _bad_pillar(
         config_errors=["duplicate qube name 'brave'"])),
         "config_errors from pillar compilation must abort the dom0 apply")
     for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8"):
-        check(_validation_fails(_bad_pillar(
+        check(_rejected("webcam_usb_controller '%s' is invalid" % bdf, _bad_pillar(
             webcam_usb_mode="sequential", webcam_usb_controller=bdf,
             webcam_scanner_dvm="A-qr-camera")),
             "controller '%s' is not a lowercase qvm-pci BDF and must fail" % bdf)
-    check(_validation_fails(_bad_pillar(
+    check(_rejected("webcam_usb_controller is set while webcam_usb_mode is disabled", _bad_pillar(
         webcam_usb_mode="disabled", webcam_usb_controller="00_14.0")),
         "a controller with the mode disabled must fail validation")
-    check(_validation_fails(_bad_pillar(base_template="no-such-template")),
+    check(_rejected("base template 'no-such-template' does not exist", _bad_pillar(base_template="no-such-template")),
         "a missing base template must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"x": {"label": "black", "components": ["brave"],
+    check(_rejected("sets 'named_disposable' but not 'dispvm_template'", _bad_pillar(
+        catalogue={"x": {"label": "black", "components": ["brave"],
                      "named_disposable": True}})),
         "named_disposable without dispvm_template must fail validation")
-    check(_validation_fails(_bad_pillar(
+    check(_rejected("requests a named disposable but prefix_disposable is missing or unsafe", _bad_pillar(
         prefix_disposable="",
-        qubes={"x": {"label": "black", "components": ["brave"],
+        catalogue={"x": {"label": "black", "components": ["brave"],
                      "offline": True, "dispvm_template": True,
                      "named_disposable": True}})),
         "named_disposable with no prefix_disposable configured must fail validation")
     # ...and a clean pillar must NOT trip validation (guards against a check
     # that fails everything).
-    check(not _validation_fails(_bad_pillar()),
+    check(not _validation_error(_bad_pillar()),
           "a well-formed minimal pillar must PASS validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"x": {"label": "purple", "components": ["wireguard"],
+    check(_rejected("sets both 'network_provider' and 'offline'", _bad_pillar(
+        catalogue={"x": {"label": "purple", "components": ["wireguard"],
                      "network_provider": True, "offline": True}})),
         "network_provider + offline is contradictory and must fail validation")
-    check(_validation_fails(_bad_pillar(
-        qubes={"x": {"label": "purple", "components": ["wireguard"],
+    check(_rejected("sets both 'network_provider' and 'dispvm_template'", _bad_pillar(
+        catalogue={"x": {"label": "purple", "components": ["wireguard"],
                      "network_provider": True, "dispvm_template": True}})),
         "a persistent network provider must not be a disposable template")
 
 
 def test_dom0_firewall_states():
     case("dom0.sls: a 'firewall' key emits a qvm-firewall state")
-    pillar = _bad_pillar(qubes={
+    pillar = _bad_pillar(catalogue={
         "wallet": {"label": "gray", "components": ["brave"],
                    "firewall": ["dns", "rpc.example.com:443"]}})
     # browser_vm is A-brave but 'brave' isn't in this minimal map, so make it
@@ -741,7 +756,7 @@ def test_dom0_firewall_states():
 
 def test_dom0_network_provider():
     case("dom0.sls: a network provider exposes networking and enables firewall")
-    pillar = _bad_pillar(qubes={
+    pillar = _bad_pillar(catalogue={
         "wireguard": {"label": "purple", "components": ["wireguard"],
                       "network_provider": True, "no_handoff": True}})
     sc = Scenario(existing_qubes=["A-brave"])

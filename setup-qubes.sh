@@ -34,6 +34,8 @@ FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
 GNOSIS_UPDATE_POLICY="${SEQS_GNOSIS_UPDATE_POLICY:-/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy}"
 GNOSIS_UPDATE_PROXY="seqs-gnosisvpn-update-proxy"
 GNOSIS_PROXY_CREATED=0
+# A safe qube, recipe, or postfix name: no option, path, or glob characters.
+SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'
 
 # Policy files owned by seqs.dom0. A file WITHOUT the marker was written by the
 # operator or another tool -- never overwrite without confirmation.
@@ -142,14 +144,14 @@ canonicalizeSelection() {
 	[ "${#requested[@]}" -gt 0 ] || die "--qubes requires a comma-separated list"
 	for raw in "${requested[@]}"; do
 		name="${raw}"
-		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		[[ "${name}" =~ ${SAFE_NAME} ]] \
 			|| die "unsafe or empty qube base name in --qubes: '${name}'"
 	done
 	mapfile -t SELECTED_NAMES < <(printf '%s\n' "${requested[@]}" | LC_ALL=C sort -u)
 	SELECTED_INSTANCES=()
 	for name in "${SELECTED_NAMES[@]}"; do
 		instance="${name}${POSTFIX:+-${POSTFIX}}"
-		[[ "${instance}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		[[ "${instance}" =~ ${SAFE_NAME} ]] \
 			|| die "unsafe generated qube base name: '${instance}'"
 		SELECTED_INSTANCES+=("${instance}")
 	done
@@ -212,10 +214,33 @@ writeRunManifest() {
 
 # ---- Stage 1 -- fetch and validate -------------------------------------------
 
+# validateTarListing -- die unless every `tar -tvf` line on stdin is safe to
+# extract in dom0: regular files/dirs only (no symlinks/hardlinks/devices),
+# paths rooted at salt/ or install-scripts/, safe charset, no '..'. A hostile
+# REPO_VM controls the archive. Lines are
+# '<perms> <owner> <size> <date> <time> <path>' -- a 7th field means
+# whitespace in the name: reject (no legitimate SEQS file has one).
+validateTarListing() {
+	local perms f_owner f_size f_date f_time path extra
+	while read -r perms f_owner f_size f_date f_time path extra; do
+		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
+		case "${perms:0:1}" in
+			d|-) ;;
+			*) die "refusing non-regular tar entry (type '${perms:0:1}'): ${path}" ;;
+		esac
+		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
+		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
+			|| die "refusing unsafe tar path: ${path}"
+	done
+	return 0
+}
+
 fetchSaltTree() {
 	local tarball stage source_commit
 	tarball=$(mktemp /tmp/seqs-fetch.XXXXXX.tar) || die "mktemp failed"
 	stage=$(mktemp -d /tmp/seqs-stage.XXXXXX) || die "mktemp -d failed"
+	# Remove both on every exit, including each die below; mktemp names are safe.
+	trap "rm -rf -- '${tarball}' '${stage}'" EXIT
 
 	# Resolve HEAD without displaying source-controlled output, then restrict it
 	# to a full object ID before using it in the archive command. Exporting that
@@ -224,15 +249,10 @@ fetchSaltTree() {
 		qvm-run -p "${REPO_VM}" \
 			"git -C ${REPO_PATH} rev-parse --verify HEAD^{commit}" \
 			2>/dev/null </dev/null
-	)" || {
-		rm -rf "${tarball}" "${stage}"
-		die "could not resolve repository HEAD in ${REPO_VM}:${REPO_PATH}"
-	}
+	)" || die "could not resolve repository HEAD in ${REPO_VM}:${REPO_PATH}"
 	source_commit="${source_commit,,}"
-	[[ "${source_commit}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
-		rm -rf "${tarball}" "${stage}"
-		die "repository qube returned an invalid full commit ID for HEAD"
-	}
+	[[ "${source_commit}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] \
+		|| die "repository qube returned an invalid full commit ID for HEAD"
 
 	echo "==> Fetching salt tree from source HEAD commit ${source_commit}"
 	echo "    Source: ${REPO_VM}:${REPO_PATH}"
@@ -244,7 +264,6 @@ fetchSaltTree() {
 	if ! qvm-run -p "${REPO_VM}" \
 		"git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit} && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts" \
 		2>/dev/null </dev/null > "${tarball}"; then
-		rm -rf "${tarball}" "${stage}"
 		die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
 	fi
 
@@ -254,23 +273,7 @@ fetchSaltTree() {
 
 	tar -tf "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
 
-	# Validate EVERY entry before extraction: regular files/dirs only (no
-	# symlinks/hardlinks/devices), paths rooted at salt/ or install-scripts/,
-	# safe charset, no '..'. A hostile REPO_VM controls this archive; tar
-	# extraction in dom0 is the attack surface. tvf lines are
-	# '<perms> <owner> <size> <date> <time> <path>' -- a 7th field means
-	# whitespace in the name: reject (no legitimate SEQS file has one).
-	local perms f_owner f_size f_date f_time path extra
-	while read -r perms f_owner f_size f_date f_time path extra; do
-		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
-		case "${perms:0:1}" in
-			d|-) ;;
-			*) die "refusing non-regular tar entry (type '${perms:0:1}'): ${path}" ;;
-		esac
-		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
-		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
-			|| die "refusing unsafe tar path: ${path}"
-	done < <(tar -tvf "${tarball}" 2>/dev/null)
+	validateTarListing < <(tar -tvf "${tarball}" 2>/dev/null)
 
 	# tar's warnings can quote archive bytes, such as an unknown pax header
 	# keyword, so its stderr must not reach the dom0 terminal either.
@@ -302,7 +305,6 @@ fetchSaltTree() {
 	local d
 	for d in "${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}"; do
 		if [ -e "${d}" ] && [ ! -e "${d}/.seqs-managed" ]; then
-			rm -rf "${tarball}" "${stage}"
 			die "${d} exists but is not managed by SEQS -- refusing to replace it"
 		fi
 	done
@@ -319,7 +321,8 @@ fetchSaltTree() {
 	sudo chmod a+rx "$(dirname "${FETCH_ROOT}")" "${FETCH_ROOT}"
 	sudo chmod -R a+rX,go-w "${FETCH_ROOT}"
 
-	rm -rf "${tarball}" "${stage}"
+	rm -rf -- "${tarball}" "${stage}"
+	trap - EXIT
 	echo "    Fetch complete. No Salt state was staged or applied."
 	echo "    Review ${FETCH_SALT_TREE} and ${FETCH_PILLAR_TREE}."
 }
@@ -451,8 +454,8 @@ readTargets() {
 	while read -r kind name recipe flags; do
 		case "${kind}" in ''|\#*) continue ;; esac
 		# Re-validated (root-written, but interpolated into qubesctl/qvm-* commands).
-		[[ "${name}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe qube name in ${TARGETS_FILE}: '${name}'"
-		[[ "${recipe}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || die "unsafe recipe name in ${TARGETS_FILE}: '${recipe}'"
+		[[ "${name}" =~ ${SAFE_NAME} ]] || die "unsafe qube name in ${TARGETS_FILE}: '${name}'"
+		[[ "${recipe}" =~ ${SAFE_NAME} ]] || die "unsafe recipe name in ${TARGETS_FILE}: '${recipe}'"
 		# 'disposable' entries (named DisposableVMs) are air-gap-verified like app
 		# qubes but never provisioned via seqs.qube -- they inherit everything
 		# from their dispvm template and reset on each shutdown.
@@ -547,7 +550,7 @@ resolveTemplateVM() {
 	local current=$1 klass parent depth=0
 	local visited=" "
 	while [ "${depth}" -lt 8 ]; do
-		[[ "${current}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		[[ "${current}" =~ ${SAFE_NAME} ]] \
 			|| die "unsafe or empty VM name while resolving UpdateVM template: '${current}'"
 		[[ "${visited}" != *" ${current} "* ]] \
 			|| die "cycle while resolving TemplateVM for UpdateVM at '${current}'"
@@ -589,7 +592,7 @@ setupGnosisUpdateProxy() {
 
 	updatevm="$(qubes-prefs updatevm 2>/dev/null)" \
 		|| die "could not determine the default Qubes UpdateVM"
-	[[ "${updatevm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+	[[ "${updatevm}" =~ ${SAFE_NAME} ]] \
 		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
 	proxy_template="$(resolveTemplateVM "${updatevm}")"
 	# Behind a Whonix gateway (updates over Tor) the proxy's firewall is not
@@ -606,7 +609,7 @@ setupGnosisUpdateProxy() {
 			|| die "could not determine the NetVM of UpdateVM ${updatevm}"
 	fi
 	for value in "${proxy_template}" "${proxy_netvm}"; do
-		[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+		[[ "${value}" =~ ${SAFE_NAME} ]] \
 			|| die "unsafe or empty temporary proxy dependency: '${value}'"
 	done
 
@@ -807,7 +810,7 @@ done
 if [ "${RUN_BUILD}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 	[ "${SELECT_ALL}" -eq 1 ] || [ -n "${SELECT_QUBES}" ] \
 		|| die "a build selection is required: use --qubes NAME[,NAME...] or --all"
-	if [ "${POSTFIX_SET}" -eq 1 ] && ! [[ "${POSTFIX}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+	if [ "${POSTFIX_SET}" -eq 1 ] && ! [[ "${POSTFIX}" =~ ${SAFE_NAME} ]]; then
 		die "unsafe or empty postfix '${POSTFIX}' (allowed: [A-Za-z0-9_][A-Za-z0-9._-]*)"
 	fi
 	canonicalizeSelection
@@ -817,7 +820,7 @@ fi
 if [ "${RUN_FETCH}" -eq 1 ] || [ "${EXPLICIT_STAGE}" -eq 0 ]; then
 	[ "${REPO_VM_SET}" -eq 1 ] \
 		|| die "fetch requires --repo-vm with the explicit repository qube name"
-	[[ "${REPO_VM}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
+	[[ "${REPO_VM}" =~ ${SAFE_NAME} ]] \
 		|| die "unsafe repo qube name: '${REPO_VM}'"
 	[[ "${REPO_PATH}" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "${REPO_PATH}" != *..* ]] \
 		|| die "unsafe repository path: '${REPO_PATH}'"

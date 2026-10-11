@@ -125,8 +125,8 @@ Run commands from the repository root. The portable entry point is
 `./test/run-tests.sh help`; it requires no task runner. If `make` is installed,
 the Makefile provides equivalent short aliases through `make help`.
 
-- `./test/run-tests.sh lint`: shell syntax, optional ShellCheck, and Salt render
-  smoke tests.
+- `./test/run-tests.sh lint`: shell syntax, optional ShellCheck, Salt render
+  smoke tests, and the expiry of embedded signing keys.
 - `./test/run-tests.sh render`: detailed pillar and Salt render assertions.
 - `./test/run-tests.sh unit`: bash helper tests.
 - `./test/run-tests.sh integration`: end-to-end orchestration against mock

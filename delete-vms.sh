@@ -177,3 +177,13 @@ echo "removing..."
 for vm in "${found[@]}"; do
 	qvm-remove "${vm}" -f
 done
+
+# dom0 files SEQS wrote for a removed qube: its CPU pinning would apply to a
+# later qube of the same name, and its recorded firewall is stale.
+for vm in "${found[@]}"; do
+	pin="/etc/qubes/templates/libvirt/xen/by-name/${vm}.xml"
+	if head -n 1 -- "${pin}" 2>/dev/null | grep -q 'Managed by SEQS'; then
+		sudo rm -f -- "${pin}"
+	fi
+	sudo rm -f -- "/var/lib/seqs/firewall/${vm}"
+done

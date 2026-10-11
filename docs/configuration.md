@@ -90,7 +90,8 @@ needs `A-brave` too; see
 ## `qube_catalog` flags
 
 Each entry is `{'name': ..., 'label': ..., 'components': [...]}` plus optional
-flags; a duplicate name aborts the pre-flight:
+flags; a duplicate name aborts the pre-flight. The label (window colour) is one
+of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 
 - `'offline': True` — detaches the app qube from netvm (air gap) and unsets its
   default disposable, which would otherwise have network access. Implies
@@ -102,8 +103,9 @@ flags; a duplicate name aborts the pre-flight:
   leaves the qube's link handler unset, and dom0 tags the qube
   `seqs-no-handoff` and denies by that tag `qubes.OpenURL`, `qubes.OpenInVM`,
   and every other service that the Qubes default policy lets into a disposable
-  without asking. Every build updates the tag on all SEQS qubes, selected or
-  not, and disposables started from a tagged qube inherit it.
+  without asking. Every build updates the tag on all SEQS app qubes and named
+  disposables, selected or not, and disposables started from a tagged qube
+  inherit it.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Every disposable template
@@ -125,16 +127,16 @@ flags; a duplicate name aborts the pre-flight:
   cannot be combined with `offline`. Because the allowlist does not restrict
   qrexec, it implies `no_handoff`, which closes link handoff and disposables.
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
-  `cleanup_dirs` (by default `~/QubesIncoming` and `~/Downloads`). The shipped
+  [`cleanup_dirs`](#cleanup_dirs). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
 - `'cpu_pinning': {'cpus': [0, 2], 'weight': 512}` — gives the app qube one
-  vCPU per listed physical core, pins them to those cores, and optionally
+  vCPU per listed CPU, pins them to those CPUs, and optionally
   raises its Xen scheduler weight (1-65535; the default is 256). dom0 writes
   `/etc/qubes/templates/libvirt/xen/by-name/A-<name>.xml`, a per-qube addition
   to the Xen configuration that Qubes applies at every start, so a running
-  qube changes at its next start. The cores must exist on this machine (`xl
-  info` in dom0 lists them); the pre-flight refuses others, and refuses to
-  overwrite such a file that SEQS did not write. Removing the key deletes the
+  qube changes at its next start. CPU numbers are Xen's, 0 to `nr_cpus` - 1
+  as `xl info` in dom0 shows; for a selected qube the pre-flight refuses
+  others, and refuses to overwrite such a file that SEQS did not write. Removing the key deletes the
   file; the vCPU count stays.
 
 ## WireGuard NetVM
@@ -180,6 +182,16 @@ such reference in a qube.
   reference, then its `brave_extensions` line. Templates already built keep it
   installed until you rebuild them.
 
+## `cleanup_dirs`
+
+Directories that app qubes and disposables delete at every boot and shutdown,
+so downloads and received files do not accumulate; templates are never
+cleaned. By default `~/QubesIncoming` is deleted (mode `folder`) and
+`~/Downloads` is emptied (mode `contents`). A path must lie strictly under
+`/home/user/`, use only `A-Z a-z 0-9 . _ / -`, and contain no `..`, `.`, or
+empty segment; the pre-flight refuses others, because the cleanup runs
+`rm -rf` as root.
+
 ## Browser-link handoff requires `A-brave`
 
 The `seqs.dom0` state tags each SEQS qube without `offline`, `no_handoff`, or
@@ -201,6 +213,11 @@ Create `install-scripts/components/<name>/` containing:
 - an optional `app-vm.sh` — per-app-VM setup in `$HOME` / `/rw`,
 - an optional `menu.desktop` — installed as
   `/usr/share/applications/<name>.desktop`.
+
+The scripts run as `user` with `sudo` available, and each one is stopped after
+`component_timeout` (900 seconds). A component runs again whenever its files or
+the shared libraries in `install-scripts/lib/` change, so its scripts must be
+safe to run twice.
 
 Then reference `<name>` in any qube spec. If the component needs Brave, it can
 `source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave`

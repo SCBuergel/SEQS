@@ -23,9 +23,6 @@ installation you use for real work. The setup script itself is fetched from
 the `main` branch on GitHub without checking its commit, which is also
 acceptable only because the machine holds nothing of value.
 
-The script has been checked by the repository's unit tests but has not yet run
-on Qubes, so expect to fix details on the first real run.
-
 ## How your laptop reaches dom0
 
 The script builds this chain on the test machine:
@@ -267,12 +264,10 @@ installer is. It runs on your laptop, from a clone of this repository in the
 controlling qube, and tests your working copy, including changes you have
 not committed yet (untracked files are left out, and the test says so).
 
-It is the measuring step of an improvement loop for the installer, which is
-judged by four criteria in this order: it works, it is secure, it is fast, and
-it is small enough to audit. Each run produces the evidence for the first and
-third criteria, plus the installer's size in lines as a measure of the
-fourth; a person or an AI coding assistant reads the results, changes the
-code, and runs the test again.
+It is the measuring step of an improvement loop for the installer: each run
+shows whether the installer works and how long it takes, and counts its lines
+as a measure of how auditable it is; a person or an AI coding assistant reads
+the results, changes the code, and runs the test again.
 
 ### What one run does
 
@@ -282,7 +277,11 @@ code, and runs the test again.
 | reset | dom0 | Deletes every SEQS qube (all `D-`, `A-`, and `Z-` qubes and those tagged by SEQS) and all SEQS files in dom0, then verifies that none are left. |
 | install | dom0 | Runs the SEQS runner from the commit under test for the selected qubes, answering each `[y/N]` prompt with `y`. |
 | check | dom0 | Verifies what was built: see below. |
-| rerun | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
+| lifecycle | dom0 | Restarts the app qubes and checks that the boot and shutdown cleanup ran (and did not, with `preserve_incoming`) and that state kept through bind-dirs survived. |
+| invalidate | dom0 | Only with `--force-rerun`: empties every completion marker. |
+| rerun-install, rerun-check | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
+| update, update-check | dom0 | Only with `--update`: updates the templates as a user would, then checks again. |
+| reboot, reboot-check | laptop, dom0 | Only with `--reboot`: reboots the test machine, waits until it answers again, then checks again. |
 
 The reset keeps `test-ctl`, `sys-net`, and every other qube that SEQS did not
 create, including the stock Qubes qubes and templates the installer builds on
@@ -376,6 +375,17 @@ is what happens on a real machine whenever a component's files or the shared
 libraries change, so this run checks that every script can safely run over
 its earlier installation.
 
+```bash
+test/hardware/system-test.sh --update
+test/hardware/system-test.sh --reboot
+```
+
+`--update` updates every SEQS template with the Qubes updater, as a user
+would, and checks the result: pinned repositories and locked keyrings must not
+break a later update. `--reboot` checks that what SEQS set up survives a
+restart. Use it only on a test machine that boots unattended: a disk
+passphrase prompt keeps it offline until someone types it.
+
 ### Running your own commands in dom0
 
 `dom0` in `test-ctl` runs either its arguments or a whole script in the test
@@ -422,5 +432,5 @@ did not create. Reboot afterwards to end the automatic desktop session.
 | `--ssh-key-file PATH` | Read the allowed keys from a file in dom0. |
 | `--allow-from CIDR` | Accept connections from this range instead of the test machine's own network, e.g. `192.168.0.0/16`. |
 | `--port PORT` | The port your laptop connects to (default 2222). |
-| `--template NAME` | Create `test-ctl` from this Debian template instead of the newest installed one. |
+| `--template NAME` | Create `test-ctl` from this template instead of `debian-13-xfce` (or, without it, the newest installed `debian-N`). |
 | `--no-autologin` | Keep the dom0 login screen. |

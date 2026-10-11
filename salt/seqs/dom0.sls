@@ -6,7 +6,7 @@
 {% set pdvm = seqs.get('prefix_disposable', '') %}
 {% set base_template = seqs.get('base_template', '') %}
 {% set browser_vm = seqs.get('browser_vm', '') %}
-{% set qcatalog = seqs.get('catalogue', seqs.get('qubes', {})) %}
+{% set qcatalog = seqs.get('catalogue', {}) %}
 {% set selection_file = '/var/lib/seqs/selection' %}
 {% set selection_raw = salt['cmd.shell']('cat ' ~ selection_file ~ ' 2>/dev/null') %}
 {% set selection = selection_raw.splitlines() %}
@@ -192,15 +192,16 @@ for vm in qubesadmin.Qubes().domains:
 {% endif %}
 
 {# ── browser_vm must be a qube this run builds or one that already exists,
-     but only when a selected qube hands links to it: offline and no_handoff
-     qubes never do (qube.sls), so selecting only those needs no browser. ── #}
+     but only when a selected qube hands links to it: offline, no_handoff and
+     firewalled qubes never do (qube.sls), so selecting only those needs no
+     browser. ── #}
 {% if browser_vm %}
 {%   if browser_vm | regex_match(name_re) is none %}
 {%     do errors.append("browser_vm '" ~ browser_vm ~ "' has an unsafe name") %}
 {%   else %}
 {%     set bbase = browser_vm[(papp | length):] if papp and browser_vm.startswith(papp) else '' %}
 {%     set handoff = [] %}
-{%     for name, q in qmap.items() if not q.get('offline') and not q.get('no_handoff') and papp ~ name != browser_vm %}
+{%     for name, q in qmap.items() if not (q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none) and papp ~ name != browser_vm %}
 {%       do handoff.append(name) %}
 {%     endfor %}
 {%     if handoff and not (bbase and bbase in qmap) and (browser_vm not in inventory) %}
@@ -339,6 +340,25 @@ seqs-validation-failed:
 # setup-qubes.sh requires confirmation before taking over any policy without
 # the "Managed by SEQS" header. Salt then owns and converges the files.
 
+{# Ways out of a qube that the Qubes default policy allows without asking:
+   handing a link or file to another qube or a disposable, and starting a
+   disposable (qubes.PdfConvert through the PDF converter's own policy, a
+   default dom0 package). deny_escapes(source) denies all of them. #}
+{% set escape_routes = [
+  ('qubes.OpenURL', '@anyvm'), ('qubes.OpenURL', '@dispvm'),
+  ('qubes.OpenInVM', '@anyvm'), ('qubes.OpenInVM', '@dispvm'),
+  ('qubes.StartApp', '@dispvm'), ('qubes.GetImageRGBA', '@dispvm'),
+  ('qubes.VMShell', '@dispvm'), ('qubes.VMExec', '@dispvm'),
+  ('qubes.VMExecGUI', '@dispvm'), ('qubes.PdfConvert', '@dispvm'),
+] %}
+{% macro deny_escapes(source) -%}
+{%- set lines = [] -%}
+{%- for service, target in escape_routes -%}
+{%-   do lines.append('%-20s *  %s  %-9s deny' | format(service, source, target)) -%}
+{%- endfor -%}
+{{ lines | join('\n') | indent(8) }}
+{%- endmacro %}
+
 {% if webcam_mode in ['dedicated', 'sequential'] %}
 # The camera-exposed backend must never become an input source for dom0, even
 # if a keyboard or mouse is accidentally left on the selected controller.
@@ -357,34 +377,14 @@ seqs-policy-qr-input-deny:
         # netvm=none does not block qrexec: close the browser handoff too, or
         # 29-browser.policy would let a compromised camera-side qube push the
         # ciphertext to the browser qube without a prompt.
-        qubes.OpenURL        *  {{ webcam_usb_qube }}  @anyvm    deny
-        qubes.OpenURL        *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.OpenInVM       *  {{ webcam_usb_qube }}  @anyvm    deny
-        qubes.OpenInVM       *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.StartApp       *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.GetImageRGBA   *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.VMShell        *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.VMExec         *  {{ webcam_usb_qube }}  @dispvm   deny
-        qubes.VMExecGUI      *  {{ webcam_usb_qube }}  @dispvm   deny
-        # qubes.PdfConvert comes from the PDF converter, a default dom0 package,
-        # whose own policy allows it into a disposable without asking.
-        qubes.PdfConvert     *  {{ webcam_usb_qube }}  @dispvm   deny
+        {{ deny_escapes(webcam_usb_qube) }}
         # The transfer scans only in the named scanner below: Qubes 4.3 matches
         # a @dispvm:<template> source against no running qube. A disposable
         # started from the camera template by hand inherits seqs-no-handoff.
         qubes.InputKeyboard  *  {{ webcam_scanner_qube }}  @adminvm  deny
         qubes.InputMouse     *  {{ webcam_scanner_qube }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_scanner_qube }}  @adminvm  deny
-        qubes.OpenURL        *  {{ webcam_scanner_qube }}  @anyvm    deny
-        qubes.OpenURL        *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.OpenInVM       *  {{ webcam_scanner_qube }}  @anyvm    deny
-        qubes.OpenInVM       *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.StartApp       *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.GetImageRGBA   *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.VMShell        *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.VMExec         *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.VMExecGUI      *  {{ webcam_scanner_qube }}  @dispvm   deny
-        qubes.PdfConvert     *  {{ webcam_scanner_qube }}  @dispvm   deny
+        {{ deny_escapes(webcam_scanner_qube) }}
 {% else %}
 seqs-policy-qr-input-deny:
   cmd.run:
@@ -482,16 +482,7 @@ seqs-policy-browser-suppress:
         # (qubes.PdfConvert through the PDF converter's own policy): the browser
         # qube or a networked disposable would be a way out past no_handoff and
         # any firewall allowlist. Evaluated before 29-browser.policy.
-        qubes.OpenURL  *  @tag:seqs-no-handoff  @anyvm  deny
-        qubes.OpenURL  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.OpenInVM  *  @tag:seqs-no-handoff  @anyvm  deny
-        qubes.OpenInVM  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.StartApp  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.GetImageRGBA  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.VMShell  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.VMExec  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.VMExecGUI  *  @tag:seqs-no-handoff  @dispvm  deny
-        qubes.PdfConvert  *  @tag:seqs-no-handoff  @dispvm  deny
+        {{ deny_escapes('@tag:seqs-no-handoff') }}
 {# A failed tag keeps the previous policy instead of a deny nobody matches. #}
 {% set wanted = handoff_tags | dictsort | selectattr('1.want') | map('first') | list %}
 {% if wanted %}

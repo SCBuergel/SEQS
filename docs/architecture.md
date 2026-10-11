@@ -47,7 +47,11 @@ data flow and controls. For the per-component trust analysis see
    executes anything a target qube produces. Output from the qubes reaches the
    dom0 terminal only through the runner's `sanitize()` filter. dom0 reads only
    failure markers and regex-checked qube names from it, which can only make a
-   run fail or skip failed qubes.
+   run fail or skip failed qubes. A GnosisVPN build is the exception: before
+   provisioning, the runner itself installs the Debian prerequisites in the
+   template with `qvm-run -u root` and sanitized output, and adds a
+   temporary download proxy qube and policy for its package
+   ([GnosisVPN](gnosisvpn.md)).
 
 ## Why fetched data and `/srv` are separate
 

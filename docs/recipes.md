@@ -71,9 +71,9 @@ numbers and dom0 shows nothing else:
 
 ## CPU pinning for `A-gnosisvpn`
 
-The mixnet is CPU-intensive. Pin the qube to two physical cores with the
+The mixnet is CPU-intensive. Pin the qube to two performance cores with the
 `cpu_pinning` catalogue key (see [configuration](configuration.md)), for
-example on the i7-1265U, whose cores 0 and 2 are performance cores:
+example on the i7-1265U, whose Xen CPUs 0 and 2 lie on two performance cores:
 
 ```python
 {'name': 'gnosisvpn', ..., 'cpu_pinning': {'cpus': [0, 2], 'weight': 512}},

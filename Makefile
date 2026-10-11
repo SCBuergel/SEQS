@@ -1,4 +1,4 @@
-.PHONY: help lint render unit integration fast test
+.PHONY: help lint render unit integration fast prove test
 
 help: ## Show the available repository checks
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -16,8 +16,10 @@ integration: ## Run mocked end-to-end installer tests
 	./test/run-tests.sh integration
 
 fast: ## Run the fast lint and render layers
-	./test/run-tests.sh lint
-	./test/run-tests.sh render
+	./test/run-tests.sh fast
+
+prove: ## Run the working tree's tests against the committed product code
+	./test/run-tests.sh prove
 
 test: ## Run every Qubes-free test layer
 	./test/run-tests.sh

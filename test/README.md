@@ -10,8 +10,8 @@ component you renamed but forgot to wire up, a prefix that no longer matches the
 top files, a broken validation branch, a shell-syntax slip in an install
 script, a regression in the tar-validation or air-gap logic of the runner.
 
-So the harness is layered, cheap-first. Everything except Layer 5 runs in well
-under a second, on any Linux box (or CI), with **no Qubes at all**.
+So the harness is layered, cheap-first. Everything except Layer 5 runs in
+under a minute, on any Linux box (or CI), with **no Qubes at all**.
 
 ```
 ./test/run-tests.sh            # run every Qubes-free layer, summarised

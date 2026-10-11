@@ -8,6 +8,8 @@
 #                                              with a note when not installed
 #   * every Salt state/pillar renders + parses as YAML (delegated to the
 #     Python render layer, which is the real check)
+#   * embedded signing keys: warn within 180 days of expiry, fail within 30
+#     (test/key_expiry.py; skipped without gpg)
 #
 # Exit non-zero if any hard check fails. shellcheck being absent is a skip,
 # not a failure -- install it (apt-get install shellcheck) for full coverage.
