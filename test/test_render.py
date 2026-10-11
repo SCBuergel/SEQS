@@ -989,6 +989,12 @@ def test_dom0_rejects_unsafe_prefix():
         check("seqs-validation-failed" in parsed and "%s 'A;id;' must match" % field
               in state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment"),
               "an unsafe %s must fail pre-flight with its own message" % field)
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["prefix_disposable"] = "D-\n"
+    _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+    check("seqs-validation-failed" in parsed and "prefix_disposable 'D-\n' must match"
+          in state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment"),
+          "a prefix with a trailing newline must fail the prefix check")
 
 
 def test_qube_extension_marker_records_its_id():

@@ -597,6 +597,10 @@ check() {
 			else
 				fail "${name} is offline but has netvm '${nv}', default_dispvm '${dv}'"
 			fi
+			# Explicitly none, not inherited from a global default (flag D).
+			qvm-prefs -- "${name}" | awk '($1 == "netvm" || $1 == "default_dispvm") && $2 == "-" && $3 == "None" { n++ } END { exit n != 2 }' \
+				&& pass "${name}: netvm and default_dispvm are explicitly none" \
+				|| fail "${name}: netvm or default_dispvm is only inherited as none"
 			if [ "${kind}" = "app" ]; then
 				# shellcheck disable=SC2016 # runs inside the qube
 				if qvm-run --pass-io --no-gui "${name}" \

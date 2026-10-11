@@ -45,7 +45,8 @@
 {% set webcam_scanner_qube = seqs.get('webcam_scanner_qube', 'seqs-qr-scanner') %}
 {% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}
 
-{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
+{# \Z, not $: Python's $ also matches before a trailing newline. #}
+{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\Z' %}
 {# Reads `qvm-prefs VM` and succeeds only if netvm and default_dispvm are both
    explicitly None: a value inherited from a global default (flag D) could
    become networked when that default changes. #}
@@ -823,7 +824,11 @@ seqs-webcam-usb-backend:
               stopped="$stopped $current"
             fi
             # A former owner that keeps running keeps the camera controller.
-            qvm-shutdown --wait "$current" || { echo "ERROR: could not stop $current, which holds dom0:{{ webcam_controller }}" >&2; exit 1; }
+            qvm-shutdown --wait "$current" || {
+              echo "ERROR: could not stop $current, which holds dom0:{{ webcam_controller }}" >&2
+              for s in $stopped; do qvm-start -- "$s" || true; done
+              exit 1
+            }
             qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
           fi
           # An assignment made on Qubes 4.2 and carried into 4.3 records no

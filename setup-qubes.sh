@@ -593,8 +593,7 @@ setupGnosisUpdateProxy() {
 		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
 	proxy_template="$(resolveTemplateVM "${updatevm}")"
 	# Download over the UpdateVM's route: through the UpdateVM itself when it
-	# provides network (sys-firewall, or sys-whonix for updates over Tor),
-	# otherwise through its NetVM.
+	# provides network (such as sys-firewall), otherwise through its NetVM.
 	if [ "$(qvm-prefs -- "${updatevm}" provides_network 2>/dev/null)" = "True" ]; then
 		proxy_netvm="${updatevm}"
 	else

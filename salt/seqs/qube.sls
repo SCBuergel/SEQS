@@ -10,7 +10,8 @@
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set timeout = seqs.get('component_timeout', 900) %}
 {% set no_handoff = spec.get('no_handoff', False) or spec.get('offline', False) or spec.get('firewall') is not none %}
-{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
+{# \Z, not $: Python's $ also matches before a trailing newline. #}
+{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\Z' %}
 
 {% if role not in ['template', 'app'] %}
 # Not a SEQS-configured qube (matched the Z-*/A-* glob but has no spec in the
