@@ -16,9 +16,13 @@ PREFIXES=(D A Z)
 # "running" state before we give up and try qvm-remove anyway.
 SHUTDOWN_TIMEOUT=30
 
+# dom0 files that SEQS keeps per qube. The SEQS_* overrides let the test
+# harness use a scratch directory.
+STATE_DIR="${SEQS_STATE_DIR:-/var/lib/seqs}"
+LIBVIRT_DIR="${SEQS_LIBVIRT_DIR:-/etc/qubes/templates/libvirt/xen/by-name}"
 # Creation markers: written by the seqs.dom0 state before it creates a qube,
 # removed once the qube carries the seqs-managed feature.
-INTENTS_DIR=/var/lib/seqs/intents
+INTENTS_DIR="${STATE_DIR}/intents"
 
 DRY_RUN=0
 
@@ -190,9 +194,9 @@ done
 # marker would apply to a later qube of the same name, and its recorded
 # firewall is stale.
 for vm in "${found[@]}"; do
-	pin="/etc/qubes/templates/libvirt/xen/by-name/${vm}.xml"
+	pin="${LIBVIRT_DIR}/${vm}.xml"
 	if head -n 1 -- "${pin}" 2>/dev/null | grep -q 'Managed by SEQS'; then
 		sudo rm -f -- "${pin}"
 	fi
-	sudo rm -f -- "/var/lib/seqs/firewall/${vm}" "${INTENTS_DIR}/${vm}"
+	sudo rm -f -- "${STATE_DIR}/firewall/${vm}" "${INTENTS_DIR}/${vm}"
 done

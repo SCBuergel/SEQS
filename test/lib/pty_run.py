@@ -4,7 +4,8 @@
 setup-qubes.sh's confirm() reads a default-no [y/N] answer from /dev/tty
 (deliberately, so piped stdin cannot be mistaken for approval). To drive it
 non-interactively the test harness needs a real controlling terminal -- that is
-what forkpty gives us. Whenever the child prints the prompt, we type y; all
+what forkpty gives us. Whenever the child prints the prompt, we type y (or
+the next of PTY_RUN_ANSWERS); all
 child output is mirrored to stdout so the test can assert on it. Exit status is
 propagated.
 
@@ -17,7 +18,9 @@ import os
 import sys
 import select
 
-PROMPTS = {b"[y/N]": b"y\n"}
+# PTY_RUN_ANSWERS: comma-separated answers to the prompts in turn, the last
+# one repeating, such as "y,n" or "" (Enter); default y.
+ANSWERS = os.environb.get(b"PTY_RUN_ANSWERS", b"y").split(b",")
 
 
 def main():
@@ -52,10 +55,9 @@ def main():
         out.write(data)
         out.flush()
         window = (window + data)[-400:]
-        for needle, reply in PROMPTS.items():
-            if needle in window:
-                window = b""
-                os.write(fd, reply)
+        if b"[y/N]" in window:
+            window = b""
+            os.write(fd, (ANSWERS.pop(0) if len(ANSWERS) > 1 else ANSWERS[0]) + b"\n")
 
     _, status = os.waitpid(pid, 0)
     sys.exit(os.waitstatus_to_exitcode(status))

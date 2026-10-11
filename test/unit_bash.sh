@@ -142,6 +142,10 @@ else bad "readTargets failed on a valid file"; fi
 # Unsafe qube name must abort.
 printf 'template Z-brave brave\napp A-brave; rm -rf / brave\n' > "${TARGETS_FILE}"
 if ( readTargets ) 2>/dev/null; then bad "readTargets accepted an unsafe name"; else ok; fi
+# An unknown flag must abort: it may be a protection this runner cannot apply.
+printf 'template Z-brave brave\napp A-brave brave online\n' > "${TARGETS_FILE}"
+out="$( ( readTargets ) 2>&1 )" && bad "readTargets accepted an unknown flag"
+grep -q "unknown flag in ${TARGETS_FILE}: 'online'" <<< "${out}" && ok || bad "unknown flag: wrong message [${out}]"
 
 echo "== verifyAirgap() only passes when offline qubes are explicitly offline =="
 # Stub qvm-prefs on PATH: "qvm-prefs -- VM" lists netvm and default_dispvm in
@@ -275,6 +279,17 @@ if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
 else ok; fi
 
+echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
+printf '#!/bin/sh\nexec "$@"\n' > "${stub}/sudo"
+printf '#!/bin/sh\nprintf "%%b\\n" "$QOUT"\n' > "${stub}/qubesctl"
+chmod +x "${stub}/sudo" "${stub}/qubesctl"
+qctl() { ( export PATH="${stub}:${PATH}" QOUT="$1"; runQubesctl state.apply ) >/dev/null 2>&1; }
+qctl '    Result: True\nSucceeded: 3\nFailed:    0' && ok || bad "runQubesctl failed a clean run"
+qctl '    Result: False\nSucceeded: 3' && bad "runQubesctl passed a 'Result: False' state" || ok
+qctl $'    Result: \e[0;31mFalse' && bad "runQubesctl passed a colored 'Result: False'" || ok
+qctl 'Succeeded: 2\nFailed:    1' && bad "runQubesctl passed 'Failed: 1'" || ok
+qctl 'Z-brave: ERROR (exit code 20)' && bad "runQubesctl passed a qube reported as ERROR" || ok
+
 echo "== lib/verify-gpg.sh: pinned keys, signed downloads, pinned apt repos =="
 # require_exact_keys reads gpg --with-colons output: only primary keys count,
 # in any order, and the set must match exactly.
@@ -331,6 +346,11 @@ if command -v gpg >/dev/null 2>&1; then
 	echo tampered again > "${g}/src/f.bin"
 	out="$(fetch "${sha}")" && bad "fetch_signed accepted a tampered file"
 	grep -q "rejected: gpg emitted BADSIG" <<< "${out}" && ok || bad "tampered file: wrong message [${out}]"
+	# gpg's exit code counts even when its status lines look good.
+	out="$( ( set -Eeuo pipefail; . install-scripts/lib/verify-gpg.sh
+		gpg() { printf '[GNUPG:] GOODSIG X\n[GNUPG:] VALIDSIG a b %s\n' "${fprs[0]}"; return 2; }
+		verify_detached_sig s d "${fprs[0]}" f.bin ) 2>&1 )" && bad "verify_detached_sig ignored gpg's exit code"
+	grep -q "f.bin signature verification FAILED (gpg exit 2" <<< "${out}" && ok || bad "gpg exit: wrong message [${out}]"
 	gpgconf --homedir "${g}/home" --kill all 2>/dev/null
 	rm -rf "${g}"
 else

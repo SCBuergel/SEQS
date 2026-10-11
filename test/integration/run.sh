@@ -26,7 +26,7 @@ new_sandbox() {
 	export SEQS_SELECTION_FILE="${SBX}/var/lib/seqs/selection"
 	export SEQS_RUN_MANIFEST="${SBX}/var/lib/seqs/last-run"
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
-	export SEQS_GNOSIS_UPDATE_POLICY="${SBX}/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy"
+	export SEQS_POLICY_DIR="${SBX}/etc/qubes/policy.d"
 	export SEQS_REPO_ROOT="${REPO}"
 	export SEQS_EXPECTED_COMMIT
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
@@ -67,7 +67,7 @@ grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
 grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out" \
 	&& ok || bad "expected the scoped GnosisVPN proxy lifecycle"
-[ ! -e "${SEQS_GNOSIS_UPDATE_POLICY}" ] && ok \
+[ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" ] && ok \
 	|| bad "temporary GnosisVPN update policy should be removed after provisioning"
 # The tree really landed in the sandbox /srv, root markers and all.
 [ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "dom0.sls not installed into sandbox /srv"
@@ -333,6 +333,41 @@ grep -q '^template Z-brave brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 ! grep -q "Step 1/3" <<<"$out" && ok || bad "install should not show the old 3-step prompts"
 rm -rf "${SBX}"
 
+# ── Scenario 6c: confirmation and ownership gates ──────────────────────────
+echo "== scenario: only y confirms; unowned or incomplete trees are refused =="
+new_sandbox
+out="$(PTY_RUN_ANSWERS= run_setup --qubes brave 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "not confirmed -- aborting" <<<"$out" && [ ! -e "${SEQS_SALT_TREE}" ] && ok \
+	|| bad "an empty answer (Enter) must abort before anything is staged: rc=$rc"
+mkdir -p "${SEQS_POLICY_DIR}"
+printf '%s\n' 'qubes.OpenURL * @anyvm A-brave ask' > "${SEQS_POLICY_DIR}/29-browser.policy"
+out="$(PTY_RUN_ANSWERS=y,n run_setup --qubes brave 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "were NOT written by SEQS" <<<"$out" \
+	&& grep -q "qubes.OpenURL \* @anyvm A-brave ask" <<<"$out" && ok \
+	|| bad "an unmarked policy file must be shown and need a y to be overwritten: rc=$rc"
+rm -rf "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_FETCH_ROOT}" "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}"
+mkdir -p "${SEQS_FETCH_ROOT}/salt"
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetched/salt exists but is not managed by SEQS" <<<"$out" && ok \
+	|| bad "a fetch area SEQS does not own must not be replaced: rc=$rc"
+rm -rf "${SEQS_FETCH_ROOT}"
+run_setup --fetch-only >/dev/null 2>&1
+mkdir -p "${SEQS_SALT_TREE}"
+out="$(run_setup --stage-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "seqs exists but is not managed by SEQS" <<<"$out" && ok \
+	|| bad "a staged tree SEQS does not own must not be replaced: rc=$rc"
+rmdir "${SEQS_SALT_TREE}"
+rm "${SEQS_FETCH_ROOT}/.seqs-complete"
+out="$(run_setup --stage-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetch stage is incomplete" <<<"$out" && ok \
+	|| bad "an incomplete fetch must not be staged: rc=$rc"
+export SEQS_MOCK_TAR="${SBX}/garbage.tar"
+printf 'not a tar archive\n' > "${SEQS_MOCK_TAR}"
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "fetched data is not a valid tar archive" <<<"$out" && ok \
+	|| bad "a fetch that is not a tar archive must be refused: rc=$rc"
+rm -rf "${SBX}"
+
 # ── Scenario 7: protected staged trees are inspected through sudo ──────────
 echo "== scenario: staged-tree guard and preview use privileged reads =="
 new_sandbox
@@ -402,13 +437,21 @@ grep -q "^A-notes " "${SEQS_MOCK_STATE}" && grep -q "^Z-notes " "${SEQS_MOCK_STA
 	|| bad "a refused deletion must remove nothing"
 # A qube whose creation was interrupted carries no seqs-managed feature yet,
 # only its creation marker: SEQS built it, so it is removed with its marker.
-printf '%s\n' "A-notes halted" > "${SEQS_MOCK_STATE}"
-out="$(SEQS_MOCK_UNMANAGED="A-notes" SEQS_MOCK_INTENTS="A-notes" SEQS_MOCK_SUDO_LOG="${SBX}/sudo2.log" \
-	bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
+# The CPU-pinning file SEQS wrote for a removed qube goes too; one without
+# SEQS's marker is the operator's and stays.
+export SEQS_STATE_DIR="${SBX}/state" SEQS_LIBVIRT_DIR="${SBX}/libvirt"
+mkdir -p "${SEQS_STATE_DIR}/intents" "${SEQS_LIBVIRT_DIR}"
+touch "${SEQS_STATE_DIR}/intents/A-notes"
+printf '%s\n' '{# Managed by SEQS (salt state seqs.dom0) #}' x > "${SEQS_LIBVIRT_DIR}/A-notes.xml"
+printf '%s\n' '<!-- operator -->' > "${SEQS_LIBVIRT_DIR}/Z-notes.xml"
+printf '%s\n' "A-notes halted" "Z-notes halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_UNMANAGED="A-notes" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -q "^A-notes " "${SEQS_MOCK_STATE}" && ok \
 	|| bad "a qube with a creation marker must be removed: ${out}"
-grep -qF "/var/lib/seqs/intents/A-notes" <<< "$(grep '^rm ' "${SBX}/sudo2.log")" && ok \
-	|| bad "the removed qube's creation marker must be deleted"
+[ ! -e "${SEQS_STATE_DIR}/intents/A-notes" ] && ok || bad "the removed qube's creation marker must be deleted"
+[ ! -e "${SEQS_LIBVIRT_DIR}/A-notes.xml" ] && [ -e "${SEQS_LIBVIRT_DIR}/Z-notes.xml" ] && ok \
+	|| bad "only the CPU-pinning file SEQS wrote may be deleted"
+unset SEQS_STATE_DIR SEQS_LIBVIRT_DIR
 # A failing qube listing must stop the deletion, not skip the blocker check.
 printf '%s\n' "A-keepass halted" > "${SEQS_MOCK_STATE}"
 out="$(SEQS_MOCK_QVM_LS_FAIL=1 bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?

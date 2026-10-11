@@ -130,6 +130,10 @@ def test_dom0_happy_path():
         check("seqs-tag-app-%s" % name in parsed, "expected app tag state for %s" % name)
     # keepass air-gap state
     check("seqs-offline-keepass" in parsed, "keepass should get an offline state")
+    offline_cmd = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
+    check("qvm-prefs -- A-keepass netvm none" in offline_cmd
+          and "qvm-prefs -- A-keepass default_dispvm none" in offline_cmd,
+          "the offline state must clear both the netvm and the default disposable")
     check("seqs-offline-brave" not in parsed, "brave must NOT be air-gapped")
     # netvm=none does not gate qrexec, so offline, no_handoff and firewalled
     # qubes carry the seqs-no-handoff tag and the policy denies by tag; a
@@ -310,8 +314,8 @@ ESCAPE_ROUTES = [(s, "@anyvm") for s in (
 
 
 def policy_rules(text):
-    """The rules of a qrexec policy file as token tuples, ignoring spacing and comments."""
-    return {tuple(line.split()) for line in text.splitlines() if line.strip() and not line.startswith("#")}
+    """The rules of a qrexec policy file in order, as token tuples, ignoring spacing and comments."""
+    return [tuple(line.split()) for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
 def test_dom0_browser_required_only_for_handoff():
@@ -444,6 +448,17 @@ def test_dom0_sequential_qr_mode():
         for service, target in ESCAPE_ROUTES:
             check((service, "*", subject, target, "deny") in deny,
                   "camera-side qube %s must not reach %s via %s" % (subject, target, service))
+    for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
+        for service in ("qubes.InputKeyboard", "qubes.InputMouse", "qubes.InputTablet"):
+            check((service, "*", subject, "@adminvm", "deny") in deny,
+                  "camera-side qube %s must not send %s to dom0" % (subject, service))
+    check(("qubes.Filecopy", "*", "sys-usb-webcam", "@anyvm", "deny") in deny,
+          "the USB backend must not copy files anywhere")
+    copy_rules = [r for r in policy_rules(state_arg(parsed, "seqs-policy-qr-filecopy", "file.managed", "contents"))
+                  if r[0] == "qubes.Filecopy"]
+    check(copy_rules == [("qubes.Filecopy", "*", "seqs-qr-scanner", "A-qr-staging", "allow"),
+                         ("qubes.Filecopy", "*", "seqs-qr-scanner", "@anyvm", "deny")],
+          "the scanner may copy files to the staging qube only, got %r" % copy_rules)
     for state in ("seqs-webcam-usb-backend", "seqs-qr-scanner"):
         check("default_dispvm none" in state_arg(parsed, state, "cmd.run", "name"),
               "%s must clear the default disposable" % state)
@@ -731,6 +746,20 @@ def test_dom0_validation_catches_bad_config():
         catalogue={"x": {"label": "purple", "components": ["wireguard"],
                      "network_provider": True, "offline": True}})),
         "network_provider + offline is contradictory and must fail validation")
+    check(_rejected("is a DisposableVM template for sensitive data but is not offline", _bad_pillar(
+        catalogue={"x": {"label": "black", "components": ["brave"], "dispvm_template": True}})),
+        "a disposable template must be offline")
+    seq = copy.deepcopy(render_pillar("dom0"))
+    seq.update({"webcam_usb_mode": "sequential", "webcam_usb_controller": "00_14.0"})
+    seq["catalogue"]["qr-staging"]["offline"] = False
+    check(_rejected("sequential webcam mode requires qr-staging to be offline", seq),
+          "sequential mode must refuse a networked staging qube")
+    seq["catalogue"]["qr-staging"]["offline"] = True
+    _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True, existing_qubes=["sys-usb-webcam"]),
+                             pillar_seqs=seq)
+    check("special qube 'sys-usb-webcam' already exists but is not marked seqs-managed"
+          in state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment"),
+          "an existing sys-usb-webcam that SEQS did not build must not be adopted")
     check(_rejected("sets both 'network_provider' and 'dispvm_template'", _bad_pillar(
         catalogue={"x": {"label": "purple", "components": ["wireguard"],
                      "network_provider": True, "dispvm_template": True}})),

@@ -10,30 +10,6 @@
 {% set selection_file = '/var/lib/seqs/selection' %}
 {% set selection_raw = salt['cmd.shell']('cat ' ~ selection_file ~ ' 2>/dev/null') %}
 {% set selection = selection_raw.splitlines() %}
-{% set qmap = {} %}
-{% set recipes = {} %}
-{% if selection %}
-{%   set first = selection[0].split() %}
-{%   if first and first[0] == '@all' %}
-{%     set postfix = first[1] if first | length == 2 else '' %}
-{%     for recipe, spec in qcatalog.items() %}
-{%       set instance = recipe ~ (('-' ~ postfix) if postfix else '') %}
-{%       do qmap.update({instance: spec}) %}
-{%       do recipes.update({instance: recipe}) %}
-{%     endfor %}
-{%   else %}
-{%     for line in selection %}
-{%       set fields = line.split() %}
-{%       if fields | length == 1 and fields[0] in qcatalog %}
-{%         do qmap.update({fields[0]: qcatalog[fields[0]]}) %}
-{%         do recipes.update({fields[0]: fields[0]}) %}
-{%       elif fields | length == 2 and fields[0] in qcatalog %}
-{%         do qmap.update({fields[1]: qcatalog[fields[0]]}) %}
-{%         do recipes.update({fields[1]: fields[0]}) %}
-{%       endif %}
-{%     endfor %}
-{%   endif %}
-{% endif %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
@@ -75,6 +51,10 @@ for vm in qubesadmin.Qubes().domains:
 {%   do errors.append("could not list the existing qubes through qubesadmin -- refusing to continue without knowing which qubes exist") %}
 {% endif %}
 
+{# The selection: '@all [POSTFIX]', or one 'RECIPE [INSTANCE]' per line. qmap
+   maps each instance to its catalogue entry, recipes to its recipe name. #}
+{% set qmap = {} %}
+{% set recipes = {} %}
 {% if not selection %}
 {%   do errors.append("runtime selection is missing -- invoke setup-qubes.sh with --qubes or --all") %}
 {% endif %}
@@ -85,6 +65,12 @@ for vm in qubesadmin.Qubes().domains:
 {%       do errors.append("runtime @all selection is malformed or mixed with named entries") %}
 {%     elif fields | length == 2 and fields[1] | regex_match(name_re) is none %}
 {%       do errors.append("runtime selection contains unsafe postfix '" ~ fields[1] ~ "'") %}
+{%     else %}
+{%       for recipe, spec in qcatalog.items() %}
+{%         set instance = recipe ~ (('-' ~ fields[1]) if fields | length == 2 else '') %}
+{%         do qmap.update({instance: spec}) %}
+{%         do recipes.update({instance: recipe}) %}
+{%       endfor %}
 {%     endif %}
 {%   elif fields | length not in [1, 2] %}
 {%     do errors.append("runtime selection entry '" ~ line ~ "' is malformed") %}
@@ -94,7 +80,17 @@ for vm in qubesadmin.Qubes().domains:
 {%     do errors.append("runtime selection names unknown catalogue entry '" ~ fields[0] ~ "'") %}
 {%   elif fields | length == 2 and fields[1] != fields[0] and not fields[1].startswith(fields[0] ~ '-') %}
 {%     do errors.append("runtime instance '" ~ fields[1] ~ "' is not derived from recipe '" ~ fields[0] ~ "'") %}
+{%   else %}
+{%     do qmap.update({fields[-1]: qcatalog[fields[0]]}) %}
+{%     do recipes.update({fields[-1]: fields[0]}) %}
 {%   endif %}
+{% endfor %}
+{# Recipes whose qubes may hand nothing to another qube: offline, no_handoff,
+   and firewalled ones. They are tagged seqs-no-handoff below, and qube.sls
+   sets no browser handoff in them. #}
+{% set no_handoff = [] %}
+{% for recipe, q in qcatalog.items() if q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
+{%   do no_handoff.append(recipe) %}
 {% endfor %}
 {# The pillar gives a qube the recipe its name resolves to: an exact catalogue
    name, else the longest recipe followed by '-'. Refuse an instance that would
@@ -201,7 +197,7 @@ for vm in qubesadmin.Qubes().domains:
 {%   else %}
 {%     set bbase = browser_vm[(papp | length):] if papp and browser_vm.startswith(papp) else '' %}
 {%     set handoff = [] %}
-{%     for name, q in qmap.items() if not (q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none) and papp ~ name != browser_vm %}
+{%     for name in qmap if recipes[name] not in no_handoff and papp ~ name != browser_vm %}
 {%       do handoff.append(name) %}
 {%     endfor %}
 {%     if handoff and not (bbase and bbase in qmap) and (browser_vm not in inventory) %}
@@ -436,13 +432,13 @@ seqs-policy-browser:
 {% set handoff_tags = {} %}
 {% for vm, info in inventory.items() if info.managed and vm | regex_match(name_re) is not none %}
 {%   set base = vm[papp | length:] if papp and vm.startswith(papp) else (vm[pdvm | length:] if pdvm and vm.startswith(pdvm) else '') %}
-{%   set r = qcatalog.get(info.recipe or base) if base else none %}
-{%   if r %}
-{%     do handoff_tags.update({vm: {'want': r.get('offline') or r.get('no_handoff') or r.get('firewall') is not none, 'require': ''}}) %}
+{%   set recipe = (info.recipe or base) if base else '' %}
+{%   if recipe in qcatalog %}
+{%     do handoff_tags.update({vm: {'want': recipe in no_handoff, 'require': ''}}) %}
 {%   endif %}
 {% endfor %}
 {% for name, q in qmap.items() %}
-{%   set want = q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
+{%   set want = recipes[name] in no_handoff %}
 {%   do handoff_tags.update({papp ~ name: {'want': want, 'require': 'qvm: seqs-app-' ~ name}}) %}
 {%   if q.get('named_disposable') and pdvm %}
 {%     do handoff_tags.update({pdvm ~ name: {'want': want, 'require': 'cmd: seqs-disposable-prefs-' ~ name}}) %}
@@ -519,9 +515,19 @@ seqs-policy-usb-keyboard:
 # stay churn-free. A marker whose qube does not exist and is not built in
 # this run resumes nothing; it is removed, so that a same-named qube created
 # later by someone else is refused rather than adopted.
+{% macro intent(id, vm) -%}
+seqs-intent-{{ id }}:
+  file.managed:
+    - name: {{ intents_dir }}/{{ vm }}
+    - makedirs: True
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: SEQS is creating this qube; removed once it is tagged seqs-managed.
+{%- endmacro %}
 {% set planned = [] %}
 {% for name in qmap %}{% do planned.extend([ptpl ~ name, papp ~ name, pdvm ~ name]) %}{% endfor %}
-{% for m in salt['cmd.shell']('ls -A ' ~ intents_dir ~ ' 2>/dev/null').split()
+{% for m in salt['cmd.shell']('ls -A ' ~ intents_dir ~ ' 2>/dev/null || true').split()
      if m not in inventory and m not in planned and m | regex_match(name_re) is not none %}
 seqs-stale-intent-{{ m }}:
   file.absent:
@@ -552,14 +558,7 @@ seqs-existing-app-{{ name }}:
 {%   endif %}
 
 {%   if not tpl_tagged %}
-seqs-intent-template-{{ name }}:
-  file.managed:
-    - name: {{ intents_dir }}/{{ tpl }}
-    - makedirs: True
-    - user: root
-    - group: root
-    - mode: '0644'
-    - contents: SEQS is creating this qube; removed once it is tagged seqs-managed.
+{{ intent('template-' ~ name, tpl) }}
 {%   endif %}
 
 {%   if not tpl_exists %}
@@ -594,14 +593,7 @@ seqs-recipe-template-{{ name }}:
 {%   endif %}
 
 {%   if not app_tagged %}
-seqs-intent-app-{{ name }}:
-  file.managed:
-    - name: {{ intents_dir }}/{{ app }}
-    - makedirs: True
-    - user: root
-    - group: root
-    - mode: '0644'
-    - contents: SEQS is creating this qube; removed once it is tagged seqs-managed.
+{{ intent('app-' ~ name, app) }}
 {%   endif %}
 
 seqs-app-{{ name }}:
@@ -674,10 +666,10 @@ seqs-network-provider-{{ name }}:
 # the interpolations below cannot break out of the command line. Hostname
 # rules are resolved by the qubes-firewall service in the netvm, not in
 # dom0. qvm-firewall does NOT gate qrexec: a firewall key implies no_handoff,
-# whose denies close link handoff and the routes into networked disposables. The marker records the configured rules
-# and the rules Qubes reported after applying them, so a rerun is a no-op
-# only while both are unchanged: a config edit or a hand edit of the qube's
-# rules reapplies the allowlist.
+# whose denies close link handoff and the routes into networked disposables.
+# The marker records the configured rules and the rules Qubes reported after
+# applying them, so a rerun is a no-op only while both are unchanged: a
+# config edit or a hand edit of the qube's rules reapplies the allowlist.
 seqs-firewall-{{ name }}:
   cmd.run:
     - name: |
@@ -775,14 +767,7 @@ seqs-recipe-app-{{ name }}:
 # provisioned inside it. Intent marker closes the same create->tag window as
 # the template/app qubes above.
 {%     if not dvm_tagged %}
-seqs-intent-disposable-{{ name }}:
-  file.managed:
-    - name: {{ intents_dir }}/{{ dvm }}
-    - makedirs: True
-    - user: root
-    - group: root
-    - mode: '0644'
-    - contents: SEQS is creating this qube; removed once it is tagged seqs-managed.
+{{ intent('disposable-' ~ name, dvm) }}
 {%     endif %}
 
 {%     if not dvm_exists %}

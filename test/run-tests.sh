@@ -13,6 +13,8 @@
 #   ./test/run-tests.sh fast       run lint and render tests
 #   ./test/run-tests.sh prove [REV] run the working tree's tests against the
 #                                  product code of REV (default HEAD)
+#   ./test/run-tests.sh mutate [NAME] weaken each security check in turn and
+#                                  confirm a test fails (test/mutate.py)
 #   ./test/run-tests.sh help       show this command summary
 #
 # See test/README.md for what each layer covers and the (hardware-bound)
@@ -28,7 +30,7 @@ declare -a RESULTS
 
 usage() {
 	cat <<'EOF'
-Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration|prove [REV]]
+Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration|prove [REV]|mutate [NAME]]
 
   all          run every Qubes-free layer (default)
   fast         run the lint and render layers
@@ -39,6 +41,8 @@ Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration|prove [REV]]
   prove [REV]  run the working tree's tests against the product code of REV
                (default HEAD): a new test must fail there, which proves it
                detects the change it was written for
+  mutate [NAME] weaken each security check in turn (those whose name contains
+               NAME) and confirm that some test fails; takes several minutes
 EOF
 }
 
@@ -72,6 +76,10 @@ case "${want}" in
 	all | fast | lint | render | unit | integration) ;;
 	prove)
 		prove "${2:-HEAD}"
+		exit $?
+		;;
+	mutate)
+		python3 test/mutate.py "${@:2}"
 		exit $?
 		;;
 	help | -h | --help)

@@ -39,6 +39,18 @@ The first-install guide covers the common selection-only case. This document
 also describes advanced fields for an intentionally maintained custom fork or
 machine-specific hardware configuration.
 
+## Machine-wide settings
+
+The top of `config.sls` sets values that apply to every qube:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `prefix_template`, `prefix_app`, `prefix_disposable` | `Z-`, `A-`, `D-` | Name prefixes of the templates, app qubes, and named disposables SEQS builds. The minion globs in `config.top` must match the first two; the pre-flight checks this. |
+| `base_template` | `debian-13-xfce` | The template every SEQS template is cloned from. A change affects only templates cloned afterwards. |
+| `browser_vm`, `browser_desktop` | `A-brave`, `open-links-in-browser-qube.desktop` | The qube that opens links handed off by other SEQS qubes, and the desktop entry in those qubes that hands them off; see [below](#browser-link-handoff-requires-a-brave). |
+| `component_timeout` | `900` | Seconds one component may run before Salt stops it. |
+| `webcam_*` | QR transfer disabled | See [Secure QR USB modes](#secure-qr-usb-modes). |
+
 ## Components
 
 Each qube in `qube_catalog` is built from a list of components. The catalogue
@@ -166,7 +178,10 @@ physical `webcam_usb_controller` BDF. Set `webcam_usb_no_strict_reset` to
 `True` only for a sequential-mode controller without a PCI reset method;
 dedicated mode refuses it. Sequential mode intentionally powers off rather than
 restoring normal USB input in place, so the controller returns to `sys-usb`
-only after a cold boot.
+only after a cold boot. The other `webcam_*` settings name the qubes the
+transfer creates or uses (`webcam_usb_qube`, `webcam_scanner_dvm`,
+`webcam_scanner_qube`, `webcam_staging_qube`, `webcam_normal_usb_qube`);
+change them only to avoid a clash with an existing qube.
 
 ## `brave_extensions`
 

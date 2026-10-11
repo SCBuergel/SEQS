@@ -17,6 +17,7 @@ under a minute, on any Linux box (or CI), with **no Qubes at all**.
 ./test/run-tests.sh            # run every Qubes-free layer, summarised
 ./test/run-tests.sh render     # or just one layer: lint | render | unit | integration
 ./test/run-tests.sh prove      # do the new tests fail against the committed code?
+./test/run-tests.sh mutate     # does every security check have a test?
 ```
 
 The lint layer also warns when an embedded signing key expires within 180
@@ -27,6 +28,11 @@ template updates break.
 commit (or a commit you name) in a temporary git worktree. A test written for a
 change must fail there; one that passes would also have passed without the
 change.
+
+`mutate` weakens one security check at a time, such as the archive validation,
+the air-gap check, or a qrexec deny, from the list in `test/mutate.py`, and
+runs the layers until one fails. A weakened check that every layer accepts has
+no test. It takes several minutes; add an entry when you add a security check.
 
 The only dependencies are `python3` with `jinja2` + `pyyaml` (for the render
 layers) and `bash`. `shellcheck` is used if present and skipped with a note if
@@ -39,8 +45,12 @@ not. CI installs all three (`.github/workflows/tests.yml`).
 ### Layer 0 — lint (`test/lint.sh`)
 `bash -n` on every `*.sh`, `shellcheck -x -S error` if available (errors only —
 the repo deliberately carries some info/warning-level patterns, and a gate that
-fails on style gets bypassed), and a smoke render of every Salt template.
-Catches shell-syntax errors and "does it even compile" breakage instantly.
+fails on style gets bypassed), a smoke render of every Salt template, and
+`test/doc_coherence.py`, which fails when the docs do not name a catalogue
+flag, setting, component, option, pinned fingerprint, or guarded policy file
+that the code defines, or a relative Markdown link does not resolve.
+Catches shell-syntax errors, "does it even compile" breakage, and docs that
+fell behind the code instantly.
 
 ### Layer 1 — Salt render (`test/lib/salt_render.py`, `test/lint_render.py`)
 The heart of the harness. Qubes' Salt states are Jinja-templated YAML; this

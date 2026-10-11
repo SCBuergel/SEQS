@@ -10,6 +10,9 @@
 #     Python render layer, which is the real check)
 #   * embedded signing keys: warn within 180 days of expiry, fail within 30
 #     (test/key_expiry.py; skipped without gpg)
+#   * the docs name every catalogue flag, setting, component, option, pinned
+#     fingerprint, and guarded policy file the code defines, and relative
+#     Markdown links resolve (test/doc_coherence.py)
 #
 # Exit non-zero if any hard check fails. shellcheck being absent is a skip,
 # not a failure -- install it (apt-get install shellcheck) for full coverage.
@@ -59,6 +62,14 @@ echo
 echo "== embedded signing keys: expiry =="
 if python3 test/key_expiry.py; then
 	note "ok   no embedded signing key expires within 30 days"
+else
+	fail=1
+fi
+
+echo
+echo "== docs name what the code defines; relative links resolve =="
+if python3 test/doc_coherence.py; then
+	note "ok   docs match the code's flags, settings, components, options, keys"
 else
 	fail=1
 fi

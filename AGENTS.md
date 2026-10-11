@@ -126,7 +126,8 @@ Run commands from the repository root. The portable entry point is
 the Makefile provides equivalent short aliases through `make help`.
 
 - `./test/run-tests.sh lint`: shell syntax, optional ShellCheck, Salt render
-  smoke tests, and the expiry of embedded signing keys.
+  smoke tests, the expiry of embedded signing keys, and whether the docs name
+  what the code defines (`test/doc_coherence.py`).
 - `./test/run-tests.sh render`: detailed pillar and Salt render assertions.
 - `./test/run-tests.sh unit`: bash helper tests.
 - `./test/run-tests.sh integration`: end-to-end orchestration against mock
@@ -156,6 +157,9 @@ tree's tests against the committed product code and must report the new
 checks as failing. A test that passes there passes for the wrong reason
 unless it only guards behaviour that already existed. Assert the specific
 message or state, not just that validation failed somewhere.
+When you add or change a security check, add an entry for it to
+`test/mutate.py` and run `./test/run-tests.sh mutate NAME`: the weakened check
+must make a test fail.
 
 Hardware-bound verification commands are documented in `test/README.md`; do
 not run provisioning or deletion commands merely to validate a repository edit.

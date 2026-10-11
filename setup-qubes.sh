@@ -33,7 +33,8 @@ RUN_MANIFEST="${SEQS_RUN_MANIFEST:-/var/lib/seqs/last-run}"
 FETCH_ROOT="${SEQS_FETCH_ROOT:-/var/lib/seqs/fetched}"
 FETCH_SALT_TREE="${FETCH_ROOT}/salt"
 FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
-GNOSIS_UPDATE_POLICY="${SEQS_GNOSIS_UPDATE_POLICY:-/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy}"
+POLICY_DIR="${SEQS_POLICY_DIR:-/etc/qubes/policy.d}"
+GNOSIS_UPDATE_POLICY="${POLICY_DIR}/20-seqs-gnosisvpn-updates.policy"
 GNOSIS_UPDATE_PROXY="seqs-gnosisvpn-update-proxy"
 GNOSIS_PROXY_CREATED=0
 # Largest archive accepted from the repository qube (SEQS's is below 1 MB).
@@ -45,11 +46,11 @@ SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'
 # operator or another tool -- never overwrite without confirmation.
 MANAGED_MARKER="Managed by SEQS"
 POLICY_FILES=(
-	"/etc/qubes/policy.d/00-seqs-qr-input-deny.policy"
-	"/etc/qubes/policy.d/01-seqs-qr-filecopy.policy"
-	"/etc/qubes/policy.d/28-browser-suppress.policy"
-	"/etc/qubes/policy.d/29-browser.policy"
-	"/etc/qubes/policy.d/30-user-input.policy"
+	"${POLICY_DIR}/00-seqs-qr-input-deny.policy"
+	"${POLICY_DIR}/01-seqs-qr-filecopy.policy"
+	"${POLICY_DIR}/28-browser-suppress.policy"
+	"${POLICY_DIR}/29-browser.policy"
+	"${POLICY_DIR}/30-user-input.policy"
 )
 
 # ---- Helpers ----------------------------------------------------------------
@@ -137,7 +138,7 @@ showWorkflow() {
 }
 
 canonicalizeSelection() {
-	local raw name instance
+	local name instance
 	local -a requested=()
 	if [ "${SELECT_ALL}" -eq 1 ]; then
 		SELECTED_NAMES=("@all")
@@ -146,8 +147,7 @@ canonicalizeSelection() {
 	fi
 	IFS=',' read -r -a requested <<< "${SELECT_QUBES}"
 	[ "${#requested[@]}" -gt 0 ] || die "--qubes requires a comma-separated list"
-	for raw in "${requested[@]}"; do
-		name="${raw}"
+	for name in "${requested[@]}"; do
 		[[ "${name}" =~ ${SAFE_NAME} ]] \
 			|| die "unsafe or empty qube base name in --qubes: '${name}'"
 	done
@@ -162,15 +162,10 @@ canonicalizeSelection() {
 }
 
 treeHash() {
-	local listing
-	listing=$(mktemp /tmp/seqs-tree-hash.XXXXXX) || die "mktemp failed"
-	if ! sudo find "${SALT_TREE}" "${PILLAR_TREE}" -type f ! -name .seqs-complete -print0 \
-		| LC_ALL=C sort -z | sudo xargs -0 sha256sum > "${listing}"; then
-		rm -f "${listing}"
-		die "could not hash staged tree"
-	fi
-	sha256sum "${listing}" | awk '{print $1}'
-	rm -f "${listing}"
+	local sums
+	sums="$(sudo find "${SALT_TREE}" "${PILLAR_TREE}" -type f ! -name .seqs-complete -print0 \
+		| LC_ALL=C sort -z | sudo xargs -0 sha256sum)" || die "could not hash staged tree"
+	sha256sum <<< "${sums}" | awk '{print $1}'
 }
 
 writeBuildIntent() {
@@ -425,7 +420,7 @@ confirmPolicyTakeover() {
 
 	local p unmanaged=()
 	for p in "${POLICY_FILES[@]}"; do
-		if [ "${usb_applies}" -eq 0 ] && [ "${p}" = "/etc/qubes/policy.d/30-user-input.policy" ]; then
+		if [ "${usb_applies}" -eq 0 ] && [ "${p}" = "${POLICY_DIR}/30-user-input.policy" ]; then
 			continue
 		fi
 		if [ -e "${p}" ] && ! isManaged "${p}"; then
