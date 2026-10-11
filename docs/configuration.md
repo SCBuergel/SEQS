@@ -60,16 +60,14 @@ claude-code  dev-full  wallet-ledger  wallet-trezor
 
 Names are case-sensitive and must be passed without the generated `A-` or `Z-`
 prefix. A postfix must also be a safe qube-name fragment; SEQS inserts the
-separating `-`. On a new machine, include `brave` in the first selection because the
-default browser-handoff policy targets `A-brave`. Later partial builds may omit
-it once `A-brave` already exists. A postfixed `A-brave-alpha` does not replace
-that canonical browser target, so `A-brave` must already exist or be built in
-a separate canonical run.
+separating `-`. A selection with a qube that hands links to the browser qube
+needs `A-brave` too; see
+[Browser-link handoff requires `A-brave`](#browser-link-handoff-requires-a-brave).
 
 | Component | What it installs |
 |---|---|
 | `adb`          | Android Debug Bridge + `pv` (Debian apt) + chunked, resumable `/usr/bin/adb-pull` helper |
-| `brave`        | Brave browser (apt repo, embedded verified key) |
+| `brave`        | Brave browser (apt repo, embedded verified key); asks once per qube for a keyring password, which may be empty |
 | `bitbox`       | BitBoxApp `.deb` (GPG-verified) |
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
@@ -100,10 +98,10 @@ flags:
   wallet/vault qubes.
 - `'no_handoff': True` — disables the browser-link handoff for that qube, both
   at the qube's xdg config and via dom0 qrexec deny rules for `qubes.OpenURL`.
-  For `offline` qubes, dom0 also denies `qubes.OpenInVM` and every other
-  service that the Qubes default policy lets into a disposable without asking,
-  so an offline qube cannot open files in other qubes or start a disposable;
-  copy files with `qvm-copy` instead.
+  dom0 also denies `qubes.OpenInVM` and every other service that the Qubes
+  default policy lets into a disposable without asking, because a networked
+  disposable would be another way out. Such a qube cannot open files in other
+  qubes or start a disposable; copy files with `qvm-copy` instead.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
@@ -122,8 +120,8 @@ flags:
   and all other traffic is dropped. Hostname entries also need `'dns'`. A build
   that selects the qube restores the list if its rules were changed by hand;
   removing the key and rebuilding restores the Qubes default (allow all). It
-  cannot be combined with `offline` and does not restrict qrexec services such
-  as link handoff.
+  cannot be combined with `offline`. Because the allowlist does not restrict
+  qrexec, it implies `no_handoff`, which closes link handoff and disposables.
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
   `cleanup_dirs` (by default `~/QubesIncoming` and `~/Downloads`). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
@@ -149,9 +147,8 @@ Duplicate names abort the pre-flight.
 
 Browser-suppression denies are additive across partial upgrades. When a run
 configures only new qubes, SEQS preserves exact `qubes.OpenURL` deny rules
-(and regenerates the matching disposable denies for preserved qubes without a
-NetVM) for
-existing qubes carrying the `seqs-managed` feature; it never imports arbitrary
+(and regenerates their disposable denies) for existing qubes carrying the
+`seqs-managed` feature; it never imports arbitrary
 policy text or allow rules. To deliberately forget a preserved entry, add its
 base name to `browser_suppress_prune`, for example:
 

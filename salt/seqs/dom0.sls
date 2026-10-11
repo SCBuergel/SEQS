@@ -395,9 +395,9 @@ seqs-policy-browser:
    config base names and affect preserved entries, not currently configured
    offline/no_handoff qubes. #}
 {% set suppressed = [] %}
-{#  Offline subjects additionally lose every route into a new disposable. #}
-{% set offline_subjects = [] %}
-{% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') %}
+{#  A firewall allowlist implies no_handoff: otherwise the qube could reach
+    the browser qube or a networked disposable past its own allowlist. #}
+{% for name, q in qmap.items() if q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
 {%   set subjects = [papp ~ name] %}
 {#   Disposables are separate policy subjects: a rule for A-x covers neither a
      disposable spawned from it (@dispvm:A-x) nor the named disposable D-x.
@@ -411,9 +411,6 @@ seqs-policy-browser:
 {%   endif %}
 {%   for vm in subjects %}
 {%     do suppressed.append(vm) %}
-{%     if q.get('offline') %}
-{%       do offline_subjects.append(vm) %}
-{%     endif %}
 {%   endfor %}
 {% endfor %}
 {% set suppress_policy = '/etc/qubes/policy.d/28-browser-suppress.policy' %}
@@ -435,14 +432,6 @@ seqs-policy-browser:
             and (concrete in inventory)
             and inventory.get(concrete, {}).get('managed') %}
 {%         do suppressed.append(vm) %}
-{#         A preserved qube is offline if its recorded recipe is offline in
-           the catalogue, so a drifted NetVM cannot weaken its denies, or if
-           it has no NetVM. An empty read also counts, which errs toward more
-           denies. #}
-{%         if qcatalog.get(inventory[concrete].recipe, {}).get('offline')
-              or salt['cmd.shell']('qvm-prefs -- ' ~ concrete ~ ' netvm 2>/dev/null') | trim in ['', 'None', 'none'] %}
-{%           do offline_subjects.append(vm) %}
-{%         endif %}
 {%       endif %}
 {%     endif %}
 {%   endfor %}
@@ -461,17 +450,17 @@ seqs-policy-browser-suppress:
         # the @anyvm allow rule -- the opt-out is enforced at the dom0
         # boundary, not just at each qube's xdg config. The @dispvm lines
         # state the disposable target explicitly.
-        # Offline qubes also lose every service that the Qubes default policy
-        # lets into a new disposable without asking (qubes.PdfConvert through
-        # the PDF converter's own default policy); that disposable normally
-        # has network access. Their unset default_dispvm is
-        # the primary control; these denies are a second layer.
+        # They also lose every service that the Qubes default policy lets
+        # into a new disposable without asking (qubes.PdfConvert through the
+        # PDF converter's own default policy): that disposable normally has
+        # network access, so it would be a way out past no_handoff and any
+        # firewall allowlist. For offline qubes the unset default_dispvm is
+        # the primary control and these denies are a second layer.
         # Existing strict denies for SEQS-managed qubes are preserved across
         # partial upgrades; use browser_suppress_prune to remove stale entries.
         {%- for vm in suppressed %}
         qubes.OpenURL  *  {{ vm }}  @anyvm  deny
         qubes.OpenURL  *  {{ vm }}  @dispvm  deny
-        {%- if vm in offline_subjects %}
         qubes.OpenInVM  *  {{ vm }}  @anyvm  deny
         qubes.OpenInVM  *  {{ vm }}  @dispvm  deny
         qubes.StartApp  *  {{ vm }}  @dispvm  deny
@@ -480,7 +469,6 @@ seqs-policy-browser-suppress:
         qubes.VMExec  *  {{ vm }}  @dispvm  deny
         qubes.VMExecGUI  *  {{ vm }}  @dispvm  deny
         qubes.PdfConvert  *  {{ vm }}  @dispvm  deny
-        {%- endif %}
         {%- endfor %}
 {% else %}
 # No offline/no_handoff qubes configured: remove only our managed policy.
@@ -661,8 +649,8 @@ seqs-network-provider-{{ name }}:
 # accept per entry. Entries were charset-validated in the pre-flight, so
 # the interpolations below cannot break out of the command line. Hostname
 # rules are resolved by the qubes-firewall service in the netvm, not in
-# dom0. qvm-firewall does NOT gate qrexec -- the OpenURL back-channel is
-# closed separately via no_handoff. The marker records the configured rules
+# dom0. qvm-firewall does NOT gate qrexec: a firewall key implies no_handoff,
+# whose denies close link handoff and the routes into networked disposables. The marker records the configured rules
 # and the rules Qubes reported after applying them, so a rerun is a no-op
 # only while both are unchanged: a config edit or a hand edit of the qube's
 # rules reapplies the allowlist.

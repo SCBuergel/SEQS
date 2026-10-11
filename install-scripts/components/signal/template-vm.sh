@@ -132,6 +132,6 @@ sudo apt-get install -y signal-desktop
 # See vscode/template-vm.sh for the rationale. The Pin-Priority allowlist
 # bounds which package names this repo can ship; chattr +i additionally
 # bounds what root-running maintainer scripts inside an allowlisted
-# package can do to the trust anchor at ${KEYRING}. Key rotation must
-# then go through `sudo chattr -i ${KEYRING}` + manual re-verify.
+# package can do to the trust anchor at ${KEYRING}. Key rotation needs the
+# pinned fingerprint updated after a manual re-verify.
 sudo chattr +i "${KEYRING}"

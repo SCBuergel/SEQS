@@ -161,9 +161,9 @@ EOF
 	# allowlisted brave-browser postinst doing
 	#     cp /usr/share/brave/something.gpg ${keyring}
 	# -- will fail loudly when it tries to overwrite this file. Legitimate
-	# key rotation must go through `sudo chattr -i ${keyring}` + manual
-	# re-verify against the three independent sources documented at the
-	# top of this file, then update BRAVE_KEY_FPRS.
+	# key rotation needs BRAVE_KEY_FPRS updated after a re-verify against the
+	# three independent sources documented at the top of this file; a rerun
+	# then unlocks and rewrites the keyring.
 	sudo chattr +i "${keyring}"
 }
 

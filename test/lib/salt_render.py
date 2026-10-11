@@ -83,11 +83,9 @@ class Scenario:
         top_content=None,        # contents of /srv/pillar/seqs/config.top
         selection="@all",        # runtime catalogue selection, one name per line
         recipes=None,            # name -> seqs-recipe feature of existing qubes
-        netvms=None,             # name -> netvm reported by qvm-prefs (default none)
         qubesd_up=True,          # False: the qube inventory query returns nothing
     ):
         self.recipes = dict(recipes or {})
-        self.netvms = dict(netvms or {})
         self.qubesd_up = qubesd_up
         self.existing_qubes = set(existing_qubes or [])
         # The base template is expected to exist on any real dom0 running SEQS.
@@ -123,9 +121,6 @@ class Scenario:
                 "%s %s %s" % (n, "1" if n in self.tagged_qubes else "0",
                               self.recipes.get(n, "-"))
                 for n in names)
-        m = re.search(r"qvm-prefs\s+--\s+(\S+)\s+netvm", cmd)
-        if m:
-            return self.netvms.get(m.group(1), "")
         if "/var/lib/seqs/selection" in cmd:
             return self.selection
         if "config.top" in cmd:

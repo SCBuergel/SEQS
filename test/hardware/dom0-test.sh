@@ -525,8 +525,13 @@ check() {
 				checkSetup app "${name}" "${recipe}"
 				checkMenu app "${name}" "${recipe}"
 				smoke "${name}" "${recipe}"
+				# An offline or no_handoff qube can hand nothing to the browser
+				# qube and start no disposable through any service the default
+				# policy allows: a networked disposable would be a way out.
 				if [ "$(catField "${recipe}" offline)" = "True" ] || [ "$(catField "${recipe}" no_handoff)" = "True" ]; then
-					refused "${name}" "${BROWSER_VM}" qubes.OpenURL
+					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM
+					refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
+						qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
 				fi
 				;;
 			disposable)
@@ -548,10 +553,6 @@ check() {
 				else
 					pass "${name}: cannot reach the internet"
 				fi
-				# An offline qube can open nothing elsewhere and start no
-				# disposable through any service the default policy allows.
-				refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
-					qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
 			fi
 		elif [ "${kind}" = "app" ] && isNone "${nv}"; then
 			fail "${name} should have network access but has no netvm"

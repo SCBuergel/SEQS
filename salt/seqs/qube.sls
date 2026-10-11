@@ -9,7 +9,7 @@
 {% set browser_desktop = seqs.get('browser_desktop', '') %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set timeout = seqs.get('component_timeout', 900) %}
-{% set no_handoff = spec.get('no_handoff', False) or spec.get('offline', False) %}
+{% set no_handoff = spec.get('no_handoff', False) or spec.get('offline', False) or spec.get('firewall') is not none %}
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
 
 {% if role not in ['template', 'app'] %}

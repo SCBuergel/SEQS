@@ -149,10 +149,10 @@ def test_dom0_happy_path():
             check("%s  *  %s  @dispvm  deny" % (service, subject) in suppress,
                   "%s to a disposable must be denied for %s" % (service, subject))
     check("qubes.OpenURL  *  A-wallet-ledger  @dispvm  deny" in suppress
-          and "qubes.OpenInVM  *  A-wallet-ledger" not in suppress
-          and "qubes.VMShell  *  A-wallet-ledger" not in suppress
-          and "qubes.StartApp  *  A-wallet-ledger" not in suppress,
-          "networked no_handoff qubes keep disposables, only the link handoff is denied")
+          and "qubes.OpenInVM  *  A-wallet-ledger  @anyvm  deny" in suppress
+          and "qubes.VMShell  *  A-wallet-ledger  @dispvm  deny" in suppress
+          and "qubes.PdfConvert  *  A-wallet-ledger  @dispvm  deny" in suppress,
+          "networked no_handoff qubes must not reach a networked disposable either")
     offline = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
     check("default_dispvm none" in offline,
           "an offline qube must lose its (networked) default disposable")
@@ -251,6 +251,8 @@ not.a.valid policy line
           "strict denies for existing managed qubes must survive a partial upgrade")
     check("@dispvm:A-old-wallet" in contents,
           "a preserved @dispvm: deny must survive when its template is managed")
+    check("qubes.VMShell  *  A-old-wallet  @dispvm  deny" in contents,
+          "a preserved networked no_handoff qube keeps its disposable denies")
     check("D-old-wallet" not in contents,
           "a D- deny must not be preserved when that disposable does not exist")
     check("A-unmanaged" not in contents,
@@ -265,18 +267,17 @@ not.a.valid policy line
           "explicit prune must remove only the named preserved deny")
 
 
-def test_dom0_partial_upgrade_keeps_offline_denies_after_drift():
-    case("dom0.sls: a partial run keeps the offline denies of a catalogue-offline qube whose netvm drifted")
+def test_dom0_partial_upgrade_keeps_disposable_denies():
+    case("dom0.sls: a partial run keeps every deny of a preserved qube, whatever its netvm")
     policy = "/etc/qubes/policy.d/28-browser-suppress.policy"
     sc = Scenario(
         selection="xournalpp", existing_qubes=["A-brave", "A-keepass"],
         tagged_qubes=["A-brave", "A-keepass"], recipes={"A-keepass": "keepass"},
-        netvms={"A-keepass": "sys-firewall"},
         file_contents={policy: "qubes.OpenURL * A-keepass @anyvm deny\n"})
     _, parsed = render_state("dom0", "dom0", sc)
     contents = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
     check("qubes.VMShell  *  A-keepass  @dispvm  deny" in contents,
-          "A-keepass is offline in the catalogue, so its disposable denies stay despite the drifted netvm")
+          "a preserved qube keeps its disposable denies")
 
 
 def test_dom0_refuses_unmanaged_qube():
@@ -723,6 +724,9 @@ def test_dom0_firewall_states():
     check("rpc.example.com" in txt and "dstports=443" in txt,
           "firewall rule should translate host:port into a qvm-firewall accept")
     unless = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", "unless")
+    suppress = state_arg(parsed, "seqs-policy-browser-suppress", "file.managed", "contents")
+    check("qubes.VMShell  *  A-wallet  @dispvm  deny" in suppress and "qubes.OpenURL  *  A-wallet  @anyvm  deny" in suppress,
+          "a firewall key implies no_handoff: no way past the allowlist through handoff or a disposable")
     check("qvm-firewall --raw -- A-wallet list" in unless,
           "the skip test must compare the qube's current rules, so hand edits are reverted")
     name = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", "name")

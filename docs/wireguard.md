@@ -148,8 +148,8 @@ client qube → A-wireguard → wg0 → VPN provider → Internet
 
 The catalogue marks `wireguard` as a `network_provider`. The dom0 Salt state
 creates `Z-wireguard` and `A-wireguard`, enables `provides_network`, and enables
-Qubes' `qubes-firewall` service. It also disables browser-link handoff for the
-provider qube.
+Qubes' `qubes-firewall` service. It also disables browser-link handoff and
+starting disposables for the provider qube.
 
 The template installs Debian's `wireguard-tools` package and the
 `seqs-wireguard-import` helper. Per-AppVM hooks and private configuration live

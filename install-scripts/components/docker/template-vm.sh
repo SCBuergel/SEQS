@@ -136,8 +136,8 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 # See vscode/template-vm.sh for the rationale. chattr +i bounds what a
 # root-running maintainer script in any of the allowlisted docker-* /
 # containerd.io packages can do to the trust anchor at ${KEYRING};
-# legitimate key rotation must then go through `sudo chattr -i ${KEYRING}`
-# + manual re-verify against the three independent sources documented above.
+# legitimate key rotation needs the pinned fingerprint updated after a
+# re-verify against the three independent sources documented above.
 sudo chattr +i "${KEYRING}"
 
 # Add the user to the docker group. NOTE: docker-group membership is equivalent
