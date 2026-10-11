@@ -8,7 +8,7 @@ Apply the ones you want by hand.
 - [`delete-vms.sh` — rebuild a qube from scratch](#delete-vmssh)
 - [Sync clock in the base template](#sync-clock-in-the-base-template)
 - [WireGuard bandwidth monitor in the tray](#wireguard-bandwidth-monitor-in-the-tray)
-- [CPU pinning for `sys-gnosisvpn`](#cpu-pinning-for-sys-gnosisvpn)
+- [CPU pinning for `A-gnosisvpn`](#cpu-pinning-for-a-gnosisvpn)
 - [Firewall between app VMs](#firewall-between-app-vms)
 - [Get rid of lags in LibreOffice](#get-rid-of-lags-in-libreoffice)
 - [Reliably copy large files from/to an Android phone](#reliably-copy-large-files-fromto-an-android-phone)
@@ -18,13 +18,8 @@ Apply the ones you want by hand.
 
 ## `delete-vms.sh`
 
-Cleans up VMs while debugging and setting up installers:
-```
-./delete-vms.sh keepass telegram wallets
-```
-Re-running `setup-qubes.sh` converges on its own — you only need `delete-vms.sh`
-to rebuild a qube from scratch (a deleted qube's `seqs-managed` marker and
-completion markers die with it, so the next run recreates it cleanly).
+Re-running `setup-qubes.sh` converges on its own; you need `delete-vms.sh`
+only to rebuild a qube from scratch. See [Deleting SEQS qubes](deleting-vms.md).
 
 ## Sync clock in the base template
 
@@ -82,15 +77,15 @@ the system tray:
      "$(human "$rx2")" "$(human "$delta_rx")"
    ```
 2. Create a `vpn_monitor.sh` script in dom0 which calls the bandwidth monitor on
-   the VPN app VM (assumes `sys-gnosis-vpn`):
+   the VPN app VM (assumes `A-gnosisvpn`):
    ```
-   qvm-run --pass-io "sys-gnosis-vpn" "bash ~/bw.sh"
+   qvm-run --pass-io "A-gnosisvpn" "bash ~/wg.sh"
    ```
 3. Add a generic monitor to the tray which runs the `vpn_monitor.sh` script
    above. Set the interval to **2s and not 1s**, otherwise the window manager
    might freeze!
 
-## CPU pinning for `sys-gnosisvpn`
+## CPU pinning for `A-gnosisvpn`
 
 The mixnet is CPU-intensive. This pins the qube to the two P-cores (physical
 cores 0 and 2) on the i7-1265U.
@@ -101,16 +96,16 @@ Create the pin script:
 ```bash
 cat > ~/pimpmyvpn.sh << 'EOF'
 #!/bin/bash
-xl vcpu-pin sys-gnosisvpn 0 0
-xl vcpu-pin sys-gnosisvpn 1 2
-xl sched-credit2 -d sys-gnosisvpn -w 512
+xl vcpu-pin A-gnosisvpn 0 0
+xl vcpu-pin A-gnosisvpn 1 2
+xl sched-credit2 -d A-gnosisvpn -w 512
 EOF
 chmod +x ~/pimpmyvpn.sh
 ```
 
 Set vCPU count:
 ```bash
-qvm-prefs sys-gnosisvpn vcpus 2
+qvm-prefs A-gnosisvpn vcpus 2
 ```
 
 Create the xenstore watcher:
@@ -120,10 +115,10 @@ sudo vim /usr/local/bin/watch-gnosisvpn.sh
 ```bash
 #!/bin/bash
 xenstore-watch /local/domain | while read event; do
-    if xl list sys-gnosisvpn &>/dev/null; then
-        xl vcpu-pin sys-gnosisvpn 0 0
-        xl vcpu-pin sys-gnosisvpn 1 2
-        xl sched-credit2 -d sys-gnosisvpn -w 512
+    if xl list A-gnosisvpn &>/dev/null; then
+        xl vcpu-pin A-gnosisvpn 0 0
+        xl vcpu-pin A-gnosisvpn 1 2
+        xl sched-credit2 -d A-gnosisvpn -w 512
     fi
 done
 ```
@@ -137,7 +132,7 @@ sudo vim /etc/systemd/system/watch-gnosisvpn.service
 ```
 ```ini
 [Unit]
-Description=Watch and pin sys-gnosisvpn CPUs
+Description=Watch and pin A-gnosisvpn CPUs
 After=xenstored.service
 
 [Service]
@@ -155,7 +150,7 @@ sudo systemctl enable --now watch-gnosisvpn.service
 
 **Verify**
 ```bash
-xl vcpu-list sys-gnosisvpn
+xl vcpu-list A-gnosisvpn
 # Affinity should show: 0 / all and 2 / all
 ```
 
@@ -262,14 +257,14 @@ sudo mount -o uid=1000,gid=1000,fmask=177,dmask=077 /dev/xvdi /mnt
 
 Install in dom0 via:
 ```
-sudo qubes-dom0-update qubes-template-debian-13-minimal
+qvm-template install debian-13-minimal
 ```
 
 These templates are [passwordless](https://www.qubes-os.org/doc/templates/minimal/#passwordless-root),
 which means all `sudo` commands can only happen via a special terminal opened
 from dom0 (for both template or app VM):
 ```
-qvm-run -u root A-barcode xterm
+qvm-run -u root <qube> xterm
 ```
 
 To give the app-VM user access to e.g. the webcam, run the following in the sudo

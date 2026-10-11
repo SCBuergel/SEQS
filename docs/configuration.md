@@ -117,6 +117,16 @@ flags:
 - `'network_provider': True` — enables `provides_network` and the
   `qubes-firewall` service on the app qube, allowing other qubes to select it
   as their NetVM. It cannot be combined with `offline` or `dispvm_template`.
+- `'firewall': [...]` — an outbound allowlist for the app qube: each entry is a
+  hostname or IPv4 address, `host:port` for one TCP port, `'dns'`, or `'icmp'`,
+  and all other traffic is dropped. Hostname entries also need `'dns'`. A build
+  that selects the qube restores the list if its rules were changed by hand;
+  removing the key and rebuilding restores the Qubes default (allow all). It
+  cannot be combined with `offline` and does not restrict qrexec services such
+  as link handoff.
+- `'preserve_incoming': True` — skips the boot and shutdown cleanup of
+  `cleanup_dirs` (by default `~/QubesIncoming` and `~/Downloads`). The shipped
+  `qr-staging` entry uses it to hold a received file while the computer is off.
 
 ## WireGuard NetVM
 
@@ -153,8 +163,8 @@ A qube that is still configured with `offline` or `no_handoff` remains denied
 even if named in the prune list. Remove that flag as well when intentionally
 re-enabling browser handoff.
 
-`delete-vms.sh <name>` removes the exact `A-<name>` browser deny immediately
-after the app qube is gone, without running a full build. It updates only a
+`delete-vms.sh <name>` removes the deny rules SEQS wrote for that qube
+immediately after it is gone, without running a full build. It updates only a
 policy carrying the `Managed by SEQS` marker; an unmarked policy is left
 unchanged with a warning for manual review.
 

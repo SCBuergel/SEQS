@@ -722,6 +722,14 @@ def test_dom0_firewall_states():
     txt, _ = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
     check("rpc.example.com" in txt and "dstports=443" in txt,
           "firewall rule should translate host:port into a qvm-firewall accept")
+    unless = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", "unless")
+    check("qvm-firewall --raw -- A-wallet list" in unless,
+          "the skip test must compare the qube's current rules, so hand edits are reverted")
+    name = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", "name")
+    check("qvm-firewall --raw -- A-wallet list; } > /var/lib/seqs/firewall/A-wallet" in name,
+          "the marker must record the rules Qubes reports after applying them")
+    check("reset" not in name and name.index("add --before 0 drop") < name.index("accept"),
+          "egress must be closed before the rules are replaced, never reset to allow-all")
 
 
 def test_dom0_network_provider():

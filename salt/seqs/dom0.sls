@@ -662,21 +662,25 @@ seqs-network-provider-{{ name }}:
 # the interpolations below cannot break out of the command line. Hostname
 # rules are resolved by the qubes-firewall service in the netvm, not in
 # dom0. qvm-firewall does NOT gate qrexec -- the OpenURL back-channel is
-# closed separately via no_handoff. The marker file makes an unchanged
-# ruleset a no-op on re-runs; editing the config rewrites it.
+# closed separately via no_handoff. The marker records the configured rules
+# and the rules Qubes reported after applying them, so a rerun is a no-op
+# only while both are unchanged: a config edit or a hand edit of the qube's
+# rules reapplies the allowlist.
 seqs-firewall-{{ name }}:
   cmd.run:
     - name: |
         set -e
-        qvm-firewall -- {{ app }} reset
-        qvm-firewall -- {{ app }} del --rule-no 0
+        # Close egress first, then replace the rules in front of the drop, so
+        # the qube is never more open than before or after.
+        qvm-firewall -- {{ app }} add --before 0 drop
+        n="$(qvm-firewall --raw -- {{ app }} list | wc -l)"
+        for _ in $(seq 2 "$n"); do qvm-firewall -- {{ app }} del --rule-no 1; done
 {%     for r in fwrules %}
-        qvm-firewall -- {{ app }} add {{ r }}
+        qvm-firewall -- {{ app }} add --before {{ loop.index0 }} {{ r }}
 {%     endfor %}
-        qvm-firewall -- {{ app }} add drop
         mkdir -p /var/lib/seqs/firewall
-        printf '%s' '{{ fwmarker }}' > /var/lib/seqs/firewall/{{ app }}
-    - unless: test "$(cat /var/lib/seqs/firewall/{{ app }} 2>/dev/null)" = '{{ fwmarker }}'
+        { printf '%s\n' '{{ fwmarker }}'; qvm-firewall --raw -- {{ app }} list; } > /var/lib/seqs/firewall/{{ app }}
+    - unless: test "$(cat /var/lib/seqs/firewall/{{ app }} 2>/dev/null)" = "$(printf '%s\n' '{{ fwmarker }}'; qvm-firewall --raw -- {{ app }} list)"
     - require:
       - qvm: seqs-app-{{ name }}
 {%   elif salt['file.file_exists']('/var/lib/seqs/firewall/' ~ app) %}

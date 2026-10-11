@@ -154,9 +154,11 @@ table should target `1.1.1.1` and `8.8.8.8`. `/etc/resolv.conf` should still
 contain Qubes' synthetic addresses, name resolution should succeed, and the
 nftables counters should increase.
 
-In another terminal, confirm that translated DNS crosses the tunnel:
+In another terminal, confirm that translated DNS crosses the tunnel.
+`tcpdump` is not in the template; this install lasts until the qube restarts:
 
 ```bash
+sudo apt-get install -y tcpdump
 sudo tcpdump -ni wg0_gnosisvpn 'port 53'
 sudo tcpdump -ni eth0 'port 53'
 ```

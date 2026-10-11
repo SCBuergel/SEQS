@@ -1,8 +1,8 @@
 # Deleting SEQS qubes
 
 `delete-vms.sh` permanently deletes the app and template qubes belonging to a
-SEQS base name, including the data stored in them, and removes the corresponding
-SEQS-managed browser-suppression rule. Use it when intentionally removing a
+SEQS base name, including the data stored in them, and removes the deny rules
+SEQS wrote for them. Use it when intentionally removing a
 configured qube or when a clean rebuild is required; ordinary upgrades do not
 require deletion.
 
@@ -17,38 +17,34 @@ For a postfixed instance, pass its full generated base name: `gnosisvpn-alpha`
 targets `A-gnosisvpn-alpha` and `Z-gnosisvpn-alpha`, while leaving the
 canonical `gnosisvpn` instance untouched.
 
+The helper runs in dom0. Copy the committed version from the repository qube
+and read it; replace `disp1234` with that qube's name. Keep `2>/dev/null`, so
+that the source qube's error output cannot reach the dom0 terminal:
+
+```bash
+qvm-run -p disp1234 'git -C /home/user/SEQS show HEAD:delete-vms.sh' 2>/dev/null > ~/d.sh && chmod 700 ~/d.sh
+less ~/d.sh
+```
+
 Review what would happen without changing anything:
 
 ```bash
-./delete-vms.sh --dry-run keepass
+~/d.sh --dry-run keepass
 ```
 
-The output lists the matching qubes and any browser-policy entry that would be
-removed. Check every name, then perform the deletion:
+The output lists the matching qubes, the qubes whose network would be
+disconnected, and the policy entries that would be removed. Check every name,
+then perform the deletion:
 
 ```bash
-./delete-vms.sh keepass
+~/d.sh keepass
 ```
 
 Multiple base names can be handled in one invocation:
 
 ```bash
-./delete-vms.sh keepass telegram wallet-ledger
+~/d.sh keepass telegram wallet-ledger
 ```
-
-When running the helper in dom0, first copy it from the reviewed repository
-source and inspect it:
-
-```bash
-qvm-run -p disp1234 'cat /home/user/SEQS/delete-vms.sh' 2>/dev/null > ./d.sh && chmod 700 ./d.sh
-./d.sh --dry-run keepass
-./d.sh keepass
-```
-
-Replace `disp1234` with the disposable's name and adjust the repository path if
-needed. Keep
-`2>/dev/null`: source-qube stderr must not reach the dom0 terminal during this
-copy.
 
 For permanent removal from this machine, do not select that base name in later
 builds. The catalogue may remain unchanged: availability is separate from the
@@ -75,8 +71,9 @@ For each supplied base name, the helper:
    (`D-`) before the `A-` template it derives from, and `A-` before its `Z-`
    template — permanently removing the qube and its volumes. A removal failure
    stops the script.
-6. Only after `A-<name>` is absent, removes its exact rule from
-   `/etc/qubes/policy.d/28-browser-suppress.policy`:
+6. Only after `A-<name>` is absent, removes from
+   `/etc/qubes/policy.d/28-browser-suppress.policy` the `deny` rules that SEQS
+   wrote for `A-<name>`, `@dispvm:A-<name>`, and `D-<name>`, such as:
 
    ```text
    qubes.OpenURL  *  A-<name>  @anyvm  deny
@@ -87,8 +84,8 @@ marker. The helper rewrites it through a same-directory temporary, preserves
 its ownership, permissions, and security context when supported, and replaces
 it atomically. It never removes arbitrary policy lines or modifies an unmarked
 file; an unmarked stale rule produces a warning for manual review. If the qubes
-are already absent, running the helper still cleans an exact stale rule from a
-marked policy.
+are already absent, running the helper still cleans stale rules from a marked
+policy.
 
 `--dry-run` performs the same discovery but does not kill qubes, remove volumes,
 or rewrite policy files.

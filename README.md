@@ -33,7 +33,7 @@ from one reviewed configuration.
    want:
 
    ```bash
-   qvm-run -p disp1234 'cd SEQS && git show HEAD:setup-qubes.sh' > ~/s.sh && chmod 700 ~/s.sh
+   qvm-run -p disp1234 'cd SEQS && git show HEAD:setup-qubes.sh' 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
    ~/s.sh --repo-vm disp1234 --qubes brave,signal,keepass
    ```
 

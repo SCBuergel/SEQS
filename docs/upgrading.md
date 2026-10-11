@@ -211,13 +211,12 @@ intend to destroy its qubes, copy the reviewed helper into dom0 and inspect
 with a dry run:
 
 ```bash
-qvm-run -p seqs-repo "cat /home/user/SEQS/delete-vms.sh" 2>/dev/null > ~/seqs-delete-vms.sh
-chmod 700 ~/seqs-delete-vms.sh
-~/seqs-delete-vms.sh --dry-run <base-name>
+qvm-run -p seqs-repo "git -C /home/user/SEQS show HEAD:delete-vms.sh" 2>/dev/null > ~/d.sh && chmod 700 ~/d.sh
+~/d.sh --dry-run <base-name>
 ```
 
-The destructive form removes both `A-<base-name>` and `Z-<base-name>` and their
-data. Use it only after backups and explicit review. Rebuilding a qube is not a
+The destructive form removes `D-<base-name>` (if it exists), `A-<base-name>`,
+and `Z-<base-name>` with their data. Use it only after backups and explicit review. Rebuilding a qube is not a
 routine upgrade step.
 
 ## Example: add USB/QR support to an existing desktop

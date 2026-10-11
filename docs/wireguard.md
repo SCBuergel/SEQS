@@ -21,10 +21,11 @@ has `provides_network` enabled, but it does not have a VPN configuration yet.
 ### 2. Transfer a WireGuard configuration
 
 Use Qubes' **Copy to Other AppVM** action to copy a provider `.conf` file to
-`A-wireguard`. From a source qube's terminal, the equivalent command is:
+`A-wireguard`. Alternatively, run the following in a terminal of the source
+qube and choose `A-wireguard` in the dialog that opens:
 
 ```bash
-qvm-copy-to-vm A-wireguard provider.conf
+qvm-copy provider.conf
 ```
 
 Qubes creates `~/QubesIncoming/SOURCE_QUBE/` in `A-wireguard` when the file

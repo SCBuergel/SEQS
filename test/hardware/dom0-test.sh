@@ -443,18 +443,19 @@ smoke() {
 	done
 }
 
-# refusesHandoff VM -- an offline qube must not be able to open a link or a
-# file elsewhere. A refusal comes back at once; a timeout would mean a
-# confirmation dialog appeared instead, which is also a failure.
-refusesHandoff() {
-	local vm="$1" svc out
-	for svc in qubes.OpenURL qubes.OpenInVM; do
+# refused VM TARGET SERVICE... -- each qrexec call from VM to TARGET must be
+# refused. A refusal comes back at once; a timeout would mean a confirmation
+# dialog appeared instead, which is also a failure.
+refused() {
+	local vm="$1" target="$2" svc out
+	shift 2
+	for svc in "$@"; do
 		out="$(qvm-run --pass-io --no-gui "${vm}" \
-			"echo https://example.com | timeout 20 qrexec-client-vm @dispvm ${svc}; echo rc=\$?" 2>&1 </dev/null)"
+			"echo https://example.com | timeout 20 qrexec-client-vm ${target} ${svc}; echo rc=\$?" 2>&1 </dev/null)"
 		if grep -qi "refused" <<< "${out}" && ! grep -q "rc=124" <<< "${out}"; then
-			pass "${vm}: ${svc} to a disposable is refused"
+			pass "${vm}: ${svc} to ${target} is refused"
 		else
-			fail "${vm}: ${svc} to a disposable was not refused: $(tail -n 2 <<< "${out}" | tr '\n' ' ')"
+			fail "${vm}: ${svc} to ${target} was not refused: $(tail -n 2 <<< "${out}" | tr '\n' ' ')"
 		fi
 	done
 }
@@ -524,6 +525,9 @@ check() {
 				checkSetup app "${name}" "${recipe}"
 				checkMenu app "${name}" "${recipe}"
 				smoke "${name}" "${recipe}"
+				if [ "$(catField "${recipe}" offline)" = "True" ] || [ "$(catField "${recipe}" no_handoff)" = "True" ]; then
+					refused "${name}" "${BROWSER_VM}" qubes.OpenURL
+				fi
 				;;
 			disposable)
 				checkSetup disposable "${name}" "${recipe}"
@@ -544,7 +548,10 @@ check() {
 				else
 					pass "${name}: cannot reach the internet"
 				fi
-				refusesHandoff "${name}"
+				# An offline qube can open nothing elsewhere and start no
+				# disposable through any service the default policy allows.
+				refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
+					qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
 			fi
 		elif [ "${kind}" = "app" ] && isNone "${nv}"; then
 			fail "${name} should have network access but has no netvm"

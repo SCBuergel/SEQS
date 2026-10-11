@@ -310,13 +310,12 @@ already reviewed, and it is root-owned so nothing can alter it before the build
 reads it. In dom0:
 
 1. **Staged matches fetched.** Both use the same layout, so compare them directly.
-   Use `sudo` (the tree is root-owned, and `/srv` may not be traversable
-   otherwise); exclude the `.seqs-complete` marker that staging adds, exactly as
-   the runner's own preview does:
+   Exclude the `.seqs-complete` marker that staging adds, exactly as the
+   runner's own preview does:
 
    ```bash
-   sudo diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/salt   /srv/salt/seqs
-   sudo diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/pillar /srv/pillar/seqs
+   diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/salt   /srv/salt/seqs
+   diff -r --exclude=.seqs-complete /var/lib/seqs/fetched/pillar /srv/pillar/seqs
    ```
 
    No output means the staged files are byte-for-byte the fetched tree you

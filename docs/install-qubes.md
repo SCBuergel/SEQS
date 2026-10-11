@@ -35,11 +35,12 @@ Summary:
    gpg --edit-key 0x36879494    # then type: trust, 5, y, quit
    gpg --fetch-keys https://keys.qubes-os.org/keys/qubes-release-X-signing-key.asc
    ```
-   (replace `X` with the major release number of the ISO you downloaded)
+   (`X` is `4.3` for Qubes 4.3, which has its own release signing key, and `4`
+   for Qubes 4.0 to 4.2)
 4. Verify the ISO against its detached signature (download the matching `.asc`
    from the same downloads page):
    ```
-   gpg --verify Qubes-RX.X-x86_64.iso.asc Qubes-RX.X-x86_64.iso
+   gpg --verify Qubes-R<version>-x86_64.iso.asc Qubes-R<version>-x86_64.iso
    ```
    A `Good signature from "Qubes OS Release X Signing Key"` line — and **no
    warning about the key not being certified** — confirms the ISO is authentic.

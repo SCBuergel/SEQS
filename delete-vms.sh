@@ -3,7 +3,7 @@
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
-# Removes matching D-/A-/Z- qubes and their exact SEQS-managed browser deny;
+# Removes matching D-/A-/Z- qubes and the SEQS deny rules written for them;
 # run with --help and use --dry-run first.
 
 # Prefixes to check for each configured base name. Ordered by dependency so
@@ -27,8 +27,8 @@ Usage: $0 [--dry-run] <name> [<name> ...]
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
 any qube called D-<name>, A-<name>, or Z-<name>. Qubes using a match as their
 NetVM are preserved but disconnected (netvm set to none). After A-<name> is
-absent, also removes its exact deny from the SEQS-managed browser-suppression
-policy. Unmarked policy files are never changed.
+absent, also removes the SEQS deny rules for D-/A-/@dispvm:A-<name> from the
+SEQS-managed browser-suppression policy. Unmarked policy files are never changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
