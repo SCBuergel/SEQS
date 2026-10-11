@@ -146,10 +146,21 @@ def test_dom0_happy_path():
     for vm in ("A-keepass", "A-qr-camera", "A-qr-display", "D-qr-display", "A-qr-staging",
                "A-wallet-ledger", "A-wireguard", "A-gnosisvpn"):
         sid = "seqs-handoff-tag-" + vm
-        check(sid in parsed and "add seqs-no-handoff" in state_arg(parsed, sid, "cmd.run", "name"),
-              "%s must be tagged seqs-no-handoff" % vm)
-    check("del seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-A-signal", "cmd.run", "name"),
-          "a handoff qube must not carry the tag")
+        check(sid in parsed and state_arg(parsed, sid, "cmd.run", "name")
+              == "qvm-tags -- %s add seqs-no-handoff && qvm-tags -- %s del seqs-handoff" % (vm, vm),
+              "%s must be tagged seqs-no-handoff and lose seqs-handoff" % vm)
+    check(state_arg(parsed, "seqs-handoff-tag-A-signal", "cmd.run", "name")
+          == "qvm-tags -- A-signal add seqs-handoff && qvm-tags -- A-signal del seqs-no-handoff",
+          "a handoff qube must carry seqs-handoff and not seqs-no-handoff")
+    check(state_arg(parsed, "seqs-handoff-tag-A-keepass", "cmd.run", "unless")
+          == 't="$(qvm-tags -- A-keepass list)" && printf \'%s\\n\' "$t" | grep -qx seqs-no-handoff'
+             ' && ! printf \'%s\\n\' "$t" | grep -qx seqs-handoff',
+          "the tag state may be skipped only when the qube has exactly the wanted tag")
+    browser = state_arg(parsed, "seqs-policy-browser", "file.managed", "contents")
+    check("qubes.OpenURL  *  @tag:seqs-handoff  A-brave  allow" in browser,
+          "only qubes tagged seqs-handoff may hand links to the browser qube")
+    check("@anyvm" not in browser,
+          "qubes SEQS did not build must keep the Qubes default for link handoff")
     check(not unresolved_requisites(parsed), "tag states must require rendered states only")
     offline = state_arg(parsed, "seqs-offline-keepass", "cmd.run", "name")
     check("default_dispvm none" in offline,

@@ -174,10 +174,11 @@ such reference in a qube.
 
 ## Browser-link handoff requires `A-brave`
 
-The `seqs.dom0` state configures every non-browser qube to open web links in
-`browser_vm` (default `A-brave`) via the dom0 qrexec policy
-`qubes.OpenURL * @anyvm A-brave allow`. Offline and `no_handoff` qubes never
-hand links off, so a run that selects only such qubes (for example `keepass`
+The `seqs.dom0` state tags each SEQS qube without `offline`, `no_handoff`, or
+`firewall` as `seqs-handoff`; the dom0 policy
+`qubes.OpenURL * @tag:seqs-handoff A-brave allow` lets those open web links in
+`browser_vm` (default `A-brave`) without a prompt. Other qubes keep the Qubes
+default, which asks. Qubes with those flags never hand links off, so a run that selects only such qubes (for example `keepass`
 or the wallets) does not need the browser qube. For any other selected qube,
 the pre-flight refuses a `browser_vm` that is neither selected in the same run
 nor already existing. If you remove `brave` from `qube_catalog`, also change

@@ -374,19 +374,22 @@ seqs-policy-browser:
     - mode: '0644'
     - contents: |
         # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
-        # Link-handoff: any qube may open http/https links in {{ browser_vm }}.
-        # Denies for qubes tagged seqs-no-handoff live in
+        # Link-handoff: SEQS qubes tagged seqs-handoff may open http/https
+        # links in {{ browser_vm }}. Other qubes keep the Qubes default, which
+        # asks. Denies for qubes tagged seqs-no-handoff live in
         # 28-browser-suppress.policy, which is evaluated first.
-        qubes.OpenURL  *  @anyvm  {{ browser_vm }}  allow
+        qubes.OpenURL  *  @tag:seqs-handoff  {{ browser_vm }}  allow
 
-{# ── No-handoff tag. Offline, no_handoff, and firewalled qubes carry the tag
-     seqs-no-handoff, and 28-browser-suppress.policy denies by that tag. A
+{# ── Handoff tags. Offline, no_handoff, and firewalled qubes carry the tag
+     seqs-no-handoff, and 28-browser-suppress.policy denies by that tag; the
+     other SEQS qubes carry seqs-handoff, which 29-browser.policy allows. A
      disposable inherits its template's tags when it is created, so the denies
      also cover every disposable started from such a qube, named or not. Every
      SEQS-managed app qube and named disposable is tagged from its catalogue
      recipe, selected or not, so a partial run never leaves one unprotected;
      a qube built before SEQS recorded recipes falls back to its base name.
-     A selected qube without the flag loses the tag. #}
+     A qube never carries seqs-handoff without its flags allowing it; while a
+     state swaps the tags, the deny in 28- wins. #}
 {% set handoff_tags = {} %}
 {% for vm, info in inventory.items() if info.managed and vm | regex_match(name_re) is not none %}
 {%   set base = vm[papp | length:] if papp and vm.startswith(papp) else (vm[pdvm | length:] if pdvm and vm.startswith(pdvm) else '') %}
@@ -407,10 +410,11 @@ seqs-policy-browser:
                              webcam_scanner_qube: {'want': true, 'require': 'cmd: seqs-qr-scanner'}}) %}
 {% endif %}
 {% for vm, t in handoff_tags.items() %}
+{%   set keep, drop = ('seqs-no-handoff', 'seqs-handoff') if t.want else ('seqs-handoff', 'seqs-no-handoff') %}
 seqs-handoff-tag-{{ vm }}:
   cmd.run:
-    - name: qvm-tags -- {{ vm }} {{ 'add' if t.want else 'del' }} seqs-no-handoff
-    - {{ 'unless' if t.want else 'onlyif' }}: qvm-tags -- {{ vm }} list | grep -qx seqs-no-handoff
+    - name: qvm-tags -- {{ vm }} add {{ keep }} && qvm-tags -- {{ vm }} del {{ drop }}
+    - unless: t="$(qvm-tags -- {{ vm }} list)" && printf '%s\n' "$t" | grep -qx {{ keep }} && ! printf '%s\n' "$t" | grep -qx {{ drop }}
 {%   if t.require %}
     - require:
       - {{ t.require }}

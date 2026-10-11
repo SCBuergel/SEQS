@@ -472,6 +472,23 @@ hasTag() {
 		&& pass "$1: tagged seqs-no-handoff" || fail "$1: not tagged seqs-no-handoff"
 }
 
+# policyDecision SERVICE SOURCE TARGET -- what dom0's qrexec policy decides,
+# evaluated without running anything: AllowResolution, AskResolution, or
+# AccessDenied.
+policyDecision() {
+	python3 - "$@" 2>/dev/null <<'PY'
+import pathlib, sys
+from qrexec.policy.parser import FilePolicy, Request
+from qrexec.utils import get_system_info
+try:
+    r = FilePolicy(policy_path=pathlib.Path("/etc/qubes/policy.d")).evaluate(
+        Request(sys.argv[1], "+", sys.argv[2], sys.argv[3], system_info=get_system_info()))
+    print(type(r).__name__)
+except Exception as e:
+    print(type(e).__name__)
+PY
+}
+
 # unnamedDisposableRefused TEMPLATE -- a disposable started by hand from a
 # disposable template inherits the tag, so its link handoff is refused too.
 unnamedDisposableRefused() {
@@ -500,7 +517,7 @@ qrRoundTrip() {
 }
 
 check() {
-	local kind name recipe flags tpl klass nv dv ours started=()
+	local kind name recipe flags tpl klass nv dv d ours started=()
 	local targets="${STATE_DIR}/targets"
 	sudo test -r "${targets}" || { fail "${targets} missing -- the dom0 state did not run"; return 1; }
 	if sudo grep -qx 'result=success' "${STATE_DIR}/last-run" 2>/dev/null; then
@@ -560,6 +577,10 @@ check() {
 					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM
 					refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
 						qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
+				elif [ "${name}" != "${BROWSER_VM}" ]; then
+					d="$(policyDecision qubes.OpenURL "${name}" "${BROWSER_VM}")"
+					[ "${d}" = AllowResolution ] && pass "${name}: policy allows links to ${BROWSER_VM}" \
+						|| fail "${name}: policy gives ${d:-nothing} for links to ${BROWSER_VM}"
 				fi
 				;;
 			disposable)
@@ -600,6 +621,11 @@ check() {
 			fail "${name} exists without the SEQS marker"
 		fi
 	done
+	# A qube SEQS did not build keeps the Qubes default for link handoff,
+	# which asks, rather than the silent allow that SEQS qubes get.
+	d="$(policyDecision qubes.OpenURL sys-firewall "${BROWSER_VM}")"
+	[ "${d}" = AskResolution ] && pass "sys-firewall: links to ${BROWSER_VM} need the Qubes prompt" \
+		|| fail "sys-firewall: policy gives ${d:-nothing} for links to ${BROWSER_VM}, expected the Qubes default ask"
 	if grep -q "^app A-qr-display " < <(sudo cat "${targets}") && grep -q "^app A-qr-camera " < <(sudo cat "${targets}"); then
 		qrRoundTrip
 		qvm-shutdown -- A-qr-display A-qr-camera >/dev/null 2>&1 || true
