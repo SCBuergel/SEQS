@@ -156,6 +156,10 @@ def test_dom0_happy_path():
           == 't="$(qvm-tags -- A-keepass list)" && printf \'%s\\n\' "$t" | grep -qx seqs-no-handoff'
              ' && ! printf \'%s\\n\' "$t" | grep -qx seqs-handoff',
           "the tag state may be skipped only when the qube has exactly the wanted tag")
+    for sid, f in (("seqs-policy-qr-input-deny", "00-seqs-qr-input-deny"), ("seqs-policy-qr-filecopy", "01-seqs-qr-filecopy")):
+        check(state_arg(parsed, sid, "cmd.run", "onlyif")
+              == "head -n 1 /etc/qubes/policy.d/%s.policy | grep -q '^# Managed by SEQS'" % f,
+              "with QR disabled, %s is removed only when SEQS wrote it (header on line 1)" % f)
     browser = state_arg(parsed, "seqs-policy-browser", "file.managed", "contents")
     check("qubes.OpenURL  *  @tag:seqs-handoff  A-brave  allow" in browser,
           "only qubes tagged seqs-handoff may hand links to the browser qube")
@@ -953,6 +957,29 @@ def test_qube_validation_catches_bad_component():
     _, parsed = render_state("qube", "Z-brave", pillar_seqs=bad)
     check("seqs-qube-validation-failed" in parsed,
           "an unsafe component name must fail in-qube validation")
+
+
+
+BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
+                     "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]
+
+
+def test_cleanup_paths_never_name_home():
+    case("dom0.sls + qube.sls: cleanup paths must name something strictly inside /home/user")
+    for path in BAD_CLEANUP_PATHS:
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["cleanup_dirs"] = [{"mode": "folder", "path": path}]
+        _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+        check("seqs-validation-failed" in parsed, "dom0 must reject cleanup path %r" % path)
+        qube = copy.deepcopy(render_pillar("Z-brave"))
+        qube["cleanup_dirs"] = [{"mode": "folder", "path": path}]
+        _, parsed = render_state("qube", "Z-brave", pillar_seqs=qube)
+        check("seqs-qube-validation-failed" in parsed, "the qube must reject cleanup path %r" % path)
+    for path in ("/home/user/Downloads", "/home/user/.cache/x"):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["cleanup_dirs"] = [{"mode": "contents", "path": path}]
+        _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+        check("seqs-validation-failed" not in parsed, "dom0 must accept cleanup path %r" % path)
 
 
 def main():

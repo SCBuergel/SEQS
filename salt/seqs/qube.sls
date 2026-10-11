@@ -46,8 +46,8 @@ seqs-noop:
 {% if role == 'template' %}
 {%   for e in cleanup_dirs %}
 {%     if e.get('mode') not in ['folder', 'contents']
-          or e.get('path', '') | regex_match('^/home/user/[A-Za-z0-9._/-]+$') is none
-          or '..' in e.get('path', '') %}
+          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none
+          or '..' in e.get('path', '') or '/./' in e.get('path', '') ~ '/' %}
 {%       do errors.append("unsafe cleanup_dirs entry '" ~ e ~ "'") %}
 {%     endif %}
 {%   endfor %}

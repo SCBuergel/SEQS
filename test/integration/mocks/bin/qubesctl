@@ -54,7 +54,7 @@ PY
     fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
     if [ -n "$fail" ] && [[ "$args" == *"$fail"* ]]; then
       echo "$fail: ERROR (exit code 20, details in /var/log/qubes/mgmt-$fail.log)"
-      exit 20
+      exit "${SEQS_MOCK_FAIL_RC:-20}"
     fi
     echo "qube apply: Succeeded: 3  Failed: 0" ;;
   *)

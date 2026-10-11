@@ -70,6 +70,7 @@ For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint, 
 | BitBoxApp (ShiftCrypto) | `DD09E41309750EBFAE0DEF63509249B068D215AE` | `curl -fsSL https://bitbox.swiss/download/shiftcryptosec-509249B068D215AE.gpg.asc \| gpg --show-keys`; BitBox's own docs publish the fingerprint at <https://support.bitbox.swiss/en_US/verify-app-signature/verify-bitboxapp-signature-linux> |
 | Apache OpenOffice (Jim Jagielski) | `A93D62ECC3C8EA12DB220EC934EA76E6791485A8` | `curl -fsSL https://downloads.apache.org/openoffice/KEYS \| gpg --show-keys --with-colons \| grep A93D62EC`; also check `https://people.apache.org/keys/committer/jim.asc` |
 | Element | `12D4CD600C2240A9F4A82071D7B0B66941D01538` | `curl -fsSL https://packages.element.io/debian/element-io-archive-keyring.gpg \| gpg --show-keys` then check both keyservers by-fingerprint |
+| GnosisVPN | `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, and SHA-256 `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb` for `gnosisvpn_0.95.2_amd64.deb` | `gpg --show-keys install-scripts/components/gnosisvpn/gnosisvpn-public-key.asc`, and `curl -fsSL https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb \| sha256sum`; the key comes only from the GnosisVPN project, so confirm the fingerprint through a channel of your own |
 
 Each component's `template-vm.sh` header also documents the three sources it was cross-checked against and the verification date — read it.
 
@@ -86,7 +87,7 @@ When you run `setup-qubes.sh`:
 
 2. **The pre-flight validation** runs inside `qubesctl state.apply seqs.dom0` and checks everything before anything is changed: base template exists, `browser_vm` resolves, every component directory exists, extension IDs are well-formed, no duplicate qube names, cleanup paths are in-bounds, prefixes match the `.top` globs, and no same-named qube exists that SEQS didn't create. A failure shows as `seqs-validation-failed` with the reasons in its comment — *no* qubes are built before this passes.
 
-3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file (the QR containment policies when configured, `28-browser-suppress`, `29-browser`, or `30-user-input` under `/etc/qubes/policy.d/`) exists but was NOT written by SEQS (no `Managed by SEQS` header — e.g. hand-edited or from another tool), the runner prints its full contents and **blocks** on:
+3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file under `/etc/qubes/policy.d/` (`00-seqs-qr-input-deny`, `01-seqs-qr-filecopy`, `28-browser-suppress`, `29-browser`, or, on Qubes 4.3 with `sys-usb`, `30-user-input`) exists without `# Managed by SEQS` as its first line — e.g. hand-edited or from another tool — the runner prints its full contents and **blocks** on:
 
    `Overwrite the file(s) above? [y/N]`
 
@@ -97,20 +98,15 @@ When you run `setup-qubes.sh`:
    no. No state is applied before this gate; SEQS-written policies re-converge
    silently on re-runs, which is expected.
 
-4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm and no default disposable on A-keepass.` — the runner refuses to provision anything if an `offline` qube still has a netvm or a default disposable (`default_dispvm`), which a qube can start without a prompt through `qubes.OpenInVM` and similar services; unsetting it is the primary control. `/etc/qubes/policy.d/28-browser-suppress.policy` must contain, for the source `@tag:seqs-no-handoff`, `qubes.OpenURL` and `qubes.OpenInVM` denies to `@anyvm` and `@dispvm`, and `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert` denies to `@dispvm`.
+4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm and no default disposable on <every selected offline app qube and named disposable>.` — the runner refuses to provision anything if an `offline` qube still has a netvm or a default disposable (`default_dispvm`), which a qube can start without a prompt through `qubes.OpenInVM` and similar services; unsetting it is the primary control. `/etc/qubes/policy.d/28-browser-suppress.policy` must contain, for the source `@tag:seqs-no-handoff`, `qubes.OpenURL` and `qubes.OpenInVM` denies to `@anyvm` and `@dispvm`, and `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert` denies to `@dispvm`.
 
-5. Then, during the per-qube provisioning (`qubesctl --skip-dom0 --targets=…`), watch for the verification lines in the salt output. The signed-artifact lines all come from the shared `verify_detached_sig` helper and share a uniform `signature OK -- <file> signed by <fingerprint>` shape:
-    - `Brave keyring verified -- DBF1A116… 47D32A74… B2A3DCA3…`
-    - `KeePassXC signing key verified: BF5A669F…` followed by `signature OK -- KeePassXC-2.7.12-x86_64.AppImage signed by BF5A669F2272CF4324C1FDA8CFB4C2166397D0D2`
-    - `Signal signing key verified: DBA36B…`
-    - `Docker signing key verified: 9DC858…`
-    - `Microsoft signing key verified: BC528686…`
-    - `Element signing key verified: 12D4CD…`
-    - `signature OK -- bitbox_4.51.0_amd64.deb signed by DD09E41309750EBFAE0DEF63509249B068D215AE`
-    - `signature OK -- Apache_OpenOffice_4.1.16_Linux_x86-64_install-deb_en-US.tar.gz signed by A93D62ECC3C8EA12DB220EC934EA76E6791485A8`
-    - For each `brave-extension-*`: `installing Brave extension '<name>' (<id>) into Z-…`
+5. Then provision with `--verbose`, which shows each qube's own output, and watch for the verification lines:
+    - `Brave keyring verified -- <the three pinned fingerprints>`
+    - `key verified: <pinned fingerprint>` for each imported repository or signing key (KeePassXC, Signal, Docker, VS Code, Element, BitBox, OpenOffice); compare it with the table above
+    - `signature OK -- <file> signed by <pinned fingerprint>` for each signed download, such as `KeePassXC-2.7.12-x86_64.AppImage`, `bitbox_4.51.0_amd64.deb`, and the OpenOffice archive
+    - `installing extension <id>` for each `brave-extension-*`
 
-6. Watch for verifier-rejection diagnostics. If `verify_detached_sig` ever fails, you will see exactly **one** of the following root-cause lines printed before that component's state fails — each maps to a concrete upstream condition:
+6. Watch for verifier-rejection diagnostics. If `verify_detached_sig` ever fails, `--verbose` output shows exactly **one** of the following root-cause lines printed before that component's state fails — each maps to a concrete upstream condition:
     - `rejected: gpg emitted BADSIG`         — the signature math failed; the artifact does not match the signature.
     - `rejected: gpg emitted ERRSIG`         — gpg could not complete verification (e.g. missing pubkey, broken sig packet).
     - `rejected: gpg emitted EXPSIG`         — the signature itself has expired (signature expiration time in the past).
@@ -122,7 +118,7 @@ When you run `setup-qubes.sh`:
 
    None of these are "rerun and hope." Each requires either a re-verify-from-three-sources of the new upstream key (§6) before bumping the pin, or treating the artifact as untrusted.
 
-7. Any `Result: False` in the salt output, any non-zero `Failed:` summary, or any line beginning with `ERROR:` is a hard stop — the runner reports these as failures even when `qubesctl`'s exit code doesn't. Don't keep going assuming the qube will work — read the failed state's comment and fix it, then re-run (re-runs converge; a finished component is skipped while its `/rw/config/seqs` marker matches the hash of its staged files).
+7. Any `Result: False` in the salt output, any non-zero `Failed:` summary, or any `<qube>: ERROR` line is a hard stop — the runner reports these as failures even when `qubesctl`'s exit code doesn't, prints the last error lines from that qube's log, and skips the app qubes of a failed template. Don't keep going assuming the qube will work — read the failed state's comment and fix it, then re-run (re-runs converge; a finished component is skipped while its `/rw/config/seqs` marker matches the hash of its staged files).
 
 ## 5. Spot-check the result
 
@@ -168,11 +164,11 @@ After install:
 - Before using QR transfer with a real secret, rehearse with disposable test data and confirm the trusted source and target independently display the same four groups of five ciphertext-fingerprint characters before GnuPG runs. The passphrase must be the only value written on paper; the expected fingerprint must not travel through the QR channel.
 - Open each app and confirm it actually launches. Versions in About dialogs match what's pinned in TRUST.md / the scripts.
 - In a terminal of any non-browser qube that is neither offline nor `no_handoff` (such as `A-signal`), run `qvm-open-in-vm A-brave https://example.com`, or click an http(s) link inside the qube; it should open in `A-brave`.
-- Reboot any app qube; afterwards `~/QubesIncoming` should be gone entirely and `~/Downloads` should still exist but be empty (the boot/shutdown cleanup service — `folder:` removes the directory, `contents:` empties it but keeps it). Confirm `/usr/sbin/seqs-cleanup` exists in the app qube (not just the template) and `systemctl status seqs-cleanup` is not failed.
+- Reboot any app qube other than `A-qr-staging`, which keeps its incoming files; afterwards `~/QubesIncoming` should be gone entirely and `~/Downloads` should still exist but be empty (the boot/shutdown cleanup service — `folder:` removes the directory, `contents:` empties it but keeps it). Confirm `/usr/sbin/seqs-cleanup` exists in the app qube (not just the template) and `systemctl status seqs-cleanup` is not failed.
 
 ## 6. Ongoing maintenance
 
-- **Key rotations**: when an upstream rotates its signing key, the install fails by design (fingerprint mismatch, or one of the `verify_detached_sig` "rejected: no VALIDSIG with primary-key fingerprint" / "rejected: no GOODSIG" lines from §4 step 4). Re-verify the new key against three independent sources (see TRUST.md for the pattern), then update the pin and the embedded key block in the component script. Don't bypass the check.
+- **Key rotations**: when an upstream rotates its signing key, the install fails by design (fingerprint mismatch, or one of the `verify_detached_sig` "rejected: no VALIDSIG with primary-key fingerprint" / "rejected: no GOODSIG" lines from §4 step 6). Re-verify the new key against three independent sources (see TRUST.md for the pattern), then update the pin and the embedded key block in the component script. Don't bypass the check.
 - **`brave_extensions`** (in `salt/pillar/seqs/config.sls`): periodically prune. Remove abandoned/discontinued wallet extensions; review the maintained status of those that remain.
 - **Re-running `setup-qubes.sh`**: every build again requires `--qubes ...` or explicit `--all`; the previous selection is audit history, never an implicit default. Re-runs generally **converge** — selected SEQS-built qubes are reported and reconfigured in place, a finished component is skipped while its `/rw/config/seqs` marker matches the SHA-256 of its staged files and runs again after any change to them, unselected managed qubes are untouched, and qubes SEQS did not build are refused. GnosisVPN converges like every other qube; check that a pin change actually installed the new release. `--postfix NAME` applies one validated postfix to every selected recipe and creates a separate managed instance. For every GnosisVPN build, confirm every temporary `qubes.UpdatesProxy` allow/deny pair names its exact selected template instance and that the policy and proxy are removed afterward. Use `delete-vms.sh <instance-name>` ([Deleting SEQS qubes](docs/deleting-vms.md)) only when you intentionally want to rebuild an instance from scratch. The policy-takeover `[y/N]` prompt only fires for policy files SEQS does not own — if it fires on a re-run, read the dump.
 - **`base_template`** (in `config.sls`): when you upgrade to a newer Qubes / Debian template, change the value and re-run; note a changed base only affects templates cloned from then on — existing `Z-*` stay on the old base until deleted and rebuilt.

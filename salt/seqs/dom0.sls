@@ -271,8 +271,11 @@ for vm in qubesadmin.Qubes().domains:
 {%   if e.get('mode') not in ['folder', 'contents'] %}
 {%     do errors.append("cleanup_dirs entry '" ~ e ~ "' has unknown mode (expected folder or contents)") %}
 {%   endif %}
-{%   if (e.get('path', '') | regex_match('^/home/user/[A-Za-z0-9._/-]+$') is none) or ('..' in e.get('path', '')) %}
-{%     do errors.append("cleanup_dirs path '" ~ e.get('path', '') ~ "' must be strictly under /home/user/, contain no '..' and use only [A-Za-z0-9._/-]") %}
+{#   Each segment non-empty and neither '.' nor '..': '/home/user//' or
+     '/home/user/.' would name the home directory itself. #}
+{%   set p = e.get('path', '') %}
+{%   if (p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none) or ('..' in p) or ('/./' in p ~ '/') %}
+{%     do errors.append("cleanup_dirs path '" ~ p ~ "' must be strictly under /home/user/, contain no '..', '.' or empty segment, and use only [A-Za-z0-9._/-]") %}
 {%   endif %}
 {% endfor %}
 
@@ -338,7 +341,7 @@ seqs-policy-qr-input-deny:
 seqs-policy-qr-input-deny:
   cmd.run:
     - name: rm -f /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
-    - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/00-seqs-qr-input-deny.policy
+    - onlyif: head -n 1 /etc/qubes/policy.d/00-seqs-qr-input-deny.policy | grep -q '^# Managed by SEQS'
 {% endif %}
 
 {% if webcam_mode == 'sequential' %}
@@ -358,7 +361,7 @@ seqs-policy-qr-filecopy:
 seqs-policy-qr-filecopy:
   cmd.run:
     - name: rm -f /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
-    - onlyif: grep -q 'Managed by SEQS' /etc/qubes/policy.d/01-seqs-qr-filecopy.policy
+    - onlyif: head -n 1 /etc/qubes/policy.d/01-seqs-qr-filecopy.policy | grep -q '^# Managed by SEQS'
 {% endif %}
 
 seqs-policy-browser:

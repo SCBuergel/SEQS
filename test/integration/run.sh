@@ -106,7 +106,12 @@ grep -q -- "--targets=A-signal state.apply" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
 ! grep -q -- "--targets=A-keepass\|--targets=.*,A-keepass" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
 	|| bad "the app qube of the failed template must not be provisioned"
 grep -q "WITH FAILURES" <<<"$out" && ok || bad "the run must end with the failure message"
-unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG
+# Some qubesctl versions exit 0 after a failed qube; its ERROR line still counts.
+export SEQS_MOCK_FAIL_RC=0
+out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "WITH FAILURES" <<<"$out" && ok \
+	|| bad "a qube reported as ERROR must fail the run even when qubesctl exits 0"
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC
 rm -rf "${SBX}"
 
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────

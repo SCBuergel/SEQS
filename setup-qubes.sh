@@ -103,6 +103,7 @@ runQubesctl() {
 	fi
 	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
 	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' "${out}")
+	[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1
 	local vm
 	for vm in "${FAILED_QUBES[@]}"; do
 		echo "${vm}: last error lines of this run in /var/log/qubes/mgmt-${vm}.log:" >&2
@@ -695,6 +696,7 @@ apps=()
 for vm in "${APP_TARGETS[@]}"; do
 	if [[ " ${FAILED_TEMPLATES[*]} " == *" $(qvm-prefs -- "${vm}" template) "* ]]; then
 		echo "WARNING: skipping ${vm}: its template failed" >&2
+		FAILED=1
 	else
 		apps+=("${vm}")
 	fi
