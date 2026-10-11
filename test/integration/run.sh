@@ -403,7 +403,7 @@ sed -e "s#^CONF=.*#CONF=${SBX}/conf#" -e 's/^\[ "\${EUID}" -eq 0 \].*$/:/' \
 write_mock() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "${SBX}/bin/$1"; chmod +x "${SBX}/bin/$1"; }
 write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
 write_mock qvm-prefs 'awk -v k="$2 $3" '"'"'$1" "$2 == k { print $3; f=1 } END { exit !f }'"'"' "'"${SBX}"'/prefs"'
-write_mock qvm-run 'cat "'"${SBX}"'/staged"'
+write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; cat "'"${SBX}"'/staged"'
 write_mock qvm-usb ':'
 write_mock qvm-kill ':'
 write_mock qvm-shutdown ':'
@@ -439,7 +439,10 @@ if command -v setsid >/dev/null 2>&1; then
 	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
 		for pref in netvm default_dispvm; do
 			qr_reset; sed -i "s/^${vm} ${pref} $/${vm} ${pref} sys-firewall/" "${SBX}/prefs"
+			rm -f "${SBX}/qvm-run.log"
 			qr_case "${vm} ${pref}" "'${vm}' has ${pref} set"
+			[ ! -e "${SBX}/qvm-run.log" ] && ok \
+				|| bad "${vm} ${pref}: the script started a qube before refusing a networked camera side"
 		done
 	done
 else

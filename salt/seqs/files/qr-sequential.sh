@@ -53,6 +53,20 @@ qvm-check --running -q -- "$WEBCAM_USB_QUBE" && {
 qvm-check --running -q -- "$SCANNER_QUBE" && {
 	echo "ERROR: $SCANNER_QUBE is already running" >&2; exit 1;
 }
+# The camera side must stay offline at every scan, not only after setup:
+# no NetVM, and no default disposable that qubes.OpenInVM could reach.
+# Checked first: the old-key.asc check below starts the staging qube.
+for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
+	for pref in netvm default_dispvm; do
+		value="$(qvm-prefs -- "$vm" "$pref" 2>/dev/null)" || {
+			echo "ERROR: cannot read $pref of '$vm'" >&2; exit 1;
+		}
+		case "$value" in
+			''|None|none) ;;
+			*) echo "ERROR: '$vm' has $pref set; the camera side must be offline" >&2; exit 1 ;;
+		esac
+	done
+done
 # The staging qube's answer is only compared, never printed. The scanner name
 # was charset-checked above, so it is safe inside the remote command.
 staged="$(qvm-run --pass-io "$STAGING_QUBE" \
@@ -67,19 +81,6 @@ case "$staged" in
 		echo "ERROR: could not check $STAGING_QUBE for an old key.asc" >&2
 		exit 1 ;;
 esac
-# The camera side must stay offline at every scan, not only after setup:
-# no NetVM, and no default disposable that qubes.OpenInVM could reach.
-for vm in "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
-	for pref in netvm default_dispvm; do
-		value="$(qvm-prefs -- "$vm" "$pref" 2>/dev/null)" || {
-			echo "ERROR: cannot read $pref of '$vm'" >&2; exit 1;
-		}
-		case "$value" in
-			''|None|none) ;;
-			*) echo "ERROR: '$vm' has $pref set; the camera side must be offline" >&2; exit 1 ;;
-		esac
-	done
-done
 # Device descriptions originate in the USB backend; strip control characters.
 normal_devices="$(qvm-usb 2>/dev/null | awk -v p="$NORMAL_USB_QUBE:" 'index($1, p) == 1' | LC_ALL=C tr -cd '[:print:]\t\n')" || {
 	echo "ERROR: cannot list the USB devices of $NORMAL_USB_QUBE" >&2; exit 1;

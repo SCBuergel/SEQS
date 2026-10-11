@@ -59,7 +59,8 @@ Qubes volumes, snapshots, copy-on-write storage, swap, backups, or SSD media.
 
 The implementation should be rejected if it weakens the current QR containment
 to obtain better ergonomics. In particular, it must not enable camera-originated
-input, broaden file-copy policy, bypass strict PCI reset, or put secrets or
+input, broaden file-copy policy, skip the strict PCI reset where no power removal
+replaces it, or put secrets or
 executable helper code in dom0.
 
 ## System architecture
@@ -216,8 +217,8 @@ the encrypted QR code through the existing display disposable.
 ### Receive the QR ciphertext
 
 This subsection reuses the current sequential scanner with no passphrase paper
-visible. Run the fail-closed camera ceremony, accept exactly one bounded QR
-payload into offline staging, physically unplug the webcam, and let the entire
+visible. Run the fail-closed camera ceremony, let the scanner copy the QR
+payload only into offline staging, physically unplug the webcam, and let the entire
 machine power off on success or failure. Remove AC and standby power where
 practical before reconnecting another device.
 

@@ -933,7 +933,7 @@ qrencode -l M -t ansiutf8 < key.asc
 
 The terminal should show one complete QR code: a square with a light border on
 all sides and no wrapped lines. The code is large: the 1,000-byte rehearsal
-file already gives one about 155 characters wide and 77 lines high, and a file
+file already gives one about 153 characters wide and 77 lines high, and a file
 near the size limit one about 185 characters wide and 93 lines high. At a
 typical default font size it does not fit even in a maximized terminal, so
 maximize the terminal and make the font smaller (in most terminals with
@@ -1045,10 +1045,11 @@ script again. Otherwise, type `START` in capital letters. After that:
    `sys-usb-webcam` does not start, the script shows an error and powers off
    after 60 seconds without scanning; see the end of
    [Configure and build the QR qubes](#configure-and-build-the-qr-qubes).
-   Point the webcam at the QR code. The received file may be at most 16 KiB
-   and is copied only to `A-qr-staging`. A webcam that itself shows up as
-   several USB devices is refused every time; use a webcam that shows up as a
-   single device.
+   Point the webcam at the QR code. dom0 policy lets the scanner copy files
+   only to `A-qr-staging`; its 16 KiB size limit is checked only inside the
+   scanner, which is untrusted. A webcam that itself shows up as several USB
+   devices is refused every time; use a webcam that shows up as a single
+   device.
 4. Unplug the webcam when the script reports that the copy completed, or
    when it reports an error. Do not reconnect the keyboard or mouse.
 5. The computer powers off, whether the scan worked or not.
