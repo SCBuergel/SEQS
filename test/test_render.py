@@ -401,11 +401,10 @@ def test_dom0_sequential_qr_mode():
     check("qubes.Filecopy" in text and "A-qr-staging" in text,
           "scanner filecopy must be restricted to offline staging")
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
-    for subject in ("sys-usb-webcam", "seqs-qr-scanner", "@dispvm:A-qr-camera"):
+    for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
         check("qubes.OpenURL        *  %s  @anyvm    deny" % subject in deny,
               "camera-side qube %s must not reach the browser handoff" % subject)
-    check("qubes.InputKeyboard  *  @dispvm:A-qr-camera  @adminvm  deny" in deny,
-          "camera disposables must be denied dom0 input")
+    check("*  @dispvm:" not in deny, "a @dispvm:<template> source matches nothing on Qubes 4.3")
     for subject in ("sys-usb-webcam", "seqs-qr-scanner"):
         for service in ("qubes.OpenInVM ", "qubes.StartApp ", "qubes.GetImageRGBA",
                         "qubes.VMShell  ", "qubes.VMExec   ", "qubes.VMExecGUI",
@@ -528,8 +527,7 @@ def test_dom0_dedicated_qr_uses_device_api():
     check(unresolved_requisites(parsed) == [],
           "every requisite must resolve: %r" % unresolved_requisites(parsed))
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
-    check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny
-          and "qubes.OpenURL        *  @dispvm:A-qr-camera  @anyvm    deny" in deny,
+    check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny,
           "dedicated mode must also close the browser handoff for camera-side qubes")
     # Qubes 4.3 matches a @dispvm:<template> source against no running qube,
     # so the dedicated path scans in the named disposable, which rules can name.

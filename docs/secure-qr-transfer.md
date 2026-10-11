@@ -757,12 +757,9 @@ qvm-tags A-qr-camera list
 ```
 
 The first file must deny the input services (`qubes.InputKeyboard`,
-`qubes.InputMouse`, `qubes.InputTablet`) and `qubes.OpenURL` from
-`sys-usb-webcam`, `seqs-qr-scanner`, and `@dispvm:A-qr-camera`; it must also
-deny the disposable services listed for the sending computer from
-`sys-usb-webcam` and `seqs-qr-scanner`, and `qubes.Filecopy` from
-`sys-usb-webcam`. The `@dispvm:A-qr-camera` rule matches no running qube on
-Qubes 4.3; the scan runs in the qubes the file names. The tag list must
+`qubes.InputMouse`, `qubes.InputTablet`), `qubes.OpenURL`, and the
+disposable services listed for the sending computer from `sys-usb-webcam` and
+`seqs-qr-scanner`, and `qubes.Filecopy` from `sys-usb-webcam`. The tag list must
 include `seqs-no-handoff`, which applies the `28-browser-suppress.policy`
 denies checked on the sending computer to `A-qr-camera` and to disposables
 started from it; on the sequential path, `qvm-tags A-qr-staging list` must

@@ -318,14 +318,9 @@ seqs-policy-qr-input-deny:
         # qubes.PdfConvert comes from the PDF converter, a default dom0 package,
         # whose own policy allows it into a disposable without asking.
         qubes.PdfConvert     *  {{ webcam_usb_qube }}  @dispvm   deny
-        # Qubes 4.3 matches a @dispvm:<template> source against no running
-        # qube (qrexec parser, DispVMTemplate.match); these lines are kept for
-        # a release that does. The named qubes above and below are what the
-        # transfer uses on both paths.
-        qubes.OpenURL        *  @dispvm:{{ webcam_scanner_dvm }}  @anyvm    deny
-        qubes.InputKeyboard  *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
-        qubes.InputMouse     *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
-        qubes.InputTablet    *  @dispvm:{{ webcam_scanner_dvm }}  @adminvm  deny
+        # The transfer scans only in the named scanner below: Qubes 4.3 matches
+        # a @dispvm:<template> source against no running qube. A disposable
+        # started from the camera template by hand inherits seqs-no-handoff.
         qubes.InputKeyboard  *  {{ webcam_scanner_qube }}  @adminvm  deny
         qubes.InputMouse     *  {{ webcam_scanner_qube }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_scanner_qube }}  @adminvm  deny
