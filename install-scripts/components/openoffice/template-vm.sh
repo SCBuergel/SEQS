@@ -7,7 +7,7 @@ AOO_VERSION="4.1.16"
 TARBALL="Apache_OpenOffice_${AOO_VERSION}_Linux_x86-64_install-deb_en-US.tar.gz"
 # SHA-256 of that release file, computed on 2026-10-11 after its signature
 # verified against the key below: pins the release, not only the signer.
-AOO_SHA256="2b1245a77886939db95c7532af3df8db92d2d22c248e53f846e0aee40553abde"
+AOO_SHA256="febd01695bbd9ff68d509dbb973bfd714dff0e0a99e50abb4ea32a37eb6aa2ce"
 BASE_URL="https://downloads.apache.org/openoffice/${AOO_VERSION}/binaries/en-US"
 
 # Apache OpenOffice release signing key (Jim Jagielski).
