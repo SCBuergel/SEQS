@@ -628,12 +628,13 @@ setupGnosisUpdateProxy() {
 buildQubes() {
 	[ -f "${SALT_TREE}/.seqs-complete" ] && [ -f "${PILLAR_TREE}/.seqs-complete" ] \
 		|| die "stage is incomplete -- run --stage-only first"
+	# Ask before anything is recorded or changed, so a refusal leaves no trace.
+	confirmPolicyTakeover
 	writeBuildIntent
 	writeRunManifest started
 	echo ""
 	echo "==> Applying dom0 state (policies, qube creation)"
 	runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
-	confirmPolicyTakeover
 	runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
 
 readTargets
