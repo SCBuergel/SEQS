@@ -75,24 +75,31 @@ here.**
 ### Layer 3 — bash unit tests (`test/unit_bash.sh`)
 Sources `setup-qubes.sh` with `SEQS_SOURCE_ONLY=1` (a test-only hook that stops
 before the installer runs) and drives its security-load-bearing helpers with
-table-driven inputs: `sanitize()` (terminal-control stripping), the tar-entry
-validation (accepts the real tree, rejects symlink / `..` / absolute / spaced /
-out-of-root entries), `readTargets()`, `verifyAirgap()`, `joinCsv()`,
-`confirm()`.
+table-driven inputs: `sanitize()` (terminal-control stripping),
+`validateTarListing()` (accepts the real tree, rejects symlink / `..` /
+absolute / spaced / out-of-root entries), `SAFE_NAME`, `readTargets()`,
+`verifyAirgap()`, `isManaged()`, `joinCsv()`, `confirm()`. It also covers the
+shared installer library (`lib/verify-gpg.sh`, with a throwaway test key),
+`adb-pull`'s handling of device answers, that component scripts which lock a
+file unlock it first, and the hardware-test helpers.
 
 ### Layer 4 — installer integration (`test/integration/`)
 Runs the **real** `setup-qubes.sh` end to end against a sandbox dom0: mock
 `qvm-*` / `qubesctl` / `sudo` on `PATH` (`test/integration/mocks/bin`) and
 scratch `/srv` + `/var/lib` paths via the `SEQS_*` overrides. A small pty driver
 (`test/lib/pty_run.py`) answers the `confirm()` prompts that read from
-`/dev/tty`. Scenarios: full workflow, a failed template skipping its app qube,
-stage/build prerequisite guards, a hostile archive rejected at the tar gate,
-air-gap-fails-closed, an identical re-fetch reported as already staged,
+`/dev/tty`. Scenarios: full workflow and the single-step install, a failed template
+skipping its app qube, a template left running by an interrupted run,
+the GnosisVPN download proxy, fetch source and HEAD validation, stage/build
+prerequisite guards, privileged reads of the staged tree, a hostile archive
+rejected at the tar gate (leaving no temporary files), air-gap-fails-closed,
+an identical re-fetch reported as already staged,
 `delete-vms.sh` removing exactly the named SEQS-built `D-`/`A-`/`Z-` qubes
 (dry-run inert, unrelated and unmanaged qubes untouched, dependent qubes and
 global defaults refusing the whole run, unsafe names refused — the destructive
 script gets its own guard-rail scenario against a stateful mock inventory), the
-hardware-test reset, and the sequential QR script's refusals. This is the only layer that exercises the runner's
+hardware-test reset, and the sequential QR script's refusals. This is the
+only layer that exercises the runner's
 fetch → validate → stage → build → verify control flow as one piece.
 
 ### Layer 5 — real Qubes (manual, hardware-bound)
