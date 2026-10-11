@@ -150,8 +150,6 @@ seqs:
 {%-     endfor %}
 seqs:
   role: '{{ ns.role }}'
-  base_name: '{{ ns.base }}'
-  recipe_name: '{{ recipe }}'
   browser_vm: '{{ browser_vm }}'
   browser_desktop: '{{ browser_desktop }}'
   component_timeout: {{ component_timeout }}
