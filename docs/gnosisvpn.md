@@ -74,21 +74,10 @@ removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
 policy then applies again.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
-test below. Prefer `--postfix` when the extra AppVM and its template should
-remain managed by SEQS. To use a manually named AppVM instead, create it from
-`Z-gnosisvpn`, then configure it in dom0 (replace `sys-gnosisvpn` with the
-chosen exact name):
-
-```bash
-qvm-prefs sys-gnosisvpn provides_network true
-qvm-service --enable sys-gnosisvpn qubes-firewall
-qvm-run -u root sys-gnosisvpn /usr/sbin/seqs-gnosisvpn-prepare-app
-```
-
-The last command installs the persistent AppVM firewall hook and the
-`/var/lib/gnosisvpn` private-volume bind from inherited template assets. The
-bind takes effect on the next AppVM start. Do not skip this command: manually
-creating an AppVM does not run the SEQS app role that prepared `A-gnosisvpn`.
+test below. For a second GnosisVPN qube, use `--postfix` as shown above rather
+than creating one by hand from `Z-gnosisvpn`: a hand-made qube lacks the dom0
+policy that stops `A-gnosisvpn` from handing links to the browser qube, and the
+private-state and firewall preparation that the SEQS build performs.
 
 ## Test GnosisVPN
 
@@ -197,12 +186,6 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
   DNS queries, although routing validation keeps the traffic inside the VPN.
 - Forwarded IPv6 is fail-closed through `eth0`. This setup does not claim
   working IPv6 through GnosisVPN.
-- A manually created AppVM requires `provides_network`, the
-  `qubes-firewall` service, and one successful root invocation of
-  `seqs-gnosisvpn-prepare-app`; restart it afterward to activate the
-  `/var/lib/gnosisvpn` bind. The generated `A-gnosisvpn` already has all three
-  settings and is shut down after provisioning, so the bind is active on its
-  next start.
 - The DNS path unit reacts to openresolv changes and the timer reconciles
   interface state every five seconds. Check
   `systemctl status seqs-gnosisvpn-dns.path seqs-gnosisvpn-dns.timer` and
