@@ -49,6 +49,13 @@ open(sys.argv[2], "w").write("\n".join(lines) + "\n")
 PY
     echo "dom0: Succeeded: 12  Failed: 0" ;;
   *"state.apply seqs.qube"*)
+    [ -z "${SEQS_MOCK_QUBESCTL_LOG:-}" ] || echo "$args" >> "$SEQS_MOCK_QUBESCTL_LOG"
+    # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it.
+    fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
+    if [ -n "$fail" ] && [[ "$args" == *"$fail"* ]]; then
+      echo "$fail: ERROR (exit code 20, details in /var/log/qubes/mgmt-$fail.log)"
+      exit 20
+    fi
     echo "qube apply: Succeeded: 3  Failed: 0" ;;
   *)
     echo "qubesctl mock: $args" ;;

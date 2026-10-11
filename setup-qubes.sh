@@ -101,6 +101,15 @@ runQubesctl() {
 		echo "NOTE: qubesctl exited 0 but its output reports failed states -- treating as failure." >&2
 		rc=1
 	fi
+	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
+	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' "${out}")
+	local vm
+	for vm in "${FAILED_QUBES[@]}"; do
+		echo "${vm}: last error lines of this run in /var/log/qubes/mgmt-${vm}.log:" >&2
+		sudo tac "/var/log/qubes/mgmt-${vm}.log" 2>/dev/null | sed -n '2,/ exit code: /p' | tac \
+			| grep -iE 'error|fail' | grep -vE 'Result: |Failed: ' | tail -n 5 \
+			| sed 's/^.* output: *//' | sanitize | sed 's/^/    /' >&2
+	done
 	rm -f "${out}"
 	return "${rc}"
 }
@@ -662,11 +671,12 @@ echo ""
 	echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
 	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${TEMPLATE_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one template failed to provision (see summary above;" >&2
-	echo "         re-run with --verbose for full per-state output)." >&2
+	echo "WARNING: at least one template failed to provision (see above; re-run" >&2
+	echo "         with --verbose for full per-state output)." >&2
 	echo "         Re-run to converge -- finished components are skipped." >&2
 	FAILED=1
 	fi
+	FAILED_TEMPLATES=("${FAILED_QUBES[@]}")
 	cleanupGnosisUpdateProxy
 	verifyGnosisUpdateProxyRemoved
 	trap - EXIT INT TERM
@@ -680,12 +690,23 @@ for vm in "${DISPOSABLE_TARGETS[@]}"; do
 		|| echo "WARNING: could not refresh the menu of ${vm}" >&2
 done
 
+# An app qube of a failed template would be provisioned on a partial install.
+apps=()
+for vm in "${APP_TARGETS[@]}"; do
+	if [[ " ${FAILED_TEMPLATES[*]} " == *" $(qvm-prefs -- "${vm}" template) "* ]]; then
+		echo "WARNING: skipping ${vm}: its template failed" >&2
+	else
+		apps+=("${vm}")
+	fi
+done
+APP_TARGETS=("${apps[@]}")
+
 echo ""
 	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
-	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
+	if [ "${#APP_TARGETS[@]}" -gt 0 ] && ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${APP_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one app qube failed to provision (see summary above;" >&2
-	echo "         re-run with --verbose for full per-state output)." >&2
+	echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
+	echo "         with --verbose for full per-state output)." >&2
 	FAILED=1
 	fi
 

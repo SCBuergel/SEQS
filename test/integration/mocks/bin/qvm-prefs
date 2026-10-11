@@ -47,6 +47,11 @@ if [ "${vm}" = "sys-firewall" ] && [ "${property}" = "netvm" ]; then
 	exit 0
 fi
 
+if [ "${property}" = "template" ] && [ "${vm#A-}" != "${vm}" ]; then
+	echo "Z-${vm#A-}"
+	exit 0
+fi
+
 if [ "${property}" = "default_dispvm" ] && [ "${#args[@]}" -lt 3 ]; then
 	echo "${SEQS_MOCK_DEFAULT_DISPVM:-}"
 	exit 0

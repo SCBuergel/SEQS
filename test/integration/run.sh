@@ -93,6 +93,22 @@ grep -qx -- "--update -- D-qr-display" "${SEQS_MOCK_APPMENUS_LOG}" 2>/dev/null &
 	|| bad "only named disposables need the runner's menu refresh"
 rm -rf "${SBX}"
 
+# ── Scenario 1a: a failed template skips its app qube, not the others ─────
+echo "== scenario: an app qube of a failed template is not provisioned =="
+new_sandbox
+export SEQS_MOCK_FAIL_TEMPLATE=Z-keepass SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+out="$(run_setup --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "a failed template must fail the run"
+grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
+	|| bad "the app qube of the failed template must be reported as skipped"
+grep -q -- "--targets=A-signal state.apply" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "the other app qube must still be provisioned"
+! grep -q -- "--targets=A-keepass\|--targets=.*,A-keepass" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "the app qube of the failed template must not be provisioned"
+grep -q "WITH FAILURES" <<<"$out" && ok || bad "the run must end with the failure message"
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG
+rm -rf "${SBX}"
+
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────
 echo "== scenario: GnosisVPN proxy resolves a DisposableVM UpdateVM template chain =="
 new_sandbox
