@@ -17,6 +17,8 @@
 #   dom0-test.sh invalidate      empty the completion markers in every built
 #                                qube, so the next install runs every
 #                                component script again
+#   dom0-test.sh update          update every built template with the Qubes
+#                                updater, as a user would; run check after
 #
 # Output lines starting with CHECK-FAIL are findings; the exit status is
 # non-zero when there is at least one.
@@ -346,6 +348,12 @@ checkTemplateApt() {
 			fail "${vm}: ${path} is not locked"
 		fi
 	done
+	# brave-keyring owns the locked Brave keyring; unheld, its next version
+	# breaks every update of the template.
+	if [[ " ${paths[*]} " == *brave-browser-archive-keyring* ]]; then
+		qvm-run --pass-io --no-gui -u root "${vm}" 'apt-mark showhold' </dev/null 2>/dev/null | grep -qx brave-keyring \
+			&& pass "${vm}: brave-keyring is held" || fail "${vm}: brave-keyring is not held"
+	fi
 	if out="$(qvm-run --pass-io --no-gui -u root "${vm}" 'python3 -' <<< "${PIN_CHECK}" 2>&1)"; then
 		pass "${vm}: third-party repositories are pinned: $(sed -n 's/^PIN-CHECKED //p' <<< "${out}")"
 	else
@@ -773,6 +781,24 @@ invalidate() {
 	[ "${FAILS}" -eq 0 ]
 }
 
+# ---- update -------------------------------------------------------------------
+
+# update -- update every SEQS template with qubes-vm-update, the command-line
+# form of the Qubes updater. A later check confirms that locked keyrings and
+# pinned repositories survive a normal update.
+update() {
+	local list
+	list="$(sudo awk '$1 == "template" { print $2 }' "${STATE_DIR}/targets" 2>/dev/null | paste -sd, -)"
+	[ -n "${list}" ] || { fail "no SEQS templates listed in ${STATE_DIR}/targets"; return 1; }
+	note "Updating ${list}"
+	if qubes-vm-update --force-update --show-output --targets "${list}" </dev/null; then
+		pass "qubes-vm-update updated ${list}"
+	else
+		fail "qubes-vm-update failed for ${list}"
+	fi
+	[ "${FAILS}" -eq 0 ]
+}
+
 # ---- Main -------------------------------------------------------------------
 
 if [ "${SEQS_SOURCE_ONLY:-0}" = "1" ]; then
@@ -785,5 +811,6 @@ case "${1:-}" in
 	check) check ;;
 	invalidate) invalidate ;;
 	lifecycle) lifecycle ;;
-	*) sed -n '3,22p' "$0"; exit 2 ;;
+	update) update ;;
+	*) sed -n '3,24p' "$0"; exit 2 ;;
 esac

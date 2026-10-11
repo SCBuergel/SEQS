@@ -10,9 +10,15 @@
 #   check    verify what was built (dom0-test.sh check)
 #   lifecycle restart qubes: cleanup on boot/shutdown, persistent state
 #   rerun    install and check again: a second run must converge quickly
+#   update   with --update: update the templates as a user would, check again
+#   reboot   with --reboot: reboot the test machine, wait until it is back,
+#            check again: what SEQS set up must survive a restart. Only for a
+#            test machine that boots unattended: a disk passphrase prompt at
+#            boot keeps it offline until someone types it
 #
 # Usage: test/hardware/system-test.sh [--quick | --qubes LIST | --all]
-#                                     [--no-rerun] [--force-rerun] [--host HOST]
+#                                     [--no-rerun] [--force-rerun] [--update]
+#                                     [--reboot] [--host HOST]
 #
 # --quick builds a small set that covers each kind of qube (offline, link
 # handoff, browser, disposable template with a named disposable) without the
@@ -35,6 +41,8 @@ HOST="seqs-test"
 SELECTION="keepass,qr-display,brave"
 RERUN=1
 FORCE_RERUN=0
+UPDATE=0
+REBOOT=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--qubes) [ "$#" -gt 1 ] || { echo "--qubes needs a list" >&2; exit 2; }; SELECTION="$2"; shift ;;
@@ -42,8 +50,10 @@ while [ "$#" -gt 0 ]; do
 		--quick) SELECTION="keepass,signal,brave,qr-display"; RERUN=0 ;;
 		--no-rerun) RERUN=0 ;;
 		--force-rerun) FORCE_RERUN=1 ;;
+		--update) UPDATE=1 ;;
+		--reboot) REBOOT=1 ;;
 		--host) [ "$#" -gt 1 ] || { echo "--host needs a name" >&2; exit 2; }; HOST="$2"; shift ;;
-		-h|--help) sed -n '3,30p' "$0"; exit 0 ;;
+		-h|--help) sed -n '3,35p' "$0"; exit 0 ;;
 		*) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -72,7 +82,9 @@ OVERALL=0
 # finished run with the same selection and options, for the ETA.
 PLAN=(sync reset install check lifecycle)
 [ "${RERUN}" -eq 0 ] || { [ "${FORCE_RERUN}" -eq 0 ] || PLAN+=(invalidate); PLAN+=(rerun-install rerun-check); }
-OPTIONS="selection ${SELECTION} rerun ${RERUN} force ${FORCE_RERUN}"
+[ "${UPDATE}" -eq 0 ] || PLAN+=(update update-check)
+[ "${REBOOT}" -eq 0 ] || PLAN+=(reboot reboot-check)
+OPTIONS="selection ${SELECTION} rerun ${RERUN} force ${FORCE_RERUN} update ${UPDATE} reboot ${REBOOT}"
 declare -A EXPECT=()
 previous="$(grep -lxF "options    ${OPTIONS}" test/hardware/results/*/summary.txt 2>/dev/null | sort | tail -n 1)"
 if [ -n "${previous}" ]; then
@@ -145,6 +157,24 @@ EOF
 	return "${rc:-1}"
 }
 
+# rebootMachine -- reboot the test machine and wait up to 15 minutes until
+# dom0 answers through test-ctl again (test-ctl and sys-net start at boot).
+rebootMachine() {
+	local deadline
+	"${SSH[@]}" dom0 <<<'sudo systemctl reboot' >/dev/null 2>&1 &
+	sleep 60
+	deadline=$((SECONDS + 900))
+	while [ "${SECONDS}" -lt "${deadline}" ]; do
+		if ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" dom0 <<<'qvm-ls --raw-list | wc -l' 2>/dev/null | grep -q '^[0-9]'; then
+			echo "test machine is back after $((SECONDS - deadline + 960))s"
+			return 0
+		fi
+		sleep 20
+	done
+	echo "test machine did not come back within 16 minutes" >&2
+	return 1
+}
+
 prompts() {
 	local n
 	n="$(grep -c '\[y/N\]' "${RESULTS}/$1.log" 2>/dev/null)"
@@ -199,6 +229,13 @@ main() {
 			[ "${FORCE_RERUN}" -eq 0 ] || phase invalidate dom0 invalidate
 			phase rerun-install dom0 install "${SELECTION}"
 			phase rerun-check dom0 check
+		fi
+		if [ "${UPDATE}" -eq 1 ]; then
+			phase update dom0 update
+			phase update-check dom0 check
+		fi
+		if [ "${REBOOT}" -eq 1 ] && phase reboot rebootMachine; then
+			phase reboot-check dom0 check
 		fi
 	fi
 	summary

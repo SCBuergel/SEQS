@@ -151,6 +151,7 @@ Pin-Priority: 500
 EOF
 
 	sudo apt-get update
+	sudo apt-mark unhold brave-keyring >/dev/null 2>&1 || true
 	sudo apt-get install -y brave-browser
 
 	# Restore the verified trust anchor. brave-keyring's postinst (run as a
@@ -173,6 +174,12 @@ EOF
 	# three independent sources documented at the top of this file; a rerun
 	# then unlocks and rewrites the keyring.
 	sudo chattr +i "${keyring}"
+	# brave-keyring owns that file, so any later version of it fails in dpkg
+	# against the lock and leaves every update of this template failing (seen
+	# with the Qubes updater). Held, apt leaves it alone and other updates,
+	# Brave's own included, keep working; a rerun of this script after a
+	# reviewed key change releases the hold above.
+	sudo apt-mark hold brave-keyring >/dev/null
 }
 
 # install_brave_extension ID -- force-install one Brave extension by its
