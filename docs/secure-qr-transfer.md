@@ -148,15 +148,11 @@ keyboard share a controller, a malicious webcam that takes over that USB qube
 could also watch what you type, either immediately or the next time the
 keyboard is connected. The passphrase would then no longer travel separately.
 
-The same applies to cameras that already sit on the keyboard's USB qube. A
-laptop's built-in webcam is usually a USB device on the same controller as
-the keyboard, handled by normal `sys-usb`. If that qube is compromised, it can
-film the QR code on the sending computer's screen and the paper as you write
-or type the passphrase, and it has both halves on its own.
-
-For the whole transfer, no camera on either computer other than the QR webcam
-may be able to see the sending computer's screen, the paper, or your hands on
-the keyboard. Cover the lens of every built-in camera with tape or its slider,
+The same applies to cameras that already sit on the keyboard's USB qube, such
+as a laptop's built-in webcam: a compromised `sys-usb` could film both the QR
+code and the passphrase. For the whole transfer, no camera on either computer
+other than the QR webcam may be able to see the sending computer's screen, the
+paper, or your hands on the keyboard. Cover the lens of every built-in camera with tape or its slider,
 or switch it off with a hardware switch that cuts its power. Detaching the
 camera in the Devices widget (the Qubes tray icon that attaches devices to
 qubes) or disabling it in software is not enough: the
@@ -1186,9 +1182,3 @@ rm -f -- key.asc
 The command prints nothing. Check that the file is gone. Destroy the paper
 only after step 6 showed `600 master.key`: burn it, or cut it with a cross-cut
 shredder, so that the passphrase cannot be read from the pieces.
-
-## Further reading
-
-The official Qubes documentation covers the underlying concepts in more depth:
-[USB qubes](https://doc.qubes-os.org/en/latest/user/advanced-topics/usb-qubes.html)
-and [disposable customization](https://doc.qubes-os.org/en/development/user/advanced-topics/disposable-customization.html).

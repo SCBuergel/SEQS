@@ -187,11 +187,15 @@ out="$(SEQS_REPO_VM=personal \
 	--fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "fetch requires --repo-vm" <<<"$out" && ok \
 	|| bad "SEQS_REPO_VM must not restore an implicit source qube"
-export SEQS_MOCK_RESOLVED_COMMIT='HEAD;touch /tmp/unsafe'
-out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
-	--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && grep -q "invalid full commit ID" <<<"$out" && ok \
-	|| bad "unsafe source HEAD output should be refused"
+# Only a full 40- or 64-digit object ID may reach the archive command.
+for SEQS_MOCK_RESOLVED_COMMIT in 'HEAD;touch /tmp/unsafe' "${SEQS_EXPECTED_COMMIT};touch /tmp/unsafe" \
+		"${SEQS_EXPECTED_COMMIT:0:12}"; do
+	export SEQS_MOCK_RESOLVED_COMMIT
+	out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+		--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -q "invalid full commit ID" <<<"$out" && ok \
+		|| bad "source HEAD output [${SEQS_MOCK_RESOLVED_COMMIT}] should be refused"
+done
 unset SEQS_MOCK_RESOLVED_COMMIT
 out="$(SEQS_REPO_PATH='/home/user/SEQS;touch_unsafe' \
 	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \

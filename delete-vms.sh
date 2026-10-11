@@ -122,7 +122,7 @@ for app in "${ARGS[@]}"; do
 				|| sudo test -e "${INTENTS_DIR}/${candidate}"; then
 			found+=("${candidate}")
 		else
-			echo "  skipping ${candidate}: SEQS did not build it (no seqs-managed feature)"
+			echo "  skipping ${candidate}: SEQS did not build it (no seqs-managed feature or creation marker)"
 		fi
 	done
 done

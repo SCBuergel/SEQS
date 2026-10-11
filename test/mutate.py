@@ -5,7 +5,9 @@ Each entry in MUTATIONS replaces one exact string in the product code with a
 weaker version. For every entry, a temporary git worktree gets the working
 tree's files plus that one change, committed (the integration layer fetches
 the committed tree), and the Qubes-free layers run cheapest first until one
-fails. A mutation that every layer accepts SURVIVES: no test guards that check.
+fails twice in a row. A mutation that every layer accepts SURVIVES: no test
+guards that check. One that fails a layer only once is FLAKY. The tests must
+pass without a mutation first.
 
     python3 test/mutate.py            run every mutation
     python3 test/mutate.py tar gpg    run the mutations whose name contains one
@@ -140,7 +142,10 @@ def check_one(tree, mutation):
     try:
         for layer in LAYERS:
             if run(["bash", "test/run-tests.sh", layer], tree).returncode:
-                return name, "caught", layer
+                # A failure under load could be a timeout, not a catch.
+                if run(["bash", "test/run-tests.sh", layer], tree).returncode:
+                    return name, "caught", layer
+                return name, "FLAKY", layer
         return name, "SURVIVED", ""
     finally:
         run(["git", "reset", "-q", "--hard", "HEAD~1"], tree)
@@ -153,6 +158,9 @@ def main():
     trees = []
     try:
         trees = [make_worktree(os.path.join(parent, str(i))) for i in range(workers)]
+        if run(["bash", "test/run-tests.sh"], trees[0]).returncode:
+            print("ERROR: the tests fail without any mutation")
+            return 2
         chunks = [wanted[i::workers] for i in range(workers)]
         with ThreadPoolExecutor(workers) as pool:
             results = pool.map(lambda tc: [check_one(tc[0], m) for m in tc[1]],
