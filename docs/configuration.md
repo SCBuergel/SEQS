@@ -96,15 +96,14 @@ flags:
   default disposable, which would otherwise have network access. Implies
   `no_handoff`, and the runner re-verifies both after the dom0 apply. Use for
   wallet/vault qubes.
-- `'no_handoff': True` — disables the browser-link handoff for that qube, both
-  at the qube's xdg config and in dom0, which tags the qube `seqs-no-handoff`
-  and denies `qubes.OpenURL` from that tag. Every build sets or removes the
-  tag on all SEQS-built qubes of the catalogue, selected or not, and
-  disposables started from a tagged qube inherit it. dom0 also denies
-  `qubes.OpenInVM` and every other service that the Qubes default policy lets
-  into a disposable without asking, because a networked disposable would be
-  another way out. Such a qube cannot open files in other
-  qubes or start a disposable; copy files with `qvm-copy` instead.
+- `'no_handoff': True` — the qube can neither hand links to the browser qube
+  nor open files in another qube or start a disposable, which would be
+  networked and so another way out; copy files with `qvm-copy` instead. SEQS
+  leaves the qube's link handler unset, and dom0 tags the qube
+  `seqs-no-handoff` and denies by that tag `qubes.OpenURL`, `qubes.OpenInVM`,
+  and every other service that the Qubes default policy lets into a disposable
+  without asking. Every build updates the tag on all SEQS qubes, selected or
+  not, and disposables started from a tagged qube inherit it.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
@@ -178,8 +177,9 @@ The `seqs.dom0` state tags each SEQS qube without `offline`, `no_handoff`, or
 `firewall` as `seqs-handoff`; the dom0 policy
 `qubes.OpenURL * @tag:seqs-handoff A-brave allow` lets those open web links in
 `browser_vm` (default `A-brave`) without a prompt. Other qubes keep the Qubes
-default, which asks. Qubes with those flags never hand links off, so a run that selects only such qubes (for example `keepass`
-or the wallets) does not need the browser qube. For any other selected qube,
+default, which asks. Qubes with those flags never hand links off, so a run
+that selects only such qubes (for example `keepass` or the wallets) does not
+need the browser qube. For any other selected qube,
 the pre-flight refuses a `browser_vm` that is neither selected in the same run
 nor already existing. If you remove `brave` from `qube_catalog`, also change
 `browser_vm` in `config.sls` to a browser qube you do have.
