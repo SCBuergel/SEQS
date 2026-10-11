@@ -197,6 +197,18 @@ def _repo_component_dirs():
     return [d for d in os.listdir(comp) if os.path.isdir(os.path.join(comp, d))]
 
 
+_TEMPLATES = {}
+
+
+def _template(rel):
+    """The compiled template of repository file REL, compiled once per source:
+    compiling, not rendering, takes most of a render's time."""
+    src = _read_repo(rel)
+    if src not in _TEMPLATES:
+        _TEMPLATES[src] = _make_env().from_string(src)
+    return _TEMPLATES[src]
+
+
 def render_pillar(minion_id):
     """Render salt/pillar/seqs/config.sls as it would compile for `minion_id`.
 
@@ -205,9 +217,7 @@ def render_pillar(minion_id):
     """
     import yaml
 
-    env = _make_env()
-    src = _read_repo("salt/pillar/seqs/config.sls")
-    out = env.from_string(src).render(grains={"id": minion_id})
+    out = _template("salt/pillar/seqs/config.sls").render(grains={"id": minion_id})
     data = yaml.safe_load(out) or {}
     return data.get("seqs", {})
 
@@ -225,11 +235,9 @@ def render_state(state, minion_id, scenario=None, pillar_seqs=None):
     if scenario is None:
         scenario = Scenario()
 
-    env = _make_env()
-    src = _read_repo("salt/seqs/%s.sls" % state)
     pillar = {"seqs": pillar_seqs}
     salt = _MockSalt(pillar, scenario)
-    text = env.from_string(src).render(
+    text = _template("salt/seqs/%s.sls" % state).render(
         grains={"id": minion_id}, pillar=pillar, salt=salt
     )
     parsed = yaml.safe_load(text) or {}

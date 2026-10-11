@@ -25,7 +25,7 @@ Passphrase:      source key qube -> written on paper -> typed on the
                  keyboard into the target key qube
 ```
 
-1. The source key qube encrypts the file with
+1. The source key qube (the trusted qube that holds the file) encrypts it with
    [GnuPG](https://www.gnupg.org/) (a standard encryption program) using a
    random one-time passphrase, which you write on paper.
 2. You copy the encrypted file to a display qube on the sending computer.
@@ -47,7 +47,8 @@ The procedure protects the secret only if these parts behave correctly:
 - dom0 (the Qubes administrative domain that controls all other qubes) on both
   computers;
 - Qubes OS itself;
-- on a computer where you type on a USB keyboard, `sys-usb` and that keyboard,
+- on a computer where you type on a USB keyboard, `sys-usb` (the qube that
+  Qubes creates to own the computer's USB controllers) and that keyboard,
   and likewise a USB mouse, because they can type or click in dom0, as
   explained below; and
 - you, following the steps in order.
@@ -125,8 +126,9 @@ The **receiving computer** needs:
 - the hardware lookups described below; and
 - SEQS installed with the `qr-camera` qube selected, plus `qr-staging` on the
   weaker of the two hardware setups described below. This creates
-  `A-qr-camera`, an offline disposable template; `seqs-qr-scanner`, the
-  disposable started from it that runs `zbarcam` (the QR scanner program);
+  `A-qr-camera`, an offline disposable template. Once you configure the
+  webcam mode, as described later, the build also creates `seqs-qr-scanner`,
+  the disposable started from it that runs `zbarcam` (the QR scanner program),
   and `sys-usb-webcam`, a USB qube (a qube that owns USB hardware and passes
   individual devices to other qubes) that handles only the webcam.
 
@@ -156,10 +158,9 @@ For the whole transfer, no camera on either computer other than the QR webcam
 may be able to see the sending computer's screen, the paper, or your hands on
 the keyboard. Cover the lens of every built-in camera with tape or its slider,
 or switch it off with a hardware switch that cuts its power. Detaching the
-camera in the Devices widget or disabling it in software is not enough: the
+camera in the Devices widget (the Qubes tray icon that attaches devices to
+qubes) or disabling it in software is not enough: the
 camera stays in `sys-usb`, which is the qube you are guarding against.
-
-<a id="start-here-determine-which-path-the-machine-qualifies-for"></a>
 
 ## Choose the hardware-isolation path
 
@@ -217,7 +218,8 @@ keyboard input, reaches the camera side.
 
 The sequential path cannot protect against malicious state that survives power
 removal in the controller, keyboard, or webcam firmware, a webcam attack that
-escapes through Qubes itself or qrexec, a compromised dom0, or a webcam left
+escapes through Qubes itself or qrexec (the Qubes service through which qubes
+copy files, open links, and send input to each other), a compromised dom0, or a webcam left
 plugged in at the next boot. Anything the webcam leaves behind that survives
 the power-off reaches `sys-usb`, which with a USB keyboard can type into dom0,
 as described under [What you must trust](#what-you-must-trust). The worst case
@@ -243,7 +245,8 @@ you already trust instead, such as a USB mouse, as the test device.
 
 ### List the USB controllers
 
-In a dom0 terminal of the receiving computer, run `qvm-pci`
+In a dom0 terminal of the receiving computer (Qubes menu, gear icon, then
+Terminal), run `qvm-pci`
 ([PCI devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-pci-devices.html)):
 
 ```bash
@@ -354,8 +357,8 @@ starts with its root USB bus number (`3`), the number before the dash: one
 controller has one or more such buses, each serving its sockets. Note this
 number, and the bus number of every internal device that remained switched on.
 
-Then open a terminal in `sys-usb` and run this, which prints one line for each
-bus:
+Then open a terminal in `sys-usb` (in a dom0 terminal:
+`qvm-run sys-usb xterm`) and run this, which prints one line for each bus:
 
 ```bash
 for u in /sys/bus/usb/devices/usb*; do p=$(readlink -f "$u/.."); echo "${u##*/} $(cat "$u/speed") $(cat "$p/vendor" "$p/device" | tr '\n' ' ')$(lspci -s "${p##*/}" 2>/dev/null)"; done
@@ -529,8 +532,9 @@ is split; repeat the check with a real USB 3 device.
 If a candidate socket is not split and its controller supports a strict reset,
 use the dedicated-controller path with that controller. From now on, plug the
 webcam only into that socket, and nothing else into that controller's sockets.
-Otherwise, use the sequential path if its requirements hold, or add a
-controller card.
+Otherwise, use the sequential path if its requirements hold, and continue
+with [Configure and build the QR qubes](#configure-and-build-the-qr-qubes); or
+add a controller card.
 
 ### Before you build on the dedicated-controller path
 
@@ -630,10 +634,10 @@ Select `qr-display` on the sending computer. On the receiving computer, select
 dedicated-controller path. Add the other role's qubes too if the computer will
 send in both directions.
 
-On the sequential path, the build also creates `A-qr-staging` (a
-persistent offline qube that keeps the encrypted file while the computer is
-off) and the dom0 script `/usr/local/sbin/seqs-qr-sequential` that runs the
-scan. On the sequential path, the build stops with `Configured controller is
+Selecting `qr-staging` creates `A-qr-staging` (a persistent offline qube
+that keeps the encrypted file while the computer is off). On the sequential
+path, the build also installs the dom0 script
+`/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential path, the build stops with `Configured controller is
 not attached to sys-usb` if the configured BDF is not a controller that the
 running `sys-usb` holds; recheck the BDF, and that `sys-usb` is running. Every
 later SEQS run on this computer repeats that check, whichever qubes it builds.
@@ -990,7 +994,11 @@ be listed. If anything else is listed, an internal device may have been
 switched back on, for example by a firmware update: do not type `START`; press
 `Enter` to end the script, switch the device off as described under
 [Find the internal USB devices](#find-the-internal-usb-devices), and run the
-script again. Otherwise, type `START` in capital letters. After that:
+script again. If the script reports that `A-qr-staging` already holds an
+incoming `key.asc`, left by an earlier scan or rehearsal, delete
+`~/QubesIncoming/seqs-qr-scanner` in `A-qr-staging` once you no longer need
+it, shut `A-qr-staging` down, and run the script again. Otherwise, type `START`
+in capital letters. After that:
 
 1. Unplug every USB keyboard and mouse right away. After 10 seconds the
    script stops normal `sys-usb`. If you cannot unplug them in time, press

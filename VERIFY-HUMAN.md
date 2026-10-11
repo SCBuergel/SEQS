@@ -16,7 +16,7 @@ Companion to [TRUST.md](TRUST.md). This document walks you through verifying —
 Four things must be true *before* SEQS does anything useful — none of them provable from inside this repo:
 
 - **The published commit hash.** The hash a user compares against must come from a source they trust, through a channel independent of this repository and its hosting — the repo cannot designate its own trusted source, since a hostile revision would name a hostile one. Establishing that source is out of scope of this repository. If you are working through this document, you are becoming that source: review the revision, then publish the hash you reviewed through a channel your users can authenticate.
-- **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's PGP signature and SHA-256 checksum against Qubes' published values (see <https://www.qubes-os.org/security/verifying-signatures/>). If you skipped this step, every line below provides false comfort.
+- **The QubesOS installation.** The whole TCB rests on this. Download from <https://www.qubes-os.org/downloads/>, then verify the ISO's signature as [Install Qubes OS](docs/install-qubes.md) describes. If you skipped this step, every line below provides false comfort.
 - **Your dom0.** A fresh install you booted yourself.
 - **`REPO_VM`.** This qube serves the Salt tree into dom0, where it eventually runs as root. For first installation, use a fresh networked DisposableVM as described in `docs/first-install.md`, keep it alive only until the fetch is done, then destroy it. Independently verify and check out the intended revision before bootstrap, and review `/var/lib/seqs/fetched` before staging and building. Fetch automatically resolves and records the source qube's `HEAD`; commit-object export excludes working-tree drift but dom0 does not independently compare that answer to the reviewed ID and cannot make a malicious source qube honest.
 
@@ -58,7 +58,7 @@ meaningful:
 
 ## 3. Cross-check the verified components' keys
 
-For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (Brave: pins only the fingerprints and checks the downloaded keyring against them), and at install time refuses to proceed unless the embedded key matches the pin AND the downloaded artifact verifies against that key. Re-do the cross-check yourself, ideally from a Linux machine separate from dom0, with `curl` + `gpg` available. The fingerprints you compute must match the pinned values:
+For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (Brave: pins only the fingerprints and checks the downloaded keyring against them), and at install time refuses to proceed unless the embedded key matches the pin AND, for a signed download, the file verifies against that key; for an apt repository, apt then checks each package against it. Re-do the cross-check yourself, ideally from a Linux machine separate from dom0, with `curl` + `gpg` available. The fingerprints you compute must match the pinned values:
 
 | Component | Pinned fingerprint(s) | Quick check |
 |---|---|---|
@@ -72,7 +72,9 @@ For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (
 | Element | `12D4CD600C2240A9F4A82071D7B0B66941D01538` | `curl -fsSL https://packages.element.io/debian/element-io-archive-keyring.gpg \| gpg --show-keys` then check both keyservers by-fingerprint |
 | GnosisVPN | `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, and SHA-256 `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb` for `gnosisvpn_0.95.2_amd64.deb` | `gpg --show-keys install-scripts/components/gnosisvpn/gnosisvpn-public-key.asc`, and `curl -fsSL https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb \| sha256sum`; the key comes only from the GnosisVPN project, so confirm the fingerprint through a channel of your own |
 
-Each component's `template-vm.sh` header also documents the three sources it was cross-checked against and the verification date — read it.
+KeePassXC, BitBox, and OpenOffice also pin the SHA-256 of their release file (`*_SHA256` in the script); after you have checked a download's signature yourself, compare its `sha256sum` with the pin.
+
+Each component's `template-vm.sh` header (Brave: `install-scripts/lib/brave.sh`) also documents the three sources it was cross-checked against and the verification date — read it. GnosisVPN's names only the project itself, so its key needs your own cross-check (see its row).
 
 ## 4. Watch the install
 
@@ -100,13 +102,13 @@ When you run `setup-qubes.sh`:
 
 4. **Air-gap verification.** After the dom0 state you should see `Air gap verified: no netvm and no default disposable on <every selected offline app qube and named disposable>.` — the runner refuses to provision anything if an `offline` qube still has a netvm or a default disposable (`default_dispvm`), which a qube can start without a prompt through `qubes.OpenInVM` and similar services; unsetting it is the primary control. `/etc/qubes/policy.d/28-browser-suppress.policy` must contain, for the source `@tag:seqs-no-handoff`, denies to `@anyvm` for `qubes.OpenURL`, `qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert`.
 
-5. Then provision with `--verbose`, which shows each qube's own output, and watch for the verification lines:
+5. To see each qube's own output, add `--verbose` to the setup command; then watch for the verification lines:
     - `Brave keyring verified -- <the three pinned fingerprints>`
     - `key verified: <pinned fingerprint>` for each imported repository or signing key (KeePassXC, Signal, Docker, VS Code, Element, BitBox, OpenOffice, GnosisVPN, and Brave next to its keyring line); compare it with the table above
     - `signature OK -- <file> signed by <pinned fingerprint>`, then `sha256 OK -- <file>`, for each signed download, such as `KeePassXC-2.7.12-x86_64.AppImage`, `bitbox_4.51.0_amd64.deb`, the OpenOffice archive, and the GnosisVPN package
     - `installing extension <id>` for each `brave-extension-*`
 
-6. Watch for verifier-rejection diagnostics. If `verify_detached_sig` ever fails, `--verbose` output shows **one** of the following root-cause lines before that component's state fails (when gpg names several problems, the line names the last one it reported):
+6. Watch for verifier-rejection diagnostics. If `verify_detached_sig` ever fails, `--verbose` output shows **one** of the following root-cause lines before that component's state fails (when gpg names several problems, the line names the last one it reported), followed by `ERROR: <file> signature verification FAILED (gpg exit N, pin: ...)`; that ERROR line alone means gpg failed without naming a cause:
     - `rejected: gpg emitted BADSIG`         — the signature math failed; the artifact does not match the signature.
     - `rejected: gpg emitted ERRSIG` / `NO_PUBKEY` — gpg could not verify, for example because the file is signed by a key other than the pinned one: most likely upstream rotated keys, or a substitution.
     - `rejected: gpg emitted EXPSIG`         — the signature itself has expired (signature expiration time in the past).
