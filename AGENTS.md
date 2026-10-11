@@ -150,6 +150,13 @@ modifying:
 - trust or verification behavior: keep `TRUST.md` and `VERIFY-HUMAN.md`
   consistent with the actual implementation.
 
+A new or changed test must be shown to detect the change it was written for:
+before committing, run `./test/run-tests.sh prove`, which runs the working
+tree's tests against the committed product code and must report the new
+checks as failing. A test that passes there passes for the wrong reason
+unless it only guards behaviour that already existed. Assert the specific
+message or state, not just that validation failed somewhere.
+
 Hardware-bound verification commands are documented in `test/README.md`; do
 not run provisioning or deletion commands merely to validate a repository edit.
 
@@ -162,6 +169,13 @@ summary and the phase logs, fix the root cause in the product (never by
 weakening a check or an invariant above), rerun, and compare durations and
 product size with the previous run. Only the test machine may be targeted;
 never run these scripts against another Qubes installation.
+
+Use `--quick` after each change; it takes about 8 minutes. Use `--all` with
+its rerun before pushing a batch that touches several components or the
+runner, and add `--force-rerun` when installers changed. While a run is in
+progress, watch its `progress.log` and give the user a short status with the
+ETA at every phase change, and at least every 20 minutes. Do not plan steps
+that need the user at the test machine unless they offer.
 
 ## Completion standard
 

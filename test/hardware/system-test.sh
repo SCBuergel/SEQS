@@ -11,11 +11,18 @@
 #   lifecycle restart qubes: cleanup on boot/shutdown, persistent state
 #   rerun    install and check again: a second run must converge quickly
 #
-# Usage: test/hardware/system-test.sh [--qubes LIST | --all] [--no-rerun]
-#                                     [--force-rerun] [--host HOST]
+# Usage: test/hardware/system-test.sh [--quick | --qubes LIST | --all]
+#                                     [--no-rerun] [--force-rerun] [--host HOST]
 #
-# --force-rerun empties every completion marker before the rerun, so it runs
-# every component script a second time instead of skipping finished ones.
+# --quick builds a small set that covers each kind of qube (offline, link
+# handoff, browser, disposable template with a named disposable) without the
+# rerun: the check after each change. Use --all, with the rerun, for
+# milestones; add --force-rerun when installers changed, so every component
+# script runs a second time instead of skipping finished ones.
+#
+# Progress goes to test/hardware/results/<time>/progress.log, one line per
+# phase start and end, with an ETA taken from the last run of the same
+# selection and options.
 #
 # The commit under test is the working tree's tracked content, including
 # uncommitted changes. Results go to test/hardware/results/<time>/, with
@@ -32,10 +39,11 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--qubes) [ "$#" -gt 1 ] || { echo "--qubes needs a list" >&2; exit 2; }; SELECTION="$2"; shift ;;
 		--all) SELECTION="all" ;;
+		--quick) SELECTION="keepass,signal,brave,qr-display"; RERUN=0 ;;
 		--no-rerun) RERUN=0 ;;
 		--force-rerun) FORCE_RERUN=1 ;;
 		--host) [ "$#" -gt 1 ] || { echo "--host needs a name" >&2; exit 2; }; HOST="$2"; shift ;;
-		-h|--help) sed -n '3,22p' "$0"; exit 0 ;;
+		-h|--help) sed -n '3,30p' "$0"; exit 0 ;;
 		*) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -60,14 +68,46 @@ PHASES=()
 FAILED_PHASES=()
 OVERALL=0
 
+# The phases this run will go through, and how long each took in the last
+# finished run with the same selection and options, for the ETA.
+PLAN=(sync reset install check lifecycle)
+[ "${RERUN}" -eq 0 ] || { [ "${FORCE_RERUN}" -eq 0 ] || PLAN+=(invalidate); PLAN+=(rerun-install rerun-check); }
+OPTIONS="selection ${SELECTION} rerun ${RERUN} force ${FORCE_RERUN}"
+declare -A EXPECT=()
+previous="$(grep -lxF "options    ${OPTIONS}" test/hardware/results/*/summary.txt 2>/dev/null | sort | tail -n 1)"
+if [ -n "${previous}" ]; then
+	while read -r name result secs; do
+		EXPECT["${name}"]="${secs%s}"
+	done < <(awk '/^phase / { p = 1; next } p && NF == 3 { print } p && NF != 3 { exit }' "${previous}")
+fi
+
+# progress TEXT -- one time-stamped line in progress.log and on the terminal.
+progress() {
+	printf '%s %s\n' "$(date +%H:%M)" "$*" | tee -a "${RESULTS}/progress.log"
+}
+
+# eta PHASE -- clock time this run should end if PHASE starts now, or nothing.
+eta() {
+	local p left=0 seen=0
+	for p in "${PLAN[@]}"; do
+		[ "${p}" = "$1" ] && seen=1
+		[ "${seen}" -eq 1 ] || continue
+		[ -n "${EXPECT[${p}]:-}" ] || return 0
+		left=$((left + EXPECT[${p}]))
+	done
+	date -d "+${left} seconds" +%H:%M
+}
+
 # phase NAME COMMAND... -- run one phase, log it, record status and duration.
 phase() {
 	local name="$1" start rc log="${RESULTS}/$1.log"
 	shift
 	printf '\n### %s\n' "${name}"
+	progress "start ${name}${EXPECT[${name}]:+ (last time ${EXPECT[${name}]}s)}$(e="$(eta "${name}")"; [ -z "${e}" ] || echo "; run ends about ${e}")"
 	start="${SECONDS}"
 	"$@" 2>&1 | tee "${log}"
 	rc="${PIPESTATUS[0]}"
+	progress "$([ "${rc}" -eq 0 ] && echo done || echo FAILED) ${name} in $((SECONDS - start))s"
 	PHASES+=("$(printf '%-9s %-4s %6ss' "${name}" "$([ "${rc}" -eq 0 ] && echo ok || echo FAIL)" "$((SECONDS - start))")")
 	[ "${rc}" -eq 0 ] || { OVERALL=1; FAILED_PHASES+=("${name}"); }
 	return "${rc}"
@@ -117,6 +157,7 @@ summary() {
 		echo "SEQS hardware system test"
 		echo "commit     ${REV}"
 		echo "selection  ${SELECTION}"
+		echo "options    ${OPTIONS}"
 		echo "host       ${HOST}"
 		echo
 		echo "phase     result  time"
@@ -161,6 +202,7 @@ main() {
 		fi
 	fi
 	summary
+	progress "finished: $([ "${OVERALL}" -eq 0 ] && echo all phases ok || echo "FAILED ${FAILED_PHASES[*]}")"
 	exit "${OVERALL}"
 }
 

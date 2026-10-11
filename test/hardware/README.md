@@ -326,6 +326,7 @@ sync      ok        Ns
 reset     ok        Ns
 install   ok        Ns
 check     ok        Ns
+lifecycle ok        Ns
 rerun-install ok    Ns
 rerun-check ok      Ns
 
@@ -342,11 +343,21 @@ Product size (lines, for auditability):
 The script exits with status 0 only if every phase succeeded. Everything is
 also saved under `test/hardware/results/<date-time>/`: `summary.txt` and one
 log per phase, with `test/hardware/results/latest` pointing to the newest
-run. The results directory is not committed.
+run. The results directory is not committed. `progress.log` there gets one
+line when each phase starts and ends; once a run with the same options has
+finished, the start lines also estimate when the run will end:
 
-To test other qubes, name them, or build the whole catalogue:
+```text
+23:10 start install (last time 217s); run ends about 23:18
+```
+
+For a short check after each change, `--quick` builds one qube of each kind
+(offline, handing links to the browser, the browser, and a disposable template
+with its named disposable) without the second install. To test other qubes,
+name them, or build the whole catalogue:
 
 ```bash
+test/hardware/system-test.sh --quick
 test/hardware/system-test.sh --qubes keepass,signal
 test/hardware/system-test.sh --all
 test/hardware/system-test.sh --no-rerun

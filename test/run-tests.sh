@@ -11,6 +11,8 @@
 #   ./test/run-tests.sh unit       run only the bash unit tests
 #   ./test/run-tests.sh integration run only the integration test
 #   ./test/run-tests.sh fast       run lint and render tests
+#   ./test/run-tests.sh prove [REV] run the working tree's tests against the
+#                                  product code of REV (default HEAD)
 #   ./test/run-tests.sh help       show this command summary
 #
 # See test/README.md for what each layer covers and the (hardware-bound)
@@ -26,7 +28,7 @@ declare -a RESULTS
 
 usage() {
 	cat <<'EOF'
-Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration]
+Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration|prove [REV]]
 
   all          run every Qubes-free layer (default)
   fast         run the lint and render layers
@@ -34,11 +36,44 @@ Usage: ./test/run-tests.sh [all|fast|lint|render|unit|integration]
   render       detailed Salt and pillar render assertions
   unit         bash helper unit tests
   integration  end-to-end tests against mock Qubes commands
+  prove [REV]  run the working tree's tests against the product code of REV
+               (default HEAD): a new test must fail there, which proves it
+               detects the change it was written for
 EOF
+}
+
+# prove REV -- copy REV's tree into a temporary git worktree, replace its
+# test/ with the working tree's, and run every layer there. Exit 0 if some
+# check fails (the tests detect the difference), 1 if all pass.
+prove() {
+	local rev tmp out
+	rev="$(git rev-parse --verify --quiet "${1:-HEAD}^{commit}")" \
+		|| { echo "ERROR: not a commit: ${1:-HEAD}" >&2; return 2; }
+	tmp="$(mktemp -d)"
+	git worktree add --quiet --detach "${tmp}/tree" "${rev}" || return 2
+	rm -r -- "${tmp}/tree/test"
+	cp -a test "${tmp}/tree/test"
+	out="$(cd "${tmp}/tree" && bash test/run-tests.sh all 2>&1)"
+	local result=$?
+	git worktree remove --force "${tmp}/tree"
+	rm -rf -- "${tmp}"
+	echo "Tests of the working tree against the product code of ${rev:0:7}:"
+	if [ "${result}" -ne 0 ]; then
+		grep -E 'FAIL:|FAIL  Layer|Traceback|Error:' <<< "${out}" | sed 's/^/  /'
+		echo "PROVED: the checks above fail against ${rev:0:7}."
+		return 0
+	fi
+	echo "NOT PROVED: every check passes against ${rev:0:7}, so no test detects the change."
+	echo "That is expected only for a test that guards behaviour ${rev:0:7} already had."
+	return 1
 }
 
 case "${want}" in
 	all | fast | lint | render | unit | integration) ;;
+	prove)
+		prove "${2:-HEAD}"
+		exit $?
+		;;
 	help | -h | --help)
 		usage
 		exit 0

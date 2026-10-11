@@ -16,7 +16,13 @@ under a second, on any Linux box (or CI), with **no Qubes at all**.
 ```
 ./test/run-tests.sh            # run every Qubes-free layer, summarised
 ./test/run-tests.sh render     # or just one layer: lint | render | unit | integration
+./test/run-tests.sh prove      # do the new tests fail against the committed code?
 ```
+
+`prove` runs the working tree's tests against the product code of the last
+commit (or a commit you name) in a temporary git worktree. A test written for a
+change must fail there; one that passes would also have passed without the
+change.
 
 The only dependencies are `python3` with `jinja2` + `pyyaml` (for the render
 layers) and `bash`. `shellcheck` is used if present and skipped with a note if
