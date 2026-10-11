@@ -140,8 +140,11 @@ if readTargets 2>/dev/null; then
 	eq "offline includes the disposable" "${OFFLINE_TARGETS[*]}" "A-keepass D-qr-display"
 else bad "readTargets failed on a valid file"; fi
 # Unsafe qube name must abort.
-printf 'template Z-brave brave\napp A-brave; rm -rf / brave\n' > "${TARGETS_FILE}"
-if ( readTargets ) 2>/dev/null; then bad "readTargets accepted an unsafe name"; else ok; fi
+for line in 'app A-brave;x brave' 'app A-brave br$(x)ave'; do
+	printf 'template Z-brave brave\n%s\n' "${line}" > "${TARGETS_FILE}"
+	out="$( ( readTargets ) 2>&1 )" && bad "readTargets accepted [${line}]"
+	grep -q "unsafe .* name in ${TARGETS_FILE}" <<< "${out}" && ok || bad "[${line}]: wrong message [${out}]"
+done
 # An unknown flag must abort: it may be a protection this runner cannot apply.
 printf 'template Z-brave brave\napp A-brave brave online\n' > "${TARGETS_FILE}"
 out="$( ( readTargets ) 2>&1 )" && bad "readTargets accepted an unknown flag"

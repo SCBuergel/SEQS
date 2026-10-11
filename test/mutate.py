@@ -56,6 +56,7 @@ MUTATIONS = [
     ("stage-incomplete", R, '[ -f "${FETCH_ROOT}/.seqs-complete" ] \\', 'true \\'),
     # Runner: targets file and air gap.
     ("targets-name", R, '[[ "${name}" =~ ${SAFE_NAME} ]] || die', '[[ "${name}" =~ ${SAFE_NAME} ]] || true'),
+    ("targets-recipe", R, '[[ "${recipe}" =~ ${SAFE_NAME} ]] || die', '[[ "${recipe}" =~ ${SAFE_NAME} ]] || true'),
     ("targets-flag", R, "*) die \"unknown flag in ${TARGETS_FILE}: '${flag}'\" ;;", "*) ;;"),
     ("airgap-inherited", R, '$2 == "-" && $3 == "None" { n++ } END { exit n != 2 }\' <<<', '$3 == "None" { n++ } END { exit n != 2 }\' <<<'),
     ("airgap-one", R, '{ n++ } END { exit n != 2 }\' <<<', '{ n++ } END { exit n < 1 }\' <<<'),

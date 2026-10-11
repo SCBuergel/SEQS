@@ -426,7 +426,7 @@ print(d.get("local", d).get(sys.argv[1], ""))' "${1#brave-extension-}" <<< "${EX
 		node) echo 'bash -lc ". ~/.nvm/nvm.sh && node -e \"console.log(6 * 7)\"" 2>/dev/null | grep -qx 42' ;;
 		vscode) echo 'timeout 60 code --version >/dev/null 2>&1' ;;
 		claude-code) echo 'timeout 60 ~/.local/bin/claude --version >/dev/null 2>&1' ;;
-		element|signal|xournalpp)
+		element|signal|xournalpp|bitbox)
 			local pkg="$1"
 			[ "$1" = element ] && pkg=element-desktop
 			[ "$1" = signal ] && pkg=signal-desktop
