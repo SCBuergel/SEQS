@@ -39,9 +39,6 @@ Passphrase:      source key qube -> written on paper -> typed on the
    file.
 7. You delete the leftover encrypted copies and destroy the paper.
 
-Everything that handles the QR code only ever sees encrypted data, and the
-passphrase is typed only after all of it is shut down.
-
 ## What you must trust
 
 The procedure protects the secret only if these parts behave correctly:
@@ -64,9 +61,7 @@ Everything else is treated as possibly hostile, and it falls into two sides:
   the encrypted file while the receiving computer is switched off.
 - The **keyboard side** sees the passphrase: normal `sys-usb`, the USB
   keyboard, its firmware, their controller, and any camera attached to
-  `sys-usb`. This side is treated as possibly hostile in the sense that it may
-  watch what you type; a USB keyboard path that types on its own is covered by
-  the trust list above, as explained below.
+  `sys-usb`. It may watch what you type.
 
 The secret stays safe only while at most one side is hostile. If both are, the
 passphrase and the encrypted file meet, the secret is lost, and nothing in this
@@ -176,12 +171,11 @@ that `sys-usb-webcam` owns permanently. It is the only path that separates the
 webcam and the keyboard in hardware. It needs a controller that carries no
 device you need, and a webcam socket whose wires lead to no other controller.
 On Intel laptops and NUCs, one controller usually serves the USB-A sockets, the
-internal USB devices, and any USB keyboard, while the USB-C sockets are split
-between two controllers. This path then needs an added controller: a PCIe USB
-card in a desktop, or an M.2 USB controller card in a free M.2 slot of a NUC;
-most laptops have no slot for one. AMD laptops often have two or three USB
-controllers in the processor and sometimes offer a dedicated controller
-without extra hardware.
+internal USB devices, and any USB keyboard. This path then needs an added
+controller: a PCIe USB card in a desktop, or an M.2 USB controller card in a
+free M.2 slot of a NUC; most laptops have no slot for one. AMD laptops often
+have two or three USB controllers in the processor and sometimes offer a
+dedicated controller without extra hardware.
 [Look for a dedicated controller](#look-for-a-dedicated-controller) describes
 its requirements.
 
@@ -218,10 +212,8 @@ does not. A socket may be split, because `sys-usb` is stopped during the scan,
 so no qube drives the other controller. And the controller need not support a
 strict reset (a reset that clears its state when it moves between qubes),
 which the chipset controller of Intel computers often does not. Without it,
-the controller reaches `sys-usb-webcam` still holding state that `sys-usb`
-left in it, possibly traces of earlier keyboard input. The camera side has no
-NetVM and no default disposable; it could pass such traces on only through the
-scanned file, which stays in offline qubes, or to the webcam itself.
+state that `sys-usb` left in the controller, possibly traces of earlier
+keyboard input, reaches the camera side.
 
 The sequential path cannot protect against malicious state that survives power
 removal in the controller, keyboard, or webcam firmware, a webcam attack that
@@ -251,7 +243,8 @@ you already trust instead, such as a USB mouse, as the test device.
 
 ### List the USB controllers
 
-In a dom0 terminal of the receiving computer, run:
+In a dom0 terminal of the receiving computer, run `qvm-pci`
+([PCI devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-pci-devices.html)):
 
 ```bash
 qvm-pci list --with-sbdf | grep -i usb
@@ -282,13 +275,9 @@ lookups below.
 ### Check whether the built-in keyboard uses USB
 
 Skip this check if the receiving computer has no built-in keyboard. Otherwise,
-its result decides how much the transfer protects on this computer. A built-in
-keyboard that does not use USB sends its key presses straight to dom0, so
-`sys-usb` cannot read or invent them: if you type the passphrase on it, the
-two-side protection described under [What you must trust](#what-you-must-trust)
-holds in full on this computer. A built-in keyboard that uses USB goes through
-`sys-usb` like any USB keyboard, and it counts as an internal device in the
-next check.
+its result decides how much the transfer protects on this computer, as
+explained under [What you must trust](#what-you-must-trust). A built-in
+keyboard that uses USB counts as an internal device in the next check.
 
 The check stops `sys-usb`, so your USB keyboard and mouse stop working; save
 your work first. In a dom0 terminal, run:
@@ -318,7 +307,8 @@ Internal USB devices cannot be unplugged. The sequential path needs every
 one on the webcam's controller switched off; the dedicated-controller path
 needs the radios among them switched off, as
 [Look for a dedicated controller](#look-for-a-dedicated-controller) explains.
-In a dom0 terminal, run:
+In a dom0 terminal, run `qvm-usb`
+([USB devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-usb-devices.html)):
 
 ```bash
 sleep 20; qvm-usb
@@ -340,9 +330,7 @@ controller of the USB-A sockets, a USB 3 webcam in a USB-C socket may still
 work: on many Intel laptops, the USB 3 wires of the USB-C sockets lead to the
 other controller, which the next subsection shows with a USB 3 test device.
 
-The devices must stay switched off for every later transfer. The scan script
-shows the devices in `sys-usb` before every scan, so that you notice one that
-has been switched back on, for example by a firmware update.
+The devices must stay switched off for every later transfer.
 
 ### Find the controller of the webcam's socket
 
@@ -412,20 +400,11 @@ the ID that the test device's bus showed, written without `0x`. If two
 controllers have the same ID as well, which happens on some AMD laptops, do
 not guess; use the test in the next subsection.
 
-These results come from `sys-usb`, a qube that Qubes does not trust. On the
-sequential path, if no internal device remained switched on, a wrong result
-cannot expose the keyboard side: if the configured controller is not the
-webcam's, the script finds no device during the scan and powers off without
-scanning. The same happens if you later plug the webcam into a socket of
-another controller.
-
 ### Tell identical controllers apart
 
 Skip this subsection unless two controllers showed the same hardware ID. This
 test takes one of them away from `sys-usb` for 30 seconds and shows which
-devices disappear. Dom0 decides which controller `sys-usb` gets, so the test
-is more trustworthy than the lookups inside `sys-usb`, although the device
-list it shows is still reported by `sys-usb`.
+devices disappear.
 
 In the dom0 controller list, check whether the line of the controller you will
 test shows `no-strict-reset` next to `sys-usb`. Plug the test device into
@@ -507,16 +486,16 @@ to one controller and USB 2 to the controller that also serves the keyboard.
 On such a split socket the webcam, not you, chooses which wires it uses. A
 hostile webcam can connect over the USB 2 wires as well, and that connection
 lands in `sys-usb`. The check after the build does not reveal this, because it
-shows only the connection the webcam chooses to present. A USB-C socket with
-Thunderbolt can also reach the Thunderbolt host interface (`NHI`) that
-`sys-usb` owns. A split or Thunderbolt socket therefore never qualifies.
+shows only the connection the webcam chooses to present; only the split check
+below can find such a socket. A USB-C socket with Thunderbolt can also reach
+the Thunderbolt host interface (`NHI`) that `sys-usb` owns. A split or
+Thunderbolt socket therefore never qualifies.
 
 The controller must support a strict reset, as checked under
 [Check whether the controller supports a strict reset](#check-whether-the-controller-supports-a-strict-reset).
 Transfers on this path are not separated by a power-off; with a strict reset,
 Qubes resets the controller each time `sys-usb-webcam` starts, so state a
-hostile webcam left in it does not carry into the next transfer. SEQS refuses
-to build this path with `webcam_usb_no_strict_reset = True`.
+hostile webcam left in it does not carry into the next transfer.
 
 `sys-usb-webcam` then owns the controller permanently, so anything plugged
 into any of that controller's sockets from then on is handled by the camera
@@ -546,10 +525,6 @@ its bus must show a speed of `5000` or more, in this socket or another socket
 of the same kind (USB-A or USB-C) with the same adapter. If it never does, the
 device or adapter is USB 2 only, and its results cannot show whether a socket
 is split; repeat the check with a real USB 3 device.
-
-The check after the build confirms from dom0 which qube receives the webcam,
-but it cannot detect a split socket. For that you rely on the two test
-devices, as reported by `sys-usb`, a qube that Qubes does not trust.
 
 If a candidate socket is not split and its controller supports a strict reset,
 use the dedicated-controller path with that controller. From now on, plug the
@@ -655,8 +630,7 @@ Select `qr-display` on the sending computer. On the receiving computer, select
 dedicated-controller path. Add the other role's qubes too if the computer will
 send in both directions.
 
-On the receiving computer, the build creates `sys-usb-webcam` and
-`seqs-qr-scanner`. On the sequential path it also creates `A-qr-staging` (a
+On the sequential path, the build also creates `A-qr-staging` (a
 persistent offline qube that keeps the encrypted file while the computer is
 off) and the dom0 script `/usr/local/sbin/seqs-qr-sequential` that runs the
 scan. On the sequential path, the build stops with `Configured controller is
@@ -715,10 +689,9 @@ Both tag lists must include `seqs-no-handoff`; a disposable started from
 The `Air gap verified:` line of the SEQS run covers `A-qr-camera` and, on the
 sequential path, `A-qr-staging`, in the same way. If you no longer have that
 output, check them with `qvm-prefs` as on the sending computer. On the
-sequential path, the scan script also refuses to start if `sys-usb-webcam`,
-`seqs-qr-scanner`, or `A-qr-staging` has a NetVM or a default disposable, at
-every transfer. On the dedicated-controller path, check `sys-usb-webcam` and
-`seqs-qr-scanner` yourself; in a dom0 terminal of the receiving computer, run:
+dedicated-controller path, no scan script checks `sys-usb-webcam` and
+`seqs-qr-scanner` at each transfer, so check them yourself; in a dom0 terminal
+of the receiving computer, run:
 
 ```bash
 for q in sys-usb-webcam seqs-qr-scanner; do qvm-prefs $q netvm; qvm-prefs $q default_dispvm; done
@@ -836,11 +809,9 @@ The rehearsal succeeds only if each of these happens as described:
 - all four fingerprint groups match in step 5; and
 - step 6 ends with `600 master.key`.
 
-If anything else happens, find the cause before you use a real secret. The scan
-relies on `zbarcam` adding no line break to the scanned data, which holds for
-the zbar versions in Debian 12 and 13 (0.23.92 and 0.23.93). If the
-fingerprints differ at every attempt while the scan otherwise works, this may
-not hold for your template, and the scan commands need a change before use.
+If anything else happens, find the cause before you use a real secret. If the
+fingerprints differ at every attempt but the scan works, stop: the scan
+commands need changing.
 
 ## Transfer a file
 
@@ -863,6 +834,12 @@ computers, as described under
 [Why the webcam must not share a USB controller with the keyboard](#why-the-webcam-must-not-share-a-usb-controller-with-the-keyboard).
 From step 1 until the end, keep the paper, and any screen showing the
 passphrase, out of every camera's view.
+
+Qubes asks in a dom0 dialog before a qube copies files to another qube.
+`D-qr-display` and the camera-side qubes can open such a dialog on their own,
+for example to copy `key.asc` to a qube with network access. Accept only the
+copy dialogs that the steps below tell you to expect. Cancel any other dialog
+from these qubes, and treat it like a fingerprint mismatch in step 5.
 
 ### Step 1: Encrypt the file (sending computer)
 
@@ -887,9 +864,6 @@ unset PASSPHRASE
 )
 ```
 
-The parentheses run the commands in a subshell, so that a failing command
-stops the block and prints an `ERROR` line instead of closing the terminal.
-
 The terminal prints the passphrase and creates the encrypted file `key.asc`.
 Write the passphrase on the paper. If the last line starts with `ERROR`,
 discard that passphrase: check that you are in the directory containing
@@ -901,11 +875,10 @@ passphrase, and running `clear` does not remove it.
 
 ### Step 2: Copy the encrypted file to the display qube (sending computer)
 
-Start `D-qr-display` before copying, by opening a terminal in it: choose
-`Display QR (offline)` under `D-qr-display` in the Qubes menu, or, if the menu
-does not offer it, run `qvm-run D-qr-display x-terminal-emulator` in a dom0
-terminal. SEQS qubes delete `~/QubesIncoming` when they start, so a copy that
-itself starts `D-qr-display` could be deleted by that cleanup. If you used the
+Start `D-qr-display` before copying, so that its start-up cleanup cannot delete
+the copy. Open a terminal in it: choose `Display QR (offline)` under
+`D-qr-display` in the Qubes menu, or, if the menu does not offer it, run
+`qvm-run D-qr-display x-terminal-emulator` in a dom0 terminal. If you used the
 dom0 command, that dom0 terminal stays busy until the new terminal is closed;
 leave it open, because closing it also closes the terminal in `D-qr-display`.
 
@@ -932,20 +905,14 @@ qrencode -l M -t ansiutf8 < key.asc
 ```
 
 The terminal should show one complete QR code: a square with a light border on
-all sides and no wrapped lines. The code is large: the 1,000-byte rehearsal
-file already gives one about 153 characters wide and 77 lines high, and a file
-near the size limit one about 185 characters wide and 93 lines high. At a
-typical default font size it does not fit even in a maximized terminal, so
-maximize the terminal and make the font smaller (in most terminals with
-`Ctrl+-`) until the whole code fits. If `qrencode` instead
-reports that it failed to encode the input data, stop: the file is too big for
-this procedure. Keep `D-qr-display` running only until the receiving computer
-has scanned the code, then shut it down.
+all sides and no wrapped lines. Maximize the terminal and make the font
+smaller (in most terminals with `Ctrl+-`) until the whole code fits. If
+`qrencode` instead reports that it failed to encode the input data, stop: the
+file is too big for this procedure. Keep `D-qr-display` running only until the
+receiving computer has scanned the code, then shut it down.
 
-`D-qr-display` never needs to open a dialog. It can still request one on its
-own, for example to copy `key.asc` to a qube with network access. Cancel any
-dialog that names `D-qr-display` as the source, and treat it like a
-fingerprint mismatch in step 5.
+`D-qr-display` never needs to open a dialog: cancel any that names it as the
+source, and treat it like a fingerprint mismatch.
 
 ### Step 4a: Scan on the dedicated-controller path (receiving computer)
 
@@ -983,10 +950,8 @@ use step 4b.
    In the copy dialog, choose the target key qube. If the last line starts with
    `ERROR`, run the block again.
 
-   Accept exactly one copy dialog: the one that appears right after the scan.
-   The camera disposable can open copy dialogs on its own, so cancel any other
-   dialog from it, and treat such a dialog like a fingerprint mismatch in
-   step 5.
+   Accept only the copy dialog that appears right after the scan; cancel any
+   other from `seqs-qr-scanner`, and treat it like a fingerprint mismatch.
 7. After the copy succeeds, unplug the webcam and shut down `seqs-qr-scanner`
    and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
    Domains widget that both have stopped before you take out the paper.
@@ -1045,11 +1010,7 @@ script again. Otherwise, type `START` in capital letters. After that:
    `sys-usb-webcam` does not start, the script shows an error and powers off
    after 60 seconds without scanning; see the end of
    [Configure and build the QR qubes](#configure-and-build-the-qr-qubes).
-   Point the webcam at the QR code. dom0 policy lets the scanner copy files
-   only to `A-qr-staging`; its 16 KiB size limit is checked only inside the
-   scanner, which is untrusted. A webcam that itself shows up as several USB
-   devices is refused every time; use a webcam that shows up as a single
-   device.
+   Point the webcam at the QR code.
 4. Unplug the webcam when the script reports that the copy completed, or
    when it reports an error. Do not reconnect the keyboard or mouse.
 5. The computer powers off, whether the scan worked or not.
@@ -1086,9 +1047,8 @@ qvm-copy key.asc
 ```
 
 In the dialog, choose the target key qube. Accept only this one copy dialog;
-`A-qr-staging` belongs to the camera side and can open dialogs on its own, so
-cancel any other dialog from it and treat it like a fingerprint mismatch in
-step 5.
+cancel any other from `A-qr-staging`, and treat it like a fingerprint
+mismatch.
 
 The camera side must be shut down before you type the passphrase. When the
 copy has finished, delete the staging copy in the same terminal:
@@ -1149,11 +1109,6 @@ sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' 
 Place the two screens side by side, use a large font, and compare all four
 groups character by character. Do not copy, paste, retype, or photograph the
 code.
-
-The code is the first 20 characters (80 bits) of the file's SHA-256 hash, so a
-match makes an undetected change very unlikely rather than impossible: for a
-given source code, producing a different file with the same code would take
-about 2^80 attempts.
 
 If any character differs, do not run GnuPG. A bad scan is an unlikely
 explanation: QR codes carry error correction, so `zbarcam` almost always
@@ -1228,7 +1183,5 @@ shredder, so that the passphrase cannot be read from the pieces.
 ## Further reading
 
 The official Qubes documentation covers the underlying concepts in more depth:
-[USB qubes](https://doc.qubes-os.org/en/latest/user/advanced-topics/usb-qubes.html),
-[USB devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-usb-devices.html),
-[PCI devices](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-use-pci-devices.html),
+[USB qubes](https://doc.qubes-os.org/en/latest/user/advanced-topics/usb-qubes.html)
 and [disposable customization](https://doc.qubes-os.org/en/development/user/advanced-topics/disposable-customization.html).
