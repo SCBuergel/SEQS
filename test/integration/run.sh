@@ -120,6 +120,17 @@ out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET
 rm -rf "${SBX}"
 
+# ── Scenario 1a2: a template left running by an interrupted run is stopped ──
+echo "== scenario: a template still running from an interrupted run is shut down first =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+printf '%s\n' "debian-13-xfce halted" "Z-keepass running" > "${SEQS_MOCK_STATE}"
+out="$(run_setup --qubes keepass 2>&1)"; rc=$?
+grep -q "Z-keepass is still running, perhaps from an interrupted run; shutting it down" <<<"$out" && ok \
+	|| bad "a running target template must be shut down before provisioning ($rc)"
+unset SEQS_MOCK_STATE
+rm -rf "${SBX}"
+
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────
 echo "== scenario: GnosisVPN proxy resolves a DisposableVM UpdateVM template chain =="
 new_sandbox

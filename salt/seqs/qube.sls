@@ -77,6 +77,17 @@ seqs-marker-dir:
     - group: root
     - mode: '0755'
 
+{% if role == 'template' %}
+# Finish a package installation that an interrupted run left half done, or
+# every apt call of the component scripts below fails.
+seqs-dpkg-repair:
+  cmd.run:
+    - name: DEBIAN_FRONTEND=noninteractive dpkg --configure -a
+    - onlyif: test -n "$(dpkg --audit)"
+    - require_in:
+      - file: seqs-marker-dir
+{% endif %}
+
 # Shared helper libs, staged once for brave-extension installs.
 seqs-stage-lib:
   file.recurse:

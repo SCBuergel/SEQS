@@ -90,28 +90,28 @@ confirm() {
 # scanned for salt's own failure markers.
 runQubesctl() {
 	local out rc
-	out=$(mktemp /tmp/seqs-qubesctl.XXXXXX) || die "mktemp failed"
-	sudo qubesctl "$@" 2>&1 | sanitize | tee "${out}"
-	rc="${PIPESTATUS[0]}"
+	# The output is shown as it comes and kept in memory for the scans below;
+	# a temporary file would be left behind if the run is interrupted.
+	out="$(sudo qubesctl "$@" 2>&1 | sanitize | tee /dev/stderr; exit "${PIPESTATUS[0]}")"
+	rc=$?
 	# 'Result: False' prints per failed state; 'Failed: N' matters when N > 0.
 	# Salt colorizes the value, so allow whitespace/color residue between key
 	# and value (sanitize() has already stripped the ESC bytes).
 	if [ "${rc}" -eq 0 ] \
-			&& grep -qE 'Result:([[:space:]]|\[[0-9;]*m)*False|Failed:([[:space:]]|\[[0-9;]*m)*[1-9]' "${out}"; then
+			&& grep -qE 'Result:([[:space:]]|\[[0-9;]*m)*False|Failed:([[:space:]]|\[[0-9;]*m)*[1-9]' <<< "${out}"; then
 		echo "NOTE: qubesctl exited 0 but its output reports failed states -- treating as failure." >&2
 		rc=1
 	fi
 	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
-	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' "${out}")
+	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
 	[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1
 	local vm
 	for vm in "${FAILED_QUBES[@]}"; do
 		echo "${vm}: last error lines of this run in /var/log/qubes/mgmt-${vm}.log:" >&2
 		sudo tac "/var/log/qubes/mgmt-${vm}.log" 2>/dev/null | sed -n '2,/ exit code: /p' | tac \
-			| grep -iE 'error|fail' | grep -vE 'Result: |Failed: ' | tail -n 5 \
+			| grep -iE 'error|fail| E: ' | grep -vE 'Result: |Failed: ' | tail -n 5 \
 			| sed 's/^.* output: *//' | sanitize | sed 's/^/    /' >&2
 	done
-	rm -f "${out}"
 	return "${rc}"
 }
 
@@ -666,6 +666,18 @@ if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
 	echo "    Named disposable(s) ready (not provisioned): ${DISPOSABLE_TARGETS[*]}"
 fi
 FAILED=0
+
+# A template still running here was left by an interrupted run, and an
+# install inside it may still hold the package lock; stop it first. A busy one
+# may not shut down in time: kill it, and seqs.qube finishes the interrupted
+# package installation on the next start.
+for vm in "${TEMPLATE_TARGETS[@]}"; do
+	if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
+		echo "    ${vm} is still running, perhaps from an interrupted run; shutting it down"
+		qvm-shutdown --wait -- "${vm}" >/dev/null 2>&1 || qvm-kill -- "${vm}" >/dev/null 2>&1 \
+			|| die "could not stop ${vm}"
+	fi
+done
 
 echo ""
 	prepareGnosisPrerequisites

@@ -1005,6 +1005,15 @@ def test_qube_extension_marker_records_its_id():
     unless = state_arg(parsed, "seqs-install-brave-extension-rabby", "cmd.run", "unless")
     check("echo %s;" % eid in unless, "the extension marker must record the extension ID")
 
+
+def test_qube_template_repairs_interrupted_dpkg():
+    case("qube.sls: a template finishes an interrupted package install first; an app qube does not")
+    _, template = render_state("qube", "Z-keepass")
+    check("dpkg --configure -a" in state_arg(template, "seqs-dpkg-repair", "cmd.run", "name"),
+          "a template must repair an interrupted dpkg run before the components")
+    _, app = render_state("qube", "A-keepass")
+    check("seqs-dpkg-repair" not in app, "an app qube must not run the dpkg repair")
+
 BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
                      "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]
 

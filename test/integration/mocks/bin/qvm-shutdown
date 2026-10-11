@@ -1,2 +1,8 @@
 #!/usr/bin/env bash
-exit 0
+# Mock qvm-shutdown [--wait] [--] NAME...: mark the qubes halted in the
+# SEQS_MOCK_STATE inventory, if one is in use.
+[ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 0
+for name in "$@"; do
+	case "${name}" in -*) continue ;; esac
+	sed -i "s/^${name} running$/${name} halted/" "${SEQS_MOCK_STATE}"
+done
