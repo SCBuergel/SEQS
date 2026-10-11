@@ -1,13 +1,12 @@
 # First SEQS installation
 
-This is the expanded walkthrough behind the README's install path. A user
-verifies one commit hash (§2) and runs a single command
-(`~/s.sh --repo-vm disp1234 --qubes …`) that fetches, stages, and builds in one
-confirmed run. This document breaks that command into its underlying **fetch →
-stage → build** phases and the separate `--fetch-only` / `--stage-only` /
-`--build-only` commands, so a **reviewer** can pause between phases, inspect
-every intermediate tree, and — before trusting or publishing a commit — read the
-code that will run as root in dom0.
+This walkthrough expands the README's install. §1–§2 apply to every user. The
+remaining sections run the same install phase by phase — **fetch → stage →
+build**, with `--fetch-only`, `--stage-only`, and `--build-only` — so a
+**reviewer** can pause between phases and, before trusting or publishing a
+commit, read the code that will run as root in dom0 (the trusted Qubes
+administrative domain). Parts that only a reviewer needs are marked *reviewer
+only*.
 
 ## 1. Install and verify Qubes OS
 
@@ -16,61 +15,44 @@ Follow [install-qubes.md](install-qubes.md) and the
 
 1. Obtain the Qubes ISO from the official Qubes site.
 2. Verify its signature and the Qubes signing-key fingerprint independently.
-3. Install Qubes, apply all system and template updates, and reboot.
+3. Install Qubes and the `debian-13-xfce` template that SEQS builds on, apply
+   all system and template updates, and reboot.
 
 SEQS cannot compensate for an untrusted Qubes installation or dom0.
 
 ## 2. Download into a temporary DisposableVM
 
-Start a fresh, networked Debian DisposableVM from the Qubes application menu
-and open a terminal. Do not use a daily `personal` qube. A disposable limits
-persistence and avoids mixing the checkout with personal data; it does not
-authenticate what GitHub served.
+From the Qubes menu, start a fresh, networked Debian DisposableVM (a throwaway
+qube deleted when it shuts down) and open a terminal in it. Keep that terminal
+open until the install, or the `--fetch-only` step, finishes: closing the
+disposable's last terminal shuts it down and deletes the checkout. Do not use a
+daily `personal` qube: a disposable keeps the checkout away from personal data,
+though it does not authenticate what GitHub served.
 
-Inside the disposable:
+In the disposable's terminal:
 
 ```bash
-git clone https://github.com/SCBuergel/SEQS.git /home/user/SEQS
-cd /home/user/SEQS
+git clone https://github.com/SCBuergel/SEQS.git   # skip if done in README step 2
+cd SEQS
 git checkout <COMMIT>               # the commit your trusted source published
-git status --short                  # expected output: nothing (clean checkout)
+git status --short                  # expected output: nothing
 git rev-parse HEAD                  # must equal the published commit hash
 hostname                            # the disposable's name, used as --repo-vm in dom0
 ```
 
-**This hash comparison is the trust anchor of the whole install.** A git commit
-hash is a Merkle hash over the entire repository — every file's bytes and path,
-including `setup-qubes.sh` itself — so confirming `git rev-parse HEAD` equals the
-value your trusted source published authenticates that committed object.
-`git status --short` separately checks that the live checkout has no modified
-or untracked files. Git's content-addressing rejects any tampered object under
-that hash, so a hostile network or mirror cannot substitute content. What the
-hash does **not** prove is that the code is *safe* — that judgment is the
-reviewer's (see [VERIFY-HUMAN.md](../VERIFY-HUMAN.md)); as a user you delegate it
-to whoever published the hash.
+Any output from `git status --short` needs investigation. Stop if the hash
+differs. A Git commit hash covers every file in the commit, including
+`setup-qubes.sh`, so a match proves you have exactly the published commit — not
+that the code is safe; that judgment is the reviewer's. Take the hash from
+someone you trust through a channel other than GitHub: a hash from the
+repository's own page proves only that GitHub served a self-consistent tree. If
+no one you trust publishes a hash, become the reviewer with
+[VERIFY-HUMAN.md](../VERIFY-HUMAN.md) and continue with §3.
 
-**The trusted source itself is out of scope of this repository.** Nothing in
-this tree can tell you whom to trust: any in-repo designation of a trusted
-source would itself be covered by the commit hash, so a hostile revision could
-simply name a hostile source. Obtain the hash through a channel you already
-trust that is independent of this clone and of the page you cloned from — a
-maintainer or auditor whose announcements you can authenticate. Taking the hash
-from the repository's own hosting page makes the check circular: it then proves
-only that GitHub served you a self-consistent tree, not that anyone reviewed
-it. If no independent source exists for you, take the reviewer role yourself
-([VERIFY-HUMAN.md](../VERIFY-HUMAN.md)).
+If the hash matches one published by a reviewer you trust, return to
+[README step 3](../README.md#install-for-users).
 
-An empty `git status --short` means there are no modified or untracked files
-immediately after checkout. Any output at this point needs investigation.
-
-The hostname is the running disposable's Qubes name, normally `dispNNNN`. It is
-used as `REPO_VM` in dom0 later. Keep this disposable alive through the install
-(or the `--fetch-only` step); closing it earlier destroys its checkout.
-
-For ongoing maintenance, repeat this disposable workflow or use a dedicated,
-minimal repo qube. Always pass the source qube explicitly with `--repo-vm`.
-
-## 3. Review what will become trusted
+## 3. Review what will become trusted (reviewer only)
 
 Anything in the checkout can ultimately influence dom0 and every qube SEQS
 creates. HTTPS and a commit ID are not a security audit.
@@ -85,15 +67,13 @@ Before copying anything into dom0:
    decision.
 3. Read [architecture.md](architecture.md) for the VM→dom0 transfer, archive
    validation, and bootstrap-window defense.
-4. Compare the complete revision through an independent trusted channel. If the
-   chosen revision has a verifiable signature, verify it; do not assume every
-   commit is signed.
-5. Inspect and test the checkout when dependencies are available:
+4. If the chosen commit has a verifiable signature, verify it; do not assume
+   every commit is signed.
+5. Run the test suite. It needs `python3-jinja2` and `python3-yaml`. In the
+   disposable's terminal:
 
    ```bash
-   cd /home/user/SEQS
-   git status
-   git diff --check
+   sudo apt-get install python3-jinja2 python3-yaml
    ./test/run-tests.sh
    ```
 
@@ -102,34 +82,20 @@ that the code is benign.
 
 ## 4. Choose the build selection
 
-The reviewed checkout already contains the available definitions in:
+The reviewed checkout contains the available definitions in
+`salt/pillar/seqs/config.sls`. Do **not** edit this file merely to choose what
+to install: you pass catalogue base names to the runner with `--qubes` in §8.
+Selection supplies base names only; it cannot alter reviewed labels,
+components, or security flags. Use `--all` only when you deliberately want the
+entire catalogue. See [configuration.md](configuration.md) for the available
+components and exact selection semantics.
 
-```text
-salt/pillar/seqs/config.sls
-```
-
-Do **not** edit this file merely to choose what to install. Decide which
-catalogue base names you want, then pass them to the runner later in dom0:
-
-```bash
-~/s.sh --build-only --qubes brave,signal,keepass
-```
-
-Each available qube is an entry in `qube_catalog`. Selection supplies base
-names only; it cannot alter reviewed labels, components, or security flags.
-Add `--postfix alpha` to create a separate `*-alpha` instance of every
-selected recipe without duplicating its catalogue definition.
-Use `--all` only when you deliberately want the entire catalogue. See
-[configuration.md](configuration.md) for the available components and exact
-selection semantics.
-
-Editing `config.sls` remains necessary only for advanced customization of the
-definitions themselves—such as adding a new component combination, changing a
-base template, or configuring qualified secure-QR hardware. Such an edit
-changes the reviewed *tree* — the directory of Salt state, pillar, and
-component-script files SEQS transfers and applies as a unit — and must be
-reviewed, fetched, and staged normally.
-For example, catalogue definitions have this form:
+Editing `config.sls` is necessary only to customize the definitions themselves,
+such as adding a new component combination, changing the base template, or
+configuring qualified secure-QR hardware. Such an edit changes the *tree* (the
+Salt state, pillar, and component-script files SEQS transfers and applies as a
+unit) and must be committed, reviewed, fetched, and staged normally. Catalogue
+definitions have this form:
 
 ```jinja
 {%- set qube_catalog = [
@@ -143,35 +109,26 @@ For security-sensitive hardware configuration such as QR transfer, complete
 the qualification steps in [secure-qr-transfer.md](secure-qr-transfer.md)
 before selecting a mode.
 
-For an unmodified ordinary install, confirm that the checkout remains clean:
-
-```bash
-git diff --check
-git status --short                  # expected output: nothing
-```
-
 ## 5. Copy only the runner into dom0
 
-Assume the disposable reported `disp1234`; replace it with the exact hostname.
-In dom0:
+In a dom0 terminal (open it from the Qubes menu's gear-icon settings section),
+replace `disp1234` with the disposable's `hostname` from §2:
 
 ```bash
-qvm-run -p disp1234 "git -C /home/user/SEQS show HEAD:setup-qubes.sh" 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
+qvm-run -p disp1234 'cd SEQS && git show HEAD:setup-qubes.sh' 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
 less ~/s.sh
 ```
 
-The stderr redirection is deliberate: it prevents source-qube terminal-control
-bytes from reaching dom0 before the runner's sanitizer exists. See
-[architecture.md#bootstrap-window](architecture.md#bootstrap-window).
-
-The disposable must still have the revision verified in §2 checked out.
-`git show HEAD:` reads the runner from that commit object, not from the
-disposable's live working tree. Review the complete copied runner in `less`;
-quit with `q`.
+`git show HEAD:` reads the runner from the commit verified in §2, not from the
+disposable's live working tree. The stderr redirection is deliberate: it
+prevents source-qube terminal-control bytes from reaching dom0 before the
+runner's sanitizer exists. See
+[architecture.md#bootstrap-window](architecture.md#bootstrap-window). Review the
+complete copied runner in `less`; quit with `q`.
 
 ## 6. Fetch without applying
 
-Still in dom0, while the disposable remains running:
+In the dom0 terminal, while the disposable remains running:
 
 ```bash
 ~/s.sh --repo-vm disp1234 --fetch-only
@@ -180,33 +137,29 @@ Still in dom0, while the disposable remains running:
 The runner asks the repository qube to resolve its checked-out `HEAD`, accepts
 only a full Git object ID, and then uses `git archive` to export that exact
 commit's complete `salt/` and `install-scripts/` paths rather than the
-disposable's live working tree. Resolving first avoids a moving-HEAD race. It
-validates every archive entry, records the source-reported ID in
-`/var/lib/seqs/fetched/source-commit`, and saves the result under
-`/var/lib/seqs/fetched`. It also prints a `Transfer SHA256` of the tar stream —
-a diagnostic for logs, not a second trust anchor. Dom0 does not independently
-compare the source-reported ID with the value verified in §2.
+disposable's live working tree. It validates every archive entry, records the
+ID in `/var/lib/seqs/fetched/source-commit`, and saves the result under
+`/var/lib/seqs/fetched`. No qubes are created and no Salt state is applied.
+
+Dom0 cannot check that ID itself: compare the printed
+`==> Fetching salt tree from source HEAD commit <id>` with the hash from §2 and
+stop if it differs. The printed `Transfer SHA256` is a diagnostic for logs, not
+a second trust anchor.
 
 After `--fetch-only` succeeds, shut down the download disposable. Dom0 no
 longer needs it.
 
-`/var/lib/seqs/fetched` is a SEQS-owned review area, not an active Salt tree.
-No qubes are created and no Salt state is applied during this step.
-
 ## 7. Review and stage the fetched tree
 
-The validated fetched data is root-owned but readable by the normal dom0 user
-under `/var/lib/seqs/fetched`. This *tree* — the directory of Salt state,
-pillar, and component-script files under `/var/lib/seqs/fetched` — is what will
-be staged and run, so reviewing it here is the authoritative review.
+The fetched tree under `/var/lib/seqs/fetched` is root-owned but readable by
+the normal dom0 user. It is what will be staged and run, so reviewing it here is
+the authoritative review.
 
-### Understand the fetched layout
+### Understand the fetched layout (reviewer only)
 
-The fetcher copies the repository completely but not verbatim. It transfers all
-of `salt/` and `install-scripts/` — always the full catalogue and every
-component script, never narrowed by `--qubes` (which selects only what the later
-build creates) — and then *remaps* those files into the layout Qubes Salt
-expects under `/srv`:
+The fetcher transfers all of `salt/` and `install-scripts/` — the full
+catalogue and every component script, never narrowed by `--qubes` — and remaps
+them into the layout Qubes Salt expects under `/srv`:
 
 | Fetched path | Comes from the repository's |
 |---|---|
@@ -214,14 +167,11 @@ expects under `/srv`:
 | `/var/lib/seqs/fetched/salt/` | `salt/seqs/` |
 | `/var/lib/seqs/fetched/salt/files/lib`, `.../files/components` | `install-scripts/lib`, `install-scripts/components` |
 
-Because the contents are complete, every fetched file corresponds to a file in
-the checkout — so it is the *rearrangement* (folders remapped, and the component
-payload from `install-scripts/` overlaid under `salt/files/`), not any selection,
-that stops a single top-level `diff` from lining up; there is no `.git` here to
-run `git` against either. The `.seqs-managed` and `.seqs-complete` markers are
-added by SEQS and are not part of the repository.
+This remapping, not any selection, is why a single top-level `diff` against
+the checkout does not line up; there is no `.git` here either. The
+`.seqs-managed` and `.seqs-complete` markers are added by SEQS.
 
-### Read the fetched tree
+### Read the fetched tree (reviewer only)
 
 These are [Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html)
 files (`.sls`) that run as root in dom0. If Salt is unfamiliar, first skim how
@@ -266,28 +216,14 @@ For the fuller file-by-file order and rationale, use
 [architecture.md](architecture.md); for what each catalogue option means, read
 [configuration.md](configuration.md).
 
-### How the fetched tree ties back to the verified commit
+Dom0 receives whatever the disposable claims `HEAD` and its archive are; a
+compromised disposable could lie, so this review of the fetched tree is what
+covers the code that will run (see
+[architecture.md](architecture.md#what-the-runner-does-in-order)).
 
-There is no separately supplied reviewer hash checked in dom0. Your integrity
-anchor remains the Git commit verified in §2, but the later transfer trusts the
-repository qube to keep that revision checked out and report it honestly.
-`git show HEAD:` reads the runner object; fetch resolves `HEAD` to a full ID and
-`git archive` reads that exact committed `salt/` and `install-scripts/` tree.
-Local modified and untracked files are therefore not transferred. The resolved
-ID is retained in `/var/lib/seqs/fetched/source-commit` for audit history. The
-fetched tree has no `.git`, and dom0 does not run Git or independently
-reconstruct the object graph.
+### Stage the reviewed tree
 
-The residual is the disposable itself: dom0 receives what the disposable
-*claims* those Git commands returned. A compromised disposable can lie about
-`HEAD`, the resolved ID, and the archive. If that is in your threat model, do
-not rely on the transfer
-binding—review the fetched tree directly (previous section), which is the tree
-that will run.
-The `Transfer SHA256` from §6 only confirms dom0 received the bytes the
-disposable sent; it says nothing about whether that qube was honest.
-
-When your review is satisfied, place the reviewed tree under `/srv`:
+When your review is satisfied, in the dom0 terminal:
 
 ```bash
 ~/s.sh --stage-only
@@ -299,15 +235,12 @@ states live under `/srv/salt` and pillar configuration under `/srv/pillar`.
 SEQS owns only the `seqs` subdirectories. Staging makes the reviewed files
 available to `qubesctl`; it still does not create or provision any qube.
 
-The staged `/srv/salt/seqs` and `/srv/pillar/seqs` trees are also readable
-without `sudo`; root ownership prevents the dom0 user from changing them.
-
 ### Verify the staged tree
 
 Staging is a plain copy from `/var/lib/seqs/fetched` into `/srv`, so verifying it
 means confirming two things: the staged tree is exactly the fetched tree you
 already reviewed, and it is root-owned so nothing can alter it before the build
-reads it. In dom0:
+reads it. In the dom0 terminal:
 
 1. **Staged matches fetched.** Both use the same layout, so compare them directly.
    Exclude the `.seqs-complete` marker that staging adds, exactly as the
@@ -333,35 +266,29 @@ reads it. In dom0:
 
    Expect `root root` on both directories and no output from `find` — nothing is
    owned by a non-root user, and nothing is group- or other-writable, so the
-   staged tree the build reads cannot be altered from the dom0 user account. SEQS
-   owns only these `seqs` subdirectories; the rest of `/srv/salt` and
-   `/srv/pillar` is left as Qubes shipped it.
+   staged tree the build reads cannot be altered from the dom0 user account.
 
 ## 8. Build the qubes
 
-Build without contacting any repo/download qube:
+In the dom0 terminal, build without contacting any repository qube:
 
 ```bash
 ~/s.sh --build-only --qubes brave,signal,keepass
 ```
 
-For separate instances of the whole selection:
-
-```bash
-~/s.sh --build-only --qubes brave,signal,keepass --postfix alpha
-```
-
 Watch for:
 
-- the staged-tree hash, build-plan hash, and requested names matching your intent;
-- policy-takeover prompts;
-- the independent air-gap verification;
-- failed Salt states or non-zero failure summaries; and
-- component key/signature checks documented in `VERIFY-HUMAN.md`.
+- no `Overwrite the file(s) above? [y/N]` prompt: it is not expected on a fresh
+  install, so if it appears, answer `N` and find out what wrote the file shown;
+- `Air gap verified: no netvm and no default disposable on <qubes>.` naming
+  every `offline` qube you selected;
+- if you add `--verbose`, the `key verified:` and `signature OK --` lines listed in
+  [VERIFY-HUMAN.md](../VERIFY-HUMAN.md) §4; and
+- the final `==> SEQS setup complete. All targets provisioned.`
 
-Re-runs converge after a failure; fix the reported cause and rerun
-`--build-only` with the same explicit selection. Some applications require a
-one-time app-qube reboot.
+`==> SEQS setup finished WITH FAILURES -- see warnings above.` means a run
+failed; re-runs converge, so fix the reported cause and rerun `--build-only`
+with the same selection. Some applications require a one-time app-qube reboot.
 
 ## 9. Verify before use
 

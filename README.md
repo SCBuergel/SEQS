@@ -9,28 +9,34 @@ and data out of the same qube while making the resulting layout reproducible
 from one reviewed configuration.
 
 > **Warning:** SEQS installs [Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html)
-> code that runs as root in dom0. A malicious checkout can compromise the whole
-> machine. Install only a commit published through an independent channel by a
-> reviewer you trust. The commit-bound export prevents working-tree drift, but
-> dom0 does not verify Git: the repository qube remains trusted. See
-> [TRUST.md](TRUST.md).
+> code that runs as root in dom0 (the trusted Qubes administrative domain). A
+> malicious checkout can compromise the whole machine. Install only a commit
+> published through an independent channel by a reviewer you trust. The
+> commit-bound export prevents working-tree drift, but dom0 does not verify Git:
+> the repository qube remains trusted. See [TRUST.md](TRUST.md).
 
 ## Install (for users)
 
-1. [Install and verify Qubes OS](docs/install-qubes.md), update it, and reboot.
+1. [Install and verify Qubes OS](docs/install-qubes.md) with the
+   `debian-13-xfce` template, update it, and reboot.
 
-2. In a fresh networked Debian DisposableVM, clone SEQS:
+2. From the Qubes menu, start a fresh, networked Debian DisposableVM (a
+   throwaway qube deleted when it shuts down) and open a terminal in it. Keep
+   that terminal open until the install finishes: closing the disposable's last
+   terminal shuts it down and deletes the checkout. In it, clone SEQS:
 
    ```bash
    git clone https://github.com/SCBuergel/SEQS.git
    ```
 
-   Before installing, follow the checkout and commit verification in the
-   [full first-install walkthrough](docs/first-install.md).
+   Then verify the commit as in
+   [first-install §2](docs/first-install.md#2-download-into-a-temporary-disposablevm);
+   stop if its hash differs from the one your reviewer published.
 
-3. Copy the checked-out runner into dom0 and install in one step. Replace both
-   `disp1234` occurrences with the disposable's name, and pick the qubes you
-   want:
+3. In a dom0 terminal (open it from the Qubes menu's gear-icon settings
+   section), copy the checked-out runner into dom0 and install in one step.
+   Replace both `disp1234` occurrences with the disposable's name (shown in its
+   window title), and pick the qubes you want:
 
    ```bash
    qvm-run -p disp1234 'cd SEQS && git show HEAD:setup-qubes.sh' 2>/dev/null > ~/s.sh && chmod 700 ~/s.sh
@@ -38,6 +44,11 @@ from one reviewed configuration.
    ```
 
    Use `--all` instead of `--qubes` for the full catalogue.
+
+   - If the `SEQS workflow and paths:` banner does not appear, the copy failed:
+     check the qube name and copy again.
+   - At the `[y/N]` prompt, type `y`; Enter alone aborts.
+   - Success ends with `==> SEQS setup complete. All targets provisioned.`
 
 Do not put secrets into the resulting qubes until completing the post-install
 checks in [VERIFY-HUMAN.md](VERIFY-HUMAN.md). Already installed SEQS? Use
