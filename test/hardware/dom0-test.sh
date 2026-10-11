@@ -500,6 +500,24 @@ except Exception as e:
 PY
 }
 
+# policyRefused VM -- dom0's policy refuses every way out of VM: links and
+# files to the browser qube and every service into a disposable. Evaluated
+# rather than called, for a qube that is not running, such as a named
+# disposable.
+policyRefused() {
+	local vm="$1" svc d bad=""
+	for svc in qubes.OpenURL qubes.OpenInVM; do
+		d="$(policyDecision "${svc}" "${vm}" "${BROWSER_VM}")"
+		[ "${d}" = AccessDenied ] || bad+=" ${svc} to ${BROWSER_VM}: ${d:-nothing};"
+	done
+	for svc in qubes.OpenURL qubes.OpenInVM qubes.StartApp qubes.GetImageRGBA qubes.VMShell \
+			qubes.VMExec qubes.VMExecGUI qubes.PdfConvert; do
+		d="$(policyDecision "${svc}" "${vm}" @dispvm)"
+		[ "${d}" = AccessDenied ] || bad+=" ${svc} to @dispvm: ${d:-nothing};"
+	done
+	[ -z "${bad}" ] && pass "${vm}: policy refuses every way out" || fail "${vm}: policy allows${bad}"
+}
+
 # unnamedDisposableRefused TEMPLATE -- a disposable started by hand from a
 # disposable template inherits the tag, so its link handoff is refused too.
 unnamedDisposableRefused() {
@@ -596,7 +614,10 @@ check() {
 				;;
 			disposable)
 				checkSetup disposable "${name}" "${recipe}"
-				! noHandoff "${recipe}" || hasTag "${name}"
+				if noHandoff "${recipe}"; then
+					hasTag "${name}"
+					policyRefused "${name}"
+				fi
 				checkMenu disposable "${name}" "${recipe}"
 				;;
 		esac
