@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 BITBOX_VERSION="4.51.0"
-APT_PROXY="127.0.0.1:8082"
 DEB="bitbox_${BITBOX_VERSION}_amd64.deb"
 BASE_URL="https://github.com/BitBoxSwiss/bitbox-wallet-app/releases/download/v${BITBOX_VERSION}"
 
@@ -29,18 +24,11 @@ BITBOX_KEY_FPR="DD09E41309750EBFAE0DEF63509249B068D215AE"
 
 echo "Installing BitBoxApp ${BITBOX_VERSION}"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
 sudo apt-get update
-command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
 
-# ─── Throwaway working directories ───────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
 WORKDIR="$(mktemp -d)"
-trap 'rm -rf "${GNUPGHOME}" "${WORKDIR}"' EXIT
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-gpg --import <<'EOF'
+trap 'rm -rf "${WORKDIR}"' EXIT
+fetch_signed "${BITBOX_KEY_FPR}" "${BASE_URL}/${DEB}" .asc "${WORKDIR}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBGKYcqYBEACtZpDdv1FlJmNsN+tFDhoK9EkO2sKwnQh4mPkuWZ0wAWQabo4k
@@ -95,32 +83,11 @@ jLZugv6bMuMLjA==
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${BITBOX_KEY_FPR}"
-
-# ─── Download the .deb and its detached signature ────────────────────────────
-echo "downloading ${DEB}..."
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${DEB}"     "${BASE_URL}/${DEB}"
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${DEB}.asc" "${BASE_URL}/${DEB}.asc"
-
-# ─── Verify the signature chains to the pinned key ───────────────────────────
-echo "verifying signature..."
-verify_detached_sig \
-	"${WORKDIR}/${DEB}.asc" \
-	"${WORKDIR}/${DEB}" \
-	"${BITBOX_KEY_FPR}" \
-	"${DEB}"
-
-# The download stays in a mktemp directory of the template's user, who runs
-# this script with passwordless sudo; nothing less privileged can swap it
-# between the verification above and the install below.
-
 # ─── Install (apt resolves the .deb's dependencies) ──────────────────────────
 # --no-install-recommends: defense-in-depth against the BitBox .deb pulling
 # in unexpected optional packages from whatever third-party repos may be
 # configured in this template later. The per-repo Pin-Priority: -1 + named
-# allowlist pattern (signal/element/docker/vscode/brave) already blocks
+# allowlist pattern (signal/element/docker/vscode/brave/gnosisvpn) blocks
 # at the origin level, but Recommends is the next-narrowest knob and is
 # free here -- BitBox declares its own hard deps.
 sudo apt-get install -y --no-install-recommends "${WORKDIR}/${DEB}"

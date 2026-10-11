@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Docker apt signing key ──────────────────────────────────────────────────
@@ -23,17 +19,17 @@ KEYRING="/etc/apt/keyrings/docker.gpg"
 
 echo "Installing docker"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
-trap 'rm -rf "${GNUPGHOME}"' EXIT
-
-gpg --import <<'EOF'
+# A rerun finds the keyring locked by the chattr +i below. The allowlist
+# includes containerd.io, which Docker's repo ships in place of Debian's
+# containerd.
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
+add_pinned_apt_repo docker "${KEYRING}" "${DOCKER_KEY_FPR}" "$(dpkg --print-architecture)" \
+	"https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+	download.docker.com \
+	"docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin docker-scan-plugin docker-model-plugin containerd.io" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFit2ioBEADhWpZ8/wvZ6hUTiXOwQHXMAlaFHcPH9hAtr4F1y2+OYdbtMuth
@@ -98,46 +94,8 @@ YT90qFF93M3v01BbxP+EIY2/9tiIPbrd
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${DOCKER_KEY_FPR}"
-
-# ─── Install the keyring and the repository ──────────────────────────────────
-# A rerun finds the keyring locked by the chattr +i below. Unlock it only to
-# write the key that was just verified against the pinned fingerprint; it is
-# locked again after the install, exactly as on the first run.
-sudo chattr -i "${KEYRING}" 2>/dev/null || true
-gpg --export "${DOCKER_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
-
-echo "deb [arch=$(dpkg --print-architecture) signed-by=${KEYRING}] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-	| sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# ─── Lock the Docker repo to its own packages ────────────────────────────────
-# Same pattern as Signal/Element: without this, a compromise of Docker's signing
-# infrastructure could ship a higher-version bash / libc6 / systemd / openssl /
-# etc. and apt would prefer it over Debian's. Default-deny everything from this
-# origin, then re-allow only the docker-* package set (and containerd.io, which
-# Docker's repo ships in place of Debian's containerd).
-sudo tee /etc/apt/preferences.d/docker.pref > /dev/null <<'EOF'
-Package: *
-Pin: origin "download.docker.com"
-Pin-Priority: -1
-
-Package: docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin docker-scan-plugin docker-model-plugin containerd.io
-Pin: origin "download.docker.com"
-Pin-Priority: 500
-EOF
-
-# ─── Install Docker ──────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# ─── Lock the keyring file against in-place rewrite ──────────────────────────
-# See vscode/template-vm.sh for the rationale. chattr +i bounds what a
-# root-running maintainer script in any of the allowlisted docker-* /
-# containerd.io packages can do to the trust anchor at ${KEYRING};
-# legitimate key rotation needs the pinned fingerprint updated after a
-# re-verify against the three independent sources documented above.
 sudo chattr +i "${KEYRING}"
 
 # Add the user to the docker group. NOTE: docker-group membership is equivalent

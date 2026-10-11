@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Microsoft (packages.microsoft.com) signing key ──────────────────────────
@@ -40,17 +36,14 @@ KEYRING="/etc/apt/keyrings/packages.microsoft.gpg"
 
 echo "Installing VS Code"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
-sudo apt-get update
-command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
-trap 'rm -rf "${GNUPGHOME}"' EXIT
-
-gpg --import <<'EOF'
+# Microsoft signs many products with this one key; the pin allows only the
+# code package set from packages.microsoft.com.
+# A rerun finds the keyring locked by the chattr +i below.
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
+add_pinned_apt_repo vscode "${KEYRING}" "${MS_KEY_FPR}" amd64,arm64,armhf \
+	"https://packages.microsoft.com/repos/code stable main" \
+	packages.microsoft.com "code code-insiders code-exploration" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 Version: BSN Pgp v1.1.0.0
 
@@ -72,37 +65,6 @@ xfn5JwgySBIdWWvtOI05gw==
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${MS_KEY_FPR}"
-
-# ─── Install the keyring and the repository ──────────────────────────────────
-# A rerun finds the keyring locked by the chattr +i below. Unlock it only to
-# write the key that was just verified against the pinned fingerprint; it is
-# locked again after the install, exactly as on the first run.
-sudo chattr -i "${KEYRING}" 2>/dev/null || true
-gpg --export "${MS_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
-
-echo "deb [arch=amd64,arm64,armhf signed-by=${KEYRING}] https://packages.microsoft.com/repos/code stable main" \
-	| sudo tee /etc/apt/sources.list.d/vscode.list > /dev/null
-
-# ─── Lock the VS Code repo to its own packages ───────────────────────────────
-# Same pattern as Signal/Element: Microsoft signs many products with this one
-# key, so without a pin a compromise of Microsoft's signing infrastructure
-# could be used to ship a higher-version bash / libc6 / systemd / etc. into
-# /repos/code and apt would prefer it over Debian's. Default-deny everything
-# from packages.microsoft.com, then re-allow only the code package set.
-sudo tee /etc/apt/preferences.d/vscode.pref > /dev/null <<'EOF'
-Package: *
-Pin: origin "packages.microsoft.com"
-Pin-Priority: -1
-
-Package: code code-insiders code-exploration
-Pin: origin "packages.microsoft.com"
-Pin-Priority: 500
-EOF
-
-# ─── Install VS Code ─────────────────────────────────────────────────────────
 # The code package's maintainer script otherwise writes its own unlocked,
 # unchecked /usr/share/keyrings/microsoft.gpg (seen on Debian 13), which a
 # later upgrade could reference from its own repository entry.
@@ -110,18 +72,4 @@ echo "code code/add-microsoft-repo boolean false" | sudo debconf-set-selections
 sudo apt-get update
 sudo apt-get install -y code
 sudo rm -f /usr/share/keyrings/microsoft.gpg
-
-# ─── Lock the keyring file against in-place rewrite ──────────────────────────
-# `chattr +i` makes ${KEYRING} immutable -- even root cannot modify or
-# replace it without first running `sudo chattr -i ${KEYRING}`. The apt
-# Pin-Priority: -1 + allowlist above bounds which *packages* this repo
-# can publish, but it does NOT constrain maintainer scripts inside an
-# allowlisted package: the `code` deb runs preinst/postinst as root,
-# and a (hypothetical, future) scriptlet that does
-#     cp /usr/share/code/something.gpg ${KEYRING}
-# would silently rotate the trust anchor the signed-by= directive
-# references -- with no SEQS verification ever firing again. Immutability
-# turns that into a loud failure (dpkg will abort the package), forcing
-# legitimate key rotation through manual re-verification of the new
-# fingerprint against the three independent sources documented above.
 sudo chattr +i "${KEYRING}"

@@ -7,6 +7,8 @@
 # noisy here).
 set -Eeo pipefail
 
+PYTHON_VERSION="3.13.13"
+
 echo "Installing Python on appVM"
 # pyenv is kept, in preference to the apt python3 package, for the flexibility
 # of installing and switching Python versions -- see TRUST.md. The installer is
@@ -37,11 +39,11 @@ if ! grep -q 'pyenv virtualenv-init' ~/.bashrc 2>/dev/null; then
 	echo "eval \"\$(pyenv virtualenv-init -)\"" >> ~/.bashrc
 fi
 
-echo "installing Python 3.13.13..."
-pyenv install -s 3.13.13
+echo "installing Python ${PYTHON_VERSION}..."
+pyenv install -s "${PYTHON_VERSION}"
 
 echo "setting global python version..."
-pyenv global 3.13.13
+pyenv global "${PYTHON_VERSION}"
 
 echo "installing virtualenv..."
 pip install virtualenv

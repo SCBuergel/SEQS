@@ -13,36 +13,23 @@ ASSET_DIR="$(dirname "$0")"
 GNOSISVPN_URL="https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb"
 GNOSISVPN_SHA256="87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
 GNOSISVPN_KEY_FPR="9A308031FD3BFE8EDBF5076D84F73FEA46D10972"
+DEB="${GNOSISVPN_URL##*/}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
-cd "${tmp}"
 
-curl --proxy 127.0.0.1:8082 -fsSL "${GNOSISVPN_URL}" -o g.deb
-curl --proxy 127.0.0.1:8082 -fsSL "${GNOSISVPN_URL}.asc" -o g.deb.asc
-printf '%s  %s\n' "${GNOSISVPN_SHA256}" g.deb | sha256sum --check --strict
-install -d -m 0700 "${tmp}/gnupg"
-export GNUPGHOME="${tmp}/gnupg"
-gpg --batch --import "${ASSET_DIR}/gnosisvpn-public-key.asc" 2>/dev/null
-verify_imported_keyring_matches "${GNOSISVPN_KEY_FPR}"
-verify_detached_sig g.deb.asc g.deb "${GNOSISVPN_KEY_FPR}" "gnosisvpn_0.95.2_amd64.deb"
+fetch_signed "${GNOSISVPN_KEY_FPR}" "${GNOSISVPN_URL}" .asc "${tmp}" < "${ASSET_DIR}/gnosisvpn-public-key.asc"
+printf '%s  %s\n' "${GNOSISVPN_SHA256}" "${tmp}/${DEB}" | sha256sum --check --strict
 # The package installs upstream's APT repository (two mirrors) and its
 # keyring. A rerun finds that keyring locked by the chattr +i below; the
 # package rewrites it, so unlock it first.
 KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
-sudo env GNOSISVPN_NETWORK=jura-prod apt install ./g.deb -y
+sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"
 
 # Treat that repository like every other third-party one: its keyring must
 # hold exactly the pinned key, only the gnosisvpn package may come from it,
 # and the keyring is locked against rewrite by later maintainer scripts.
-repo_fpr="$(
-	gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null |
-		awk -F: '$1 == "pub" { p = 1; n++ } $1 == "fpr" && p { print $10; p = 0 } END { if (n != 1) print "count:" n }'
-)"
-[[ "${repo_fpr}" = "${GNOSISVPN_KEY_FPR}" ]] || {
-	echo "ERROR: ${KEYRING} does not hold exactly the pinned GnosisVPN key (got: ${repo_fpr:-none})" >&2
-	exit 1
-}
+gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null | require_exact_keys "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
 sudo tee /etc/apt/preferences.d/gnosisvpn.pref > /dev/null <<'EOF'
 Package: *
 Pin: origin "download.vpn.gnosis.eth.limo"

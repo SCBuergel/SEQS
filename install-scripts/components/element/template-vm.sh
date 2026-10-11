@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -31,18 +27,11 @@ ELEMENT_KEY_FPR="12D4CD600C2240A9F4A82071D7B0B66941D01538"
 
 echo "Installing Element Desktop"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
-if ! command -v gpg >/dev/null 2>&1; then
-	sudo apt-get update
-	sudo apt-get install -y gnupg
-fi
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
-trap 'rm -rf "${GNUPGHOME}"' EXIT
-
-gpg --import <<'EOF'
+# A rerun finds the keyring locked by the chattr +i below.
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
+add_pinned_apt_repo element-io "${KEYRING}" "${ELEMENT_KEY_FPR}" amd64 \
+	"https://packages.element.io/debian/ default main" \
+	packages.element.io "element-desktop element-desktop-nightly" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFy1FpcBEADemFRfa16qbsgvnEq5TPhFOssXfSLG4eGBrU0O6adDwv6QyE53
@@ -103,47 +92,6 @@ Pb2pCUMRXUbolw0nsNNm0eiWqq9/HdJbGpMoBiDLCFuO
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${ELEMENT_KEY_FPR}"
-
-# ─── Install the keyring (binary form apt expects) and the repository ────────
-# A rerun finds the keyring locked by the chattr +i below. Unlock it only to
-# write the key that was just verified against the pinned fingerprint; it is
-# locked again after the install, exactly as on the first run.
-sudo chattr -i "${KEYRING}" 2>/dev/null || true
-gpg --export "${ELEMENT_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
-
-# arch=amd64: same restriction Signal/Brave/VS Code carry -- apt then never
-# fetches or trusts other-architecture indexes from this origin.
-echo "deb [arch=amd64 signed-by=${KEYRING}] https://packages.element.io/debian/ default main" \
-	| sudo tee /etc/apt/sources.list.d/element-io.list > /dev/null
-
-# ─── Lock the Element repo to its own packages ───────────────────────────────
-# Defense-in-depth (same pattern as the Signal pin): the signed-by= directive
-# proves only that whatever lands carries Element's signature, not that it is
-# element-desktop. A compromise of Element's signing infrastructure could
-# otherwise ship any package name (e.g. bash, libc6) and apt would honour it
-# if the version is higher than Debian's. Default-deny everything from this
-# origin, then re-allow only element-desktop and element-desktop-nightly.
-sudo tee /etc/apt/preferences.d/element-io.pref > /dev/null <<'EOF'
-Package: *
-Pin: origin "packages.element.io"
-Pin-Priority: -1
-
-Package: element-desktop element-desktop-nightly
-Pin: origin "packages.element.io"
-Pin-Priority: 500
-EOF
-
-# ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y element-desktop
-
-# ─── Lock the keyring file against in-place rewrite ──────────────────────────
-# See vscode/template-vm.sh for the rationale. chattr +i bounds what a
-# root-running maintainer script in the allowlisted element-desktop
-# package can do to the trust anchor at ${KEYRING}; legitimate key
-# rotation needs the pinned fingerprint updated after a re-verify against the
-# three independent sources documented above.
 sudo chattr +i "${KEYRING}"

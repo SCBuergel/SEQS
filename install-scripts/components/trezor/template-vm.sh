@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
 echo "Adding Trezor udev rules..."
-cat << EOF | sudo tee /etc/udev/rules.d/51-trezor.rules
+cat << EOF | sudo tee /etc/udev/rules.d/51-trezor.rules > /dev/null
 # GROUP="plugdev" dropped from upstream rules: the qube's 'user' account is
 # not in plugdev, so that attribute was doing nothing. Access is granted
 # via the uaccess/udev-acl tags, which systemd-logind turns into a dynamic

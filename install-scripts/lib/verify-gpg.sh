@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared GPG detached-signature verification helper for SEQS install scripts.
+# Shared GPG verification helpers for SEQS install scripts.
 #
 # Sourced, not executed: this file only defines functions and has no side
 # effects at source time. The seqs.qube Salt state copies every shared
@@ -10,19 +10,19 @@
 #     . "$(dirname "$0")/verify-gpg.sh"
 #
 # The sourcing script is expected to have run `set -Eeuo pipefail` itself.
-#
+
+# Qubes update proxy: the only way out of a template, which has no NetVM.
+UPDATES_PROXY="127.0.0.1:8082"
+
 # -----------------------------------------------------------------------------
-# Why this helper exists
+# Why these helpers exist
 # -----------------------------------------------------------------------------
-# Three components (keepass, bitbox, openoffice) verify a downloaded artifact
-# against a pinned signing-key fingerprint. Doing this inline in each script
-# triplicated a subtle bit of logic: gpg's --status-fd protocol is multi-line,
-# emits several positive AND several negative keywords, and "the signature
-# verified to the pinned key" requires checking that BOTH the right positive
-# signal is present AND that no negative signal is present, not just the
-# former. A single shared helper keeps the three call sites from drifting --
-# the same failure mode that motivated the policy-overwrite helper in
-# setup-qubes.sh.
+# Every component that trusts a third-party signing key (brave, signal, element,
+# docker, vscode, bitbox, keepass, openoffice, gnosisvpn) runs the same
+# checks; keeping them here stops the call sites from drifting. The subtle
+# part is gpg's --status-fd protocol: it is multi-line and emits several
+# positive AND several negative keywords, so "the signature verified to the
+# pinned key" needs the right positive signal present AND no negative one.
 #
 # Negative keywords explicitly rejected (--status-fd 1 protocol):
 #   * BADSIG       -- signature math failed
@@ -101,37 +101,94 @@ verify_detached_sig() {
 	echo "signature OK -- ${label} signed by ${pin_fpr}"
 }
 
-# verify_imported_keyring_matches PIN_FPR
-# Verify that the *current* GNUPGHOME keyring contains EXACTLY one primary
-# key whose fingerprint is PIN_FPR. Aborts the calling script if anything
-# else is present.
+# require_exact_keys LABEL FPR... < GPG_COLONS_OUTPUT
+# Read a `gpg --with-colons` key listing on stdin and exit 1 unless its
+# primary keys are EXACTLY the pinned fingerprints FPR... (order does not
+# matter). Callers pipe gpg into it, so it runs in a subshell: the pipeline
+# fails (also on a gpg failure), and the caller must stop on that.
 #
-# This avoids the parser-shape footgun in a pattern such as
-#       gpg --with-colons --fingerprint | awk '... $1=="fpr" ... exit'
-# parses only the FIRST pub key in the keyring. If the embedded PGP key
-# block in a future commit (accidentally, or maliciously) holds a second
-# key concatenated after the first, the first-key fingerprint check still
-# passes while the keyring quietly holds both. For the signed-by= apt
-# flows (signal/element/docker/vscode) the subsequent `gpg --export
-# "${PIN_FPR}"` re-pins to the verified fingerprint and only that key
-# reaches /usr/share/keyrings/, so a stowaway second key is dropped. But
-# any future flow that omits the re-export step -- or that uses the
-# keyring directly -- would silently trust the smuggled key. This helper
-# requires the keyring to contain EXACTLY the pinned fingerprint so the
-# parser shape can't be the weak link. Same approach lib/brave.sh already
-# uses on Brave's three-key set.
-verify_imported_keyring_matches() {
-	local pin_fpr="${1}"
-	local got expected
-	got="$(gpg --with-colons --fingerprint 2>/dev/null \
-		| awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
-	expected="${pin_fpr}"
+# Checking only the first key is the wrong shape: a key block that holds a
+# second key after the pinned one would still pass, and any flow that uses
+# the keyring directly would then trust the stowaway key.
+require_exact_keys() {
+	local label="${1}" got expected
+	shift
+	got="$(awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
+	expected="$(printf '%s\n' "$@" | sort)"
 	if [[ "${got}" != "${expected}" ]]; then
-		echo "ERROR: embedded PGP key block must contain exactly one key (${expected}) -- aborting." >&2
-		echo "  expected: ${expected}" >&2
+		echo "ERROR: ${label} must hold exactly the pinned key(s) -- aborting." >&2
+		echo "  expected:" >&2
+		printf '    %s\n' ${expected} >&2
 		echo "  got     :" >&2
 		printf '    %s\n' ${got:-<none>} >&2
 		exit 1
 	fi
-	echo "key verified: ${pin_fpr}"
+	echo "key verified: $*"
 }
+
+# import_pinned_key DIR FPR < KEY_BLOCK
+# Import the ASCII-armoured key block on stdin into a new GNUPGHOME at DIR
+# (exported for the calling script) and abort unless it holds exactly the key
+# FPR. Installs gnupg first if gpg is missing.
+import_pinned_key() {
+	local key
+	key="$(cat)"
+	if ! command -v gpg >/dev/null 2>&1; then
+		sudo apt-get update
+		sudo apt-get install -y gnupg
+	fi
+	install -d -m 0700 "${1}"
+	export GNUPGHOME="${1}"
+	gpg --batch --import <<< "${key}"
+	gpg --with-colons --fingerprint 2>/dev/null | require_exact_keys "the key block" "${2}" || exit 1
+}
+
+# fetch_signed FPR URL SIG_SUFFIX DIR < KEY_BLOCK
+# Import the key block on stdin (import_pinned_key, GNUPGHOME=DIR/gnupg),
+# download URL and URL+SIG_SUFFIX into DIR through the update proxy, and
+# abort unless the detached signature chains to FPR. The verified file is
+# DIR/<last path element of URL>. DIR must be a mktemp directory of the
+# calling user (who has passwordless sudo), so nothing less privileged can
+# swap the file between this check and its installation.
+fetch_signed() {
+	local fpr="${1}" url="${2}" sig="${3}" dir="${4}" file="${2##*/}"
+	import_pinned_key "${dir}/gnupg" "${fpr}"
+	echo "downloading ${file}..."
+	# -f makes curl fail on an HTTP error instead of saving the error page.
+	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}" "${url}"
+	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}${sig}" "${url}${sig}"
+	verify_detached_sig "${dir}/${file}${sig}" "${dir}/${file}" "${fpr}" "${file}"
+}
+
+# add_pinned_apt_repo NAME KEYRING FPR ARCH REPO ORIGIN ALLOWED < KEY_BLOCK
+# Add a third-party apt repository that apt trusts only through the key FPR
+# and only for the packages ALLOWED:
+#   * the key block on stdin must hold exactly FPR (import_pinned_key);
+#   * KEYRING receives gpg's export of FPR alone -- apt never sees the raw
+#     key block, which another OpenPGP parser might read differently;
+#   * /etc/apt/sources.list.d/NAME.list gets
+#     "deb [arch=ARCH signed-by=KEYRING] REPO" (REPO = "URI SUITE COMPONENT");
+#   * /etc/apt/preferences.d/NAME.pref default-denies the whole ORIGIN
+#     (Pin-Priority -1) and re-allows only the space-separated ALLOWED
+#     packages. signed-by= proves only that a package carries the vendor's
+#     signature; without the pin a compromise of the vendor's signing
+#     infrastructure could ship a higher-version bash / libc6 / systemd and
+#     apt would prefer it over Debian's.
+# The caller unlocks KEYRING before (a rerun finds it locked) and, after
+# installing, locks it with `sudo chattr +i`: the pin bounds which packages
+# the repo can ship, not what their root-run maintainer scripts do, and one
+# that rewrote KEYRING would silently rotate the trust anchor. Locked, such
+# a write fails loudly; a genuine key rotation needs the pinned fingerprint
+# re-verified and updated.
+add_pinned_apt_repo() (
+	local name="${1}" keyring="${2}" fpr="${3}" arch="${4}" repo="${5}" origin="${6}" allowed="${7}"
+	local gh
+	gh="$(mktemp -d)"
+	trap 'rm -rf "${gh}"' EXIT
+	import_pinned_key "${gh}" "${fpr}"
+	gpg --export "${fpr}" | sudo tee "${keyring}" > /dev/null
+	echo "deb [arch=${arch} signed-by=${keyring}] ${repo}" \
+		| sudo tee "/etc/apt/sources.list.d/${name}.list" > /dev/null
+	printf 'Package: *\nPin: origin "%s"\nPin-Priority: -1\n\nPackage: %s\nPin: origin "%s"\nPin-Priority: 500\n' \
+		"${origin}" "${allowed}" "${origin}" | sudo tee "/etc/apt/preferences.d/${name}.pref" > /dev/null
+)

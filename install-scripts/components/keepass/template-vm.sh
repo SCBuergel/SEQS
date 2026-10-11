@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 KEEPASSXC_VERSION="2.7.12"
-APT_PROXY="127.0.0.1:8082"
 APPIMAGE="KeePassXC-${KEEPASSXC_VERSION}-x86_64.AppImage"
 BASE_URL="https://github.com/keepassxreboot/keepassxc/releases/download/${KEEPASSXC_VERSION}"
 
@@ -31,8 +26,6 @@ echo "Installing KeePassXC ${KEEPASSXC_VERSION} from AppImage"
 
 # ─── Dependencies ────────────────────────────────────────────────────────────
 sudo apt-get update
-# gpg: needed to verify the release signature below
-command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
 # AppImage runtime needs FUSE 2. Pick its package by availability instead of
 # suppressing fallback errors, which would hide the real error when the actual
 # install failed for an unrelated reason (proxy down, dpkg lock, ...).
@@ -42,14 +35,9 @@ else
 	sudo apt-get install -y libfuse2
 fi
 
-# ─── Throwaway working directories ───────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
 WORKDIR="$(mktemp -d)"
-trap 'rm -rf "${GNUPGHOME}" "${WORKDIR}"' EXIT
-
-# ─── Import the pinned KeePassXC release signing key ─────────────────────────
-gpg --import <<'EOF'
+trap 'rm -rf "${WORKDIR}"' EXIT
+fetch_signed "${KEEPASSXC_KEY_FPR}" "${BASE_URL}/${APPIMAGE}" .sig "${WORKDIR}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFhr7DABEADS4IoL9OF3CWKOF7TYh1wG9fBi/RmKnCPrYgW9oITrvuFy4WuT
@@ -165,29 +153,6 @@ jJ/r1C3KclO7zfWffRsYoowl7jWXLhdHT3/uW9i7kbR3OiiM3pWHbQ3EdJZqvTwJ
 =7yqw
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys. See verify_imported_keyring_matches header for why
-# checking only the first key is the wrong shape.
-verify_imported_keyring_matches "${KEEPASSXC_KEY_FPR}"
-
-# ─── Download the AppImage and its detached signature ────────────────────────
-# -f makes curl fail on HTTP errors instead of saving an error page as the binary.
-echo "downloading ${APPIMAGE} ..."
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${APPIMAGE}"     "${BASE_URL}/${APPIMAGE}"
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${APPIMAGE}.sig" "${BASE_URL}/${APPIMAGE}.sig"
-
-# ─── Verify the signature chains to the pinned KeePassXC release key ─────────
-echo "verifying signature ..."
-verify_detached_sig \
-	"${WORKDIR}/${APPIMAGE}.sig" \
-	"${WORKDIR}/${APPIMAGE}" \
-	"${KEEPASSXC_KEY_FPR}" \
-	"${APPIMAGE}"
-
-# The download stays in a mktemp directory of the template's user, who runs
-# this script with passwordless sudo; nothing less privileged can swap it
-# between the verification above and the install below.
 
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo install -m 0755 "${WORKDIR}/${APPIMAGE}" /usr/bin/keepassxc.AppImage

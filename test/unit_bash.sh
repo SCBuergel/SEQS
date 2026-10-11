@@ -264,6 +264,60 @@ if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
 else ok; fi
 
+echo "== lib/verify-gpg.sh: pinned keys, signed downloads, pinned apt repos =="
+# require_exact_keys reads gpg --with-colons output: only primary keys count,
+# in any order, and the set must match exactly.
+colons() { for f in "$@"; do printf 'pub:u:255:22:X:1::::::scESC:\nfpr:::::::::%s:\nsub:u:255:18:Y:1::::::e:\nfpr:::::::::SUB%s:\n' "$f" "$f"; done; }
+req() { ( set -Eeuo pipefail; . install-scripts/lib/verify-gpg.sh; colons "${@:2}" | require_exact_keys test $1 ) 2>&1; }
+req "A B" B A >/dev/null && ok || bad "require_exact_keys must accept the pinned keys in any order"
+out="$(req A A B)" && bad "require_exact_keys accepted an extra key"
+grep -q "test must hold exactly the pinned key" <<< "${out}" && ok || bad "extra key: wrong message [${out}]"
+req "A B" A >/dev/null && bad "require_exact_keys accepted a missing key" || ok
+req A >/dev/null && bad "require_exact_keys accepted no key" || ok
+req A A A >/dev/null && bad "require_exact_keys accepted a duplicated key" || ok
+if command -v gpg >/dev/null 2>&1; then
+	g="${tmp}/gpg"; mkdir -p "${g}/home" "${g}/src" "${g}/root"; chmod 700 "${g}/home"
+	export GNUPGHOME="${g}/home"
+	for n in 1 2; do gpg --batch --quiet --passphrase '' --quick-gen-key "seqs-test-${n} <t@invalid>" ed25519 sign never 2>/dev/null; done
+	mapfile -t fprs < <(gpg --with-colons --fingerprint 2>/dev/null | awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}')
+	gpg --armor --export "${fprs[0]}" > "${g}/one.asc"
+	gpg --armor --export > "${g}/two.asc"
+	echo data > "${g}/src/f.bin"
+	gpg --batch --yes --quiet --local-user "${fprs[0]}" --armor --detach-sign -o "${g}/src/f.bin.asc" "${g}/src/f.bin"
+	unset GNUPGHOME
+	# Mocks: sudo writes below ${g}/root, apt-get is a no-op, and curl copies
+	# from ${g}/src.
+	lib() {
+		( set -Eeuo pipefail
+		sudo() { case "$1" in tee) mkdir -p "${g}/root${2%/*}"; command tee "${g}/root$2" ;; *) "$@" ;; esac; }
+		curl() { local url="${*: -1}"; cp "${g}/src/${url##*/}" "$5"; }
+		. install-scripts/lib/verify-gpg.sh
+		"$@" ) 2>&1
+	}
+	out="$(lib add_pinned_apt_repo demo /k.gpg "${fprs[0]}" amd64 "https://r.invalid/ s main" r.invalid "p1 p2" < "${g}/one.asc")" \
+		|| bad "add_pinned_apt_repo failed: ${out}"
+	eq "pin file" "$(cat "${g}/root/etc/apt/preferences.d/demo.pref")" "$(printf 'Package: *\nPin: origin "r.invalid"\nPin-Priority: -1\n\nPackage: p1 p2\nPin: origin "r.invalid"\nPin-Priority: 500')"
+	eq "sources line" "$(cat "${g}/root/etc/apt/sources.list.d/demo.list")" "deb [arch=amd64 signed-by=/k.gpg] https://r.invalid/ s main"
+	eq "keyring" "$(gpg --show-keys --with-colons "${g}/root/k.gpg" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')" "${fprs[0]}"
+	rm -rf "${g}/root"
+	out="$(lib add_pinned_apt_repo demo /k.gpg "${fprs[0]}" amd64 x r.invalid p1 < "${g}/two.asc")" \
+		&& bad "add_pinned_apt_repo accepted a key block with a second key"
+	grep -q "the key block must hold exactly the pinned key" <<< "${out}" && [ ! -e "${g}/root/k.gpg" ] && ok \
+		|| bad "a second key must stop add_pinned_apt_repo before it writes the keyring: ${out}"
+	mkdir -p "${g}/dl"
+	out="$(lib fetch_signed "${fprs[0]}" https://x.invalid/f.bin .asc "${g}/dl" < "${g}/one.asc")" \
+		&& grep -q "signature OK -- f.bin" <<< "${out}" && ok || bad "fetch_signed rejected a good signature: ${out}"
+	echo tampered > "${g}/src/f.bin"
+	rm -rf "${g}/dl"; mkdir -p "${g}/dl"
+	out="$(lib fetch_signed "${fprs[0]}" https://x.invalid/f.bin .asc "${g}/dl" < "${g}/one.asc")" \
+		&& bad "fetch_signed accepted a tampered file"
+	grep -q "for f.bin -- not installing" <<< "${out}" && ok || bad "tampered file: wrong message [${out}]"
+	gpgconf --homedir "${g}/home" --kill all 2>/dev/null
+	rm -rf "${g}"
+else
+	printf '  skip: gpg not available\n'
+fi
+
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

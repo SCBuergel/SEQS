@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared helper verifies the embedded key and pinned fingerprint.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -26,19 +22,14 @@ SIGNAL_KEY_FPR="DBA36B5181D0C816F630E889D980A17457F6FB06"
 
 echo "Installing Signal Desktop"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
-# gpg is needed to inspect and export the signing key
-if ! command -v gpg >/dev/null 2>&1; then
-	sudo apt-get update
-	sudo apt-get install -y gnupg
-fi
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
-trap 'rm -rf "${GNUPGHOME}"' EXIT
-
-gpg --import <<'EOF'
+# Signal's Release file uses a generic "xenial" suite label and a placeholder
+# Origin (literally ". xenial"), so without the pin this repo would have the
+# same apt priority as Debian's and could satisfy any package name.
+# A rerun finds the keyring locked by the chattr +i below.
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
+add_pinned_apt_repo signal-xenial "${KEYRING}" "${SIGNAL_KEY_FPR}" amd64 \
+	"https://updates.signal.org/desktop/apt xenial main" \
+	updates.signal.org "signal-desktop signal-desktop-beta" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFjlSicBEACgho//0EzxuvuCn01LwFqGAgwPKcSSl4L+AWws5/YbsZZvmTBk
@@ -92,46 +83,6 @@ N+O606NOXLwcmq5KZL0g
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${SIGNAL_KEY_FPR}"
-
-# ─── Install the keyring (binary form apt expects) and the repository ────────
-# A rerun finds the keyring locked by the chattr +i below. Unlock it only to
-# write the key that was just verified against the pinned fingerprint; it is
-# locked again after the install, exactly as on the first run.
-sudo chattr -i "${KEYRING}" 2>/dev/null || true
-gpg --export "${SIGNAL_KEY_FPR}" | sudo tee "${KEYRING}" > /dev/null
-
-echo "deb [arch=amd64 signed-by=${KEYRING}] https://updates.signal.org/desktop/apt xenial main" \
-	| sudo tee /etc/apt/sources.list.d/signal-xenial.list > /dev/null
-
-# ─── Lock the Signal repo to its own packages ────────────────────────────────
-# Signal's Release file uses a generic "xenial" suite label and a placeholder
-# Origin (literally ". xenial"), so by default this third-party repo has the
-# same apt priority (500) as Debian's main repos -- it could in principle
-# satisfy any package name. The pin file below blocks anything from
-# updates.signal.org by default (Pin-Priority -1), then re-allows only
-# signal-desktop and signal-desktop-beta at normal priority. Defense-in-depth
-# against this repo being repurposed to ship anything other than Signal.
-sudo tee /etc/apt/preferences.d/signal-xenial.pref > /dev/null <<'EOF'
-Package: *
-Pin: origin "updates.signal.org"
-Pin-Priority: -1
-
-Package: signal-desktop signal-desktop-beta
-Pin: origin "updates.signal.org"
-Pin-Priority: 500
-EOF
-
-# ─── Install ─────────────────────────────────────────────────────────────────
 sudo apt-get update
 sudo apt-get install -y signal-desktop
-
-# ─── Lock the keyring file against in-place rewrite ──────────────────────────
-# See vscode/template-vm.sh for the rationale. The Pin-Priority allowlist
-# bounds which package names this repo can ship; chattr +i additionally
-# bounds what root-running maintainer scripts inside an allowlisted
-# package can do to the trust anchor at ${KEYRING}. Key rotation needs the
-# pinned fingerprint updated after a manual re-verify.
 sudo chattr +i "${KEYRING}"

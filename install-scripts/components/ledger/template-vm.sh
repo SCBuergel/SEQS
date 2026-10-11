@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
 
 echo "Adding Ledger udev rules..."
 
-cat << EOF | sudo tee /etc/udev/rules.d/20-hw1.rules
+cat << EOF | sudo tee /etc/udev/rules.d/20-hw1.rules > /dev/null
 # HW.1, Nano
 # MODE 0660 on the usb nodes too (not just hidraw below): without it the
 # node keeps the udev default mode and only the ACL layer restricts access

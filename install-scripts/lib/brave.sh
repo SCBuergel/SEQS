@@ -42,8 +42,8 @@
 # -- re-run the commands above, confirm the new set, and update BRAVE_KEY_FPRS.
 # -----------------------------------------------------------------------------
 
-# Qubes update proxy reachable from template VMs (which have no direct net).
-BRAVE_APT_PROXY="127.0.0.1:8082"
+# Shared key checks and UPDATES_PROXY; the libraries are staged together.
+. "$(dirname "${BASH_SOURCE[0]}")/verify-gpg.sh"
 
 # Brave apt release-channel keyring download URL.
 BRAVE_KEYRING_URL="https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg"
@@ -57,7 +57,7 @@ DBF1A116C220B8C7164F98230686B78420038257"
 # install_brave -- add the *verified* Brave apt repository and install the browser.
 install_brave() {
 	local keyring="/usr/share/keyrings/brave-browser-archive-keyring.gpg"
-	local tmp gh got expected missing extra
+	local tmp gh
 
 	echo "Installing brave-browser"
 
@@ -72,7 +72,7 @@ install_brave() {
 	# the keyring file; without it a proxy/S3 error would be trusted silently.
 	echo "downloading Brave apt signing keyring..."
 	tmp="$(mktemp)"
-	curl --proxy "${BRAVE_APT_PROXY}" -fsSL -o "${tmp}" "${BRAVE_KEYRING_URL}"
+	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${tmp}" "${BRAVE_KEYRING_URL}"
 
 	# Verify the keyring contains EXACTLY the pinned Brave signing keys. The
 	# check runs on an imported copy, and only gpg's own export of the pinned
@@ -80,34 +80,14 @@ install_brave() {
 	# parser could read differently from gpg.
 	gh="$(mktemp -d)"
 	gpg --homedir "${gh}" --batch --quiet --import "${tmp}" 2>/dev/null || true
-	got="$(gpg --homedir "${gh}" --with-colons --fingerprint 2>/dev/null \
-		| awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
-	expected="$(printf '%s\n' "${BRAVE_KEY_FPRS}" | sort)"
-	if [[ "${got}" != "${expected}" ]]; then
-		# Actionable diff: comm -23 = lines in expected not in got (missing);
-		# comm -13 = lines in got not in expected (extra). Both inputs are
-		# already sorted above.
-		missing="$(comm -23 <(printf '%s\n' "${expected}") <(printf '%s\n' "${got}"))"
-		extra="$(comm -13 <(printf '%s\n' "${expected}") <(printf '%s\n' "${got}"))"
-		echo "ERROR: Brave keyring failed verification -- refusing to install." >&2
-		echo "  source  : ${BRAVE_KEYRING_URL}" >&2
-		echo "  expected:" >&2; printf '    %s\n' ${expected} >&2
-		echo "  got     :" >&2; printf '    %s\n' ${got:-<none>} >&2
-		if [ -n "${missing}" ]; then
-			echo "  missing (pinned but absent from downloaded keyring):" >&2
-			printf '    %s\n' ${missing} >&2
-		fi
-		if [ -n "${extra}" ]; then
-			echo "  extra (present in downloaded keyring but not pinned):" >&2
-			printf '    %s\n' ${extra} >&2
-		fi
-		rm -rf "${tmp}" "${gh}"
-		exit 1
-	fi
+	# shellcheck disable=SC2086 # one fingerprint per word
+	gpg --homedir "${gh}" --with-colons --fingerprint 2>/dev/null \
+		| require_exact_keys "Brave keyring ${BRAVE_KEYRING_URL}" ${BRAVE_KEY_FPRS} \
+		|| { rm -rf "${tmp}" "${gh}"; exit 1; }
 	# shellcheck disable=SC2086 # one fingerprint per word
 	gpg --homedir "${gh}" --export ${BRAVE_KEY_FPRS} > "${tmp}"
 	rm -rf "${gh}"
-	echo "Brave keyring verified -- $(printf '%s ' ${got})"
+	echo "Brave keyring verified -- $(printf '%s ' ${BRAVE_KEY_FPRS})"
 
 	# A rerun finds the keyring locked by the chattr +i below. Unlock it only
 	# to write the keyring that was just verified against the pinned

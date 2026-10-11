@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-
-# exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-
-# Shared detached-signature verification helper.
 . "$(dirname "$0")/verify-gpg.sh"
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 AOO_VERSION="4.1.16"
-APT_PROXY="127.0.0.1:8082"
 TARBALL="Apache_OpenOffice_${AOO_VERSION}_Linux_x86-64_install-deb_en-US.tar.gz"
 BASE_URL="https://downloads.apache.org/openoffice/${AOO_VERSION}/binaries/en-US"
 
@@ -27,18 +22,11 @@ AOO_KEY_FPR="A93D62ECC3C8EA12DB220EC934EA76E6791485A8"
 
 echo "Installing Apache OpenOffice ${AOO_VERSION}"
 
-# ─── Dependencies ────────────────────────────────────────────────────────────
 sudo apt-get update
-command -v gpg >/dev/null 2>&1 || sudo apt-get install -y gnupg
 
-# ─── Throwaway working directories ───────────────────────────────────────────
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
 WORKDIR="$(mktemp -d)"
-trap 'rm -rf "${GNUPGHOME}" "${WORKDIR}"' EXIT
-
-# ─── Verify the embedded signing key ─────────────────────────────────────────
-gpg --import <<'EOF'
+trap 'rm -rf "${WORKDIR}"' EXIT
+fetch_signed "${AOO_KEY_FPR}" "${BASE_URL}/${TARBALL}" .asc "${WORKDIR}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBEzSCGYBEADM35SrGvF8jjtPHoVtoU3LKaFqqYInTOKiGeBxkCReGSQrUL+g
@@ -129,27 +117,6 @@ L6WGGssH
 =Kkij
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-
-# Require the embedded key block to contain EXACTLY the pinned fingerprint
-# and no other keys (see verify_imported_keyring_matches header).
-verify_imported_keyring_matches "${AOO_KEY_FPR}"
-
-# ─── Download the tarball and its detached signature ─────────────────────────
-echo "downloading ${TARBALL}..."
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${TARBALL}"     "${BASE_URL}/${TARBALL}"
-curl --proxy "${APT_PROXY}" -fLso "${WORKDIR}/${TARBALL}.asc" "${BASE_URL}/${TARBALL}.asc"
-
-# ─── Verify the signature chains to the pinned key ───────────────────────────
-echo "verifying signature..."
-verify_detached_sig \
-	"${WORKDIR}/${TARBALL}.asc" \
-	"${WORKDIR}/${TARBALL}" \
-	"${AOO_KEY_FPR}" \
-	"${TARBALL}"
-
-# The download stays in a mktemp directory of the template's user, who runs
-# this script with passwordless sudo; nothing less privileged can swap it
-# between the verification above and the install below.
 
 # ─── Validate tar member paths ──────────────────────────────────────────────
 # Defense-in-depth: the tarball is GPG-verified above, so reaching this
