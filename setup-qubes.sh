@@ -11,8 +11,10 @@
 #   ./setup-qubes.sh --build-only --qubes brave,signal
 #   ./setup-qubes.sh --build-only --qubes brave,signal --postfix alpha
 #   ./setup-qubes.sh --build-only --all
-#   --repo-vm VM                    required explicit repository qube for fetch
-#   ./setup-qubes.sh --verbose      show full per-state qubesctl output (debug)
+#
+# Options:
+#   --repo-vm VM   the repository qube to fetch from; required for a fetch
+#   --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
 
@@ -661,28 +663,28 @@ buildQubes() {
 	runQubesctl top.enable seqs.config pillar=true || die "qubesctl top.enable failed"
 	runQubesctl state.apply seqs.dom0 || die "seqs.dom0 failed -- nothing was provisioned inside any qube. Fix the reported problem and re-run (re-runs converge)."
 
-readTargets
-verifyAirgap
-if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
-	# Named disposables are created and air-gap-verified by the dom0 apply above;
-	# they inherit everything from their dispvm template and are never provisioned.
-	echo "    Named disposable(s) ready (not provisioned): ${DISPOSABLE_TARGETS[*]}"
-fi
-FAILED=0
-
-# A template still running here was left by an interrupted run, and an
-# install inside it may still hold the package lock; stop it first. A busy one
-# may not shut down in time: kill it, and seqs.qube finishes the interrupted
-# package installation on the next start.
-for vm in "${TEMPLATE_TARGETS[@]}"; do
-	if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
-		echo "    ${vm} is still running, perhaps from an interrupted run; shutting it down"
-		qvm-shutdown --wait -- "${vm}" >/dev/null 2>&1 || qvm-kill -- "${vm}" >/dev/null 2>&1 \
-			|| die "could not stop ${vm}"
+	readTargets
+	verifyAirgap
+	if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
+		# Named disposables are created and air-gap-verified by the dom0 apply above;
+		# they inherit everything from their dispvm template and are never provisioned.
+		echo "    Named disposable(s) ready (not provisioned): ${DISPOSABLE_TARGETS[*]}"
 	fi
-done
+	FAILED=0
 
-echo ""
+	# A template still running here was left by an interrupted run, and an
+	# install inside it may still hold the package lock; stop it first. A busy one
+	# may not shut down in time: kill it, and seqs.qube finishes the interrupted
+	# package installation on the next start.
+	for vm in "${TEMPLATE_TARGETS[@]}"; do
+		if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
+			echo "    ${vm} is still running, perhaps from an interrupted run; shutting it down"
+			qvm-shutdown --wait -- "${vm}" >/dev/null 2>&1 || qvm-kill -- "${vm}" >/dev/null 2>&1 \
+				|| die "could not stop ${vm}"
+		fi
+	done
+
+	echo ""
 	prepareGnosisPrerequisites
 	if [ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ]; then
 		trap cleanupGnosisUpdateProxy EXIT
@@ -692,60 +694,60 @@ echo ""
 	echo "==> [2/3] Provisioning ${#TEMPLATE_TARGETS[@]} template(s): ${TEMPLATE_TARGETS[*]}"
 	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${TEMPLATE_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one template failed to provision (see above; re-run" >&2
-	echo "         with --verbose for full per-state output)." >&2
-	echo "         Re-run to converge -- finished components are skipped." >&2
-	FAILED=1
-	# Without a per-qube ERROR line, any template may be the failed one.
-	[ "${#FAILED_QUBES[@]}" -gt 0 ] || FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
+		echo "WARNING: at least one template failed to provision (see above; re-run" >&2
+		echo "         with --verbose for full per-state output)." >&2
+		echo "         Re-run to converge -- finished components are skipped." >&2
+		FAILED=1
+		# Without a per-qube ERROR line, any template may be the failed one.
+		[ "${#FAILED_QUBES[@]}" -gt 0 ] || FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
 	fi
 	FAILED_TEMPLATES=("${FAILED_QUBES[@]}")
 	cleanupGnosisUpdateProxy
 	verifyGnosisUpdateProxyRemoved
 	trap - EXIT INT TERM
 
-# Commit template root volumes before any app qube snapshots them. A template
-# that is still running counts as failed: its app qubes would start on the
-# old root snapshot.
-shutdownAll "${TEMPLATE_TARGETS[@]}"
-for vm in "${TEMPLATE_TARGETS[@]}"; do
-	if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
-		echo "WARNING: ${vm} did not shut down" >&2
-		FAILED=1
-		FAILED_TEMPLATES+=("${vm}")
-	fi
-done
-# A template reports new menu entries while it is provisioned, which refreshes
-# the menus of its app qubes but not of named disposables one level further.
-for vm in "${DISPOSABLE_TARGETS[@]}"; do
-	qvm-appmenus --update -- "${vm}" >/dev/null 2>&1 \
-		|| echo "WARNING: could not refresh the menu of ${vm}" >&2
-done
+	# Commit template root volumes before any app qube snapshots them. A template
+	# that is still running counts as failed: its app qubes would start on the
+	# old root snapshot.
+	shutdownAll "${TEMPLATE_TARGETS[@]}"
+	for vm in "${TEMPLATE_TARGETS[@]}"; do
+		if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
+			echo "WARNING: ${vm} did not shut down" >&2
+			FAILED=1
+			FAILED_TEMPLATES+=("${vm}")
+		fi
+	done
+	# A template reports new menu entries while it is provisioned, which refreshes
+	# the menus of its app qubes but not of named disposables one level further.
+	for vm in "${DISPOSABLE_TARGETS[@]}"; do
+		qvm-appmenus --update -- "${vm}" >/dev/null 2>&1 \
+			|| echo "WARNING: could not refresh the menu of ${vm}" >&2
+	done
 
-# An app qube of a failed template would be provisioned on a partial install.
-apps=()
-for vm in "${APP_TARGETS[@]}"; do
-	if [[ " ${FAILED_TEMPLATES[*]} " == *" $(qvm-prefs -- "${vm}" template) "* ]]; then
-		echo "WARNING: skipping ${vm}: its template failed" >&2
-		FAILED=1
-	else
-		apps+=("${vm}")
-	fi
-done
-APP_TARGETS=("${apps[@]}")
+	# An app qube of a failed template would be provisioned on a partial install.
+	apps=()
+	for vm in "${APP_TARGETS[@]}"; do
+		if [[ " ${FAILED_TEMPLATES[*]} " == *" $(qvm-prefs -- "${vm}" template) "* ]]; then
+			echo "WARNING: skipping ${vm}: its template failed" >&2
+			FAILED=1
+		else
+			apps+=("${vm}")
+		fi
+	done
+	APP_TARGETS=("${apps[@]}")
 
-echo ""
+	echo ""
 	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
 	if [ "${#APP_TARGETS[@]}" -gt 0 ] && ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
 		--targets="$(joinCsv "${APP_TARGETS[@]}")" state.apply seqs.qube; then
-	echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
-	echo "         with --verbose for full per-state output)." >&2
-	FAILED=1
+		echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
+		echo "         with --verbose for full per-state output)." >&2
+		FAILED=1
 	fi
 
-shutdownAll "${APP_TARGETS[@]}"
+	shutdownAll "${APP_TARGETS[@]}"
 
-echo ""
+	echo ""
 	if [ "${FAILED}" -eq 0 ]; then
 		writeRunManifest success
 		echo "==> SEQS setup complete. All targets provisioned."
