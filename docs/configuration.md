@@ -101,9 +101,9 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   nor open files in another qube or start a disposable, which would be
   networked and so another way out; copy files with `qvm-copy` instead. SEQS
   leaves the qube's link handler unset, and dom0 tags the qube
-  `seqs-no-handoff` and denies by that tag `qubes.OpenURL`, `qubes.OpenInVM`,
-  and every other service that the Qubes default policy lets into a disposable
-  without asking. Every build updates the tag on all SEQS app qubes and named
+  `seqs-no-handoff` and denies by that tag, to every qube and disposable,
+  `qubes.OpenURL`, `qubes.OpenInVM`, and the services that start a program in
+  a disposable. Every build updates the tag on all SEQS app qubes and named
   disposables, selected or not, and disposables started from a tagged qube
   inherit it.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
@@ -220,8 +220,7 @@ the shared libraries in `install-scripts/lib/` change, so its scripts must be
 safe to run twice.
 
 Then reference `<name>` in any qube spec. If the component needs Brave, it can
-`source "$(dirname "$0")/brave.sh"` and call `install_brave` (or `ensure_brave`
-for idempotent installation).
+`source "$(dirname "$0")/brave.sh"` and call `install_brave`.
 
 After adding a component, also add it to the **Components** table above so the
 documentation stays coherent with the on-disk components.

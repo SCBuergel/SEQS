@@ -301,11 +301,12 @@ def test_dom0_inventory_fails_closed():
           "no qube may be created without an inventory")
 
 
-# Every service the Qubes default policy lets out of a qube without asking,
-# with its target; listed independently of dom0.sls.
-ESCAPE_ROUTES = [(s, t) for s in ("qubes.OpenURL", "qubes.OpenInVM") for t in ("@anyvm", "@dispvm")] + [
-    (s, "@dispvm") for s in ("qubes.StartApp", "qubes.GetImageRGBA", "qubes.VMShell",
-                             "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert")]
+# Every service that gets data or code out of a qube into another qube or a
+# disposable; listed independently of dom0.sls. An @anyvm deny also matches
+# @dispvm and @dispvm:<template> (qrexec policy parser, AnyVM.match).
+ESCAPE_ROUTES = [(s, "@anyvm") for s in (
+    "qubes.OpenURL", "qubes.OpenInVM", "qubes.StartApp", "qubes.GetImageRGBA",
+    "qubes.VMShell", "qubes.VMExec", "qubes.VMExecGUI", "qubes.PdfConvert")]
 
 
 def policy_rules(text):
@@ -395,6 +396,14 @@ def test_dom0_adopts_via_intent_marker():
                  existing_files=["/var/lib/seqs/intents/A-brave"]))
     check("seqs-validation-failed" not in parsed,
           "an intent marker proves a prior interrupted SEQS run -- must adopt, not refuse")
+    check(not ids_containing(parsed, "seqs-stale-intent-"),
+          "the marker of an existing qube must be kept")
+    intents = ["/var/lib/seqs/intents/" + n for n in ("A-gone", "A-brave", "Z-xournalpp")]
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="brave", existing_files=intents,
+                                                      existing_qubes=["Z-xournalpp"]))
+    check(ids_containing(parsed, "seqs-stale-intent-") == ["seqs-stale-intent-A-gone"],
+          "only the marker of a qube that neither exists nor is built now is removed, got %r"
+          % ids_containing(parsed, "seqs-stale-intent-"))
 
 
 def test_dom0_usb_policy_release_gated():
@@ -555,13 +564,13 @@ def test_dom0_dedicated_qr_uses_device_api():
     check(unresolved_requisites(parsed) == [],
           "every requisite must resolve: %r" % unresolved_requisites(parsed))
     deny = state_arg(parsed, "seqs-policy-qr-input-deny", "file.managed", "contents")
-    check("qubes.OpenURL        *  sys-usb-webcam  @anyvm    deny" in deny,
+    check(("qubes.OpenURL", "*", "sys-usb-webcam", "@anyvm", "deny") in policy_rules(deny),
           "dedicated mode must also close the browser handoff for camera-side qubes")
     # Qubes 4.3 matches a @dispvm:<template> source against no running qube,
     # so the dedicated path scans in the named disposable, which rules can name.
     check("seqs-qr-scanner" in parsed,
           "dedicated mode must create the named scanner disposable")
-    check("qubes.OpenURL        *  seqs-qr-scanner  @anyvm    deny" in deny
+    check(("qubes.OpenURL", "*", "seqs-qr-scanner", "@anyvm", "deny") in policy_rules(deny)
           and "qubes.InputKeyboard  *  seqs-qr-scanner  @adminvm  deny" in deny,
           "dedicated mode must deny the handoff and input from the named scanner")
     check("qubes.Filecopy  *  seqs-qr-scanner" not in text,
@@ -798,6 +807,12 @@ def test_qube_markers_track_content():
               "%s/%s: the skip test must compare the staged content hash" % (minion, state_id))
         check(hash_cmd in name and name.rstrip().endswith(".done"),
               "%s/%s: the install must record the staged content hash" % (minion, state_id))
+    # A changed library (a new Brave key or pin) reruns the extension state,
+    # which must then reinstall Brave rather than skip an installed one.
+    name = state_arg(render_state("qube", "Z-wallet-ledger")[1],
+                     "seqs-install-brave-extension-rabby", "cmd.run", "name")
+    check("install_brave; install_brave_extension" in name,
+          "an extension state must run install_brave, which applies a changed pin or key")
 
 
 def test_qube_app_offline_no_browser_default():

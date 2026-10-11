@@ -669,9 +669,8 @@ Having no network does not stop
 (the Qubes service that lets qubes copy files, open links, and send input to
 each other), so SEQS also installs qrexec policies (dom0 rules deciding which
 qube may use which service). Check that the display qubes may neither hand
-links to the browser qube nor use the services that the Qubes default policy
-lets into a disposable without asking, as a second layer behind the unset
-default disposable. In a dom0 terminal of the sending computer, run:
+links to the browser qube nor start a program in another qube or a
+disposable, as a second layer behind the unset default disposable. In a dom0 terminal of the sending computer, run:
 
 ```bash
 qvm-tags A-qr-display list; qvm-tags D-qr-display list
@@ -680,9 +679,10 @@ cat /etc/qubes/policy.d/28-browser-suppress.policy
 
 Both tag lists must include `seqs-no-handoff`; a disposable started from
 `A-qr-display` inherits it. The policy file must deny, from
-`@tag:seqs-no-handoff`, `qubes.OpenURL` and these disposable services:
-`qubes.OpenInVM`, `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`,
-`qubes.VMExec`, `qubes.VMExecGUI`, and `qubes.PdfConvert`.
+`@tag:seqs-no-handoff` to `@anyvm` (every qube and disposable), these eight
+services: `qubes.OpenURL`, `qubes.OpenInVM`, `qubes.StartApp`,
+`qubes.GetImageRGBA`, `qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`, and
+`qubes.PdfConvert`.
 
 ### Receiving computer: check that the camera qubes are offline
 
@@ -730,9 +730,8 @@ qvm-tags A-qr-camera list
 ```
 
 The first file must deny the input services (`qubes.InputKeyboard`,
-`qubes.InputMouse`, `qubes.InputTablet`), `qubes.OpenURL`, and the
-disposable services listed for the sending computer from `sys-usb-webcam` and
-`seqs-qr-scanner`, and `qubes.Filecopy` from `sys-usb-webcam`. The tag list must
+`qubes.InputMouse`, `qubes.InputTablet`) and the eight services listed for
+the sending computer from `sys-usb-webcam` and `seqs-qr-scanner`, and `qubes.Filecopy` from `sys-usb-webcam`. The tag list must
 include `seqs-no-handoff`, which applies the `28-browser-suppress.policy`
 denies checked on the sending computer to `A-qr-camera` and to disposables
 started from it; on the sequential path, `qvm-tags A-qr-staging list` must

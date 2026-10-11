@@ -5,6 +5,9 @@ set -Eeuo pipefail
 # ─── Configuration ───────────────────────────────────────────────────────────
 KEEPASSXC_VERSION="2.7.12"
 APPIMAGE="KeePassXC-${KEEPASSXC_VERSION}-x86_64.AppImage"
+# SHA-256 of that release file, computed on 2026-10-11 after its signature
+# verified against the key below: pins the release, not only the signer.
+KEEPASSXC_SHA256="564fe8b751b9ef7aa057e4d3d0b2878db24eaa0f6b1c855c82e699ab0913ae49"
 BASE_URL="https://github.com/keepassxreboot/keepassxc/releases/download/${KEEPASSXC_VERSION}"
 
 # KeePassXC release signing key.
@@ -37,7 +40,7 @@ fi
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
-fetch_signed "${KEEPASSXC_KEY_FPR}" "${BASE_URL}/${APPIMAGE}" .sig "${WORKDIR}" <<'EOF'
+fetch_signed "${KEEPASSXC_KEY_FPR}" "${BASE_URL}/${APPIMAGE}" .sig "${WORKDIR}" "${KEEPASSXC_SHA256}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFhr7DABEADS4IoL9OF3CWKOF7TYh1wG9fBi/RmKnCPrYgW9oITrvuFy4WuT

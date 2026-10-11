@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Mock qvm-ls --raw-list from the stateful inventory.
 [ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
+[ -z "${SEQS_MOCK_QVM_LS_FAIL:-}" ] || { echo "qubesd down" >&2; exit 1; }
 if [ "${1:-}" = "--raw-data" ]; then
 	# --raw-data --fields name,netvm,template,default_dispvm, from the qvm-prefs mock.
 	for vm in $(cut -d' ' -f1 "${SEQS_MOCK_STATE}"); do

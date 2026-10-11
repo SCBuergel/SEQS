@@ -500,20 +500,19 @@ except Exception as e:
 PY
 }
 
-# policyRefused VM -- dom0's policy refuses every way out of VM: links and
-# files to the browser qube and every service into a disposable. Evaluated
-# rather than called, for a qube that is not running, such as a named
-# disposable.
+# policyRefused VM -- dom0's policy refuses every way out of VM: each escape
+# service to the browser qube, to a disposable, and to a disposable named by
+# the global default disposable template. Evaluated rather than called, for a
+# qube that is not running, such as a named disposable.
+ESCAPE_SERVICES="qubes.OpenURL qubes.OpenInVM qubes.StartApp qubes.GetImageRGBA qubes.VMShell
+	qubes.VMExec qubes.VMExecGUI qubes.PdfConvert"
 policyRefused() {
-	local vm="$1" svc d bad=""
-	for svc in qubes.OpenURL qubes.OpenInVM; do
-		d="$(policyDecision "${svc}" "${vm}" "${BROWSER_VM}")"
-		[ "${d}" = AccessDenied ] || bad+=" ${svc} to ${BROWSER_VM}: ${d:-nothing};"
-	done
-	for svc in qubes.OpenURL qubes.OpenInVM qubes.StartApp qubes.GetImageRGBA qubes.VMShell \
-			qubes.VMExec qubes.VMExecGUI qubes.PdfConvert; do
-		d="$(policyDecision "${svc}" "${vm}" @dispvm)"
-		[ "${d}" = AccessDenied ] || bad+=" ${svc} to @dispvm: ${d:-nothing};"
+	local vm="$1" svc target d bad=""
+	for target in "${BROWSER_VM}" @dispvm "@dispvm:$(qubes-prefs default_dispvm)"; do
+		for svc in ${ESCAPE_SERVICES}; do
+			d="$(policyDecision "${svc}" "${vm}" "${target}")"
+			[ "${d}" = AccessDenied ] || bad+=" ${svc} to ${target}: ${d:-nothing};"
+		done
 	done
 	[ -z "${bad}" ] && pass "${vm}: policy refuses every way out" || fail "${vm}: policy allows${bad}"
 }
@@ -606,6 +605,8 @@ check() {
 					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM
 					refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
 						qubes.GetImageRGBA qubes.VMShell qubes.VMExec+true qubes.VMExecGUI+true qubes.PdfConvert
+					refused "${name}" "@dispvm:$(qubes-prefs default_dispvm)" qubes.StartApp+xterm qubes.VMShell
+					policyRefused "${name}"
 				elif [ "${name}" != "${BROWSER_VM}" ]; then
 					d="$(policyDecision qubes.OpenURL "${name}" "${BROWSER_VM}")"
 					[ "${d}" = AllowResolution ] && pass "${name}: policy allows links to ${BROWSER_VM}" \

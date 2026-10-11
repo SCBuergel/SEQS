@@ -109,7 +109,7 @@ seqs-install-{{ comp }}:
   cmd.run:
     - name: |
         set -e
-        runuser -l user -c 'set -Eeuo pipefail; . /run/seqs/stage/lib/brave.sh; ensure_brave; install_brave_extension {{ eid }}'
+        runuser -l user -c 'set -Eeuo pipefail; . /run/seqs/stage/lib/brave.sh; install_brave; install_brave_extension {{ eid }}'
         (echo {{ eid }}; {{ stage_hash('lib') }}) > /rw/config/seqs/{{ comp }}.template.done
     - unless: test "$(cat /rw/config/seqs/{{ comp }}.template.done 2>/dev/null)" = "$(echo {{ eid }}; {{ stage_hash('lib') }})"
     - timeout: {{ timeout }}

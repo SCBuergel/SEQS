@@ -5,6 +5,9 @@ set -Eeuo pipefail
 # ─── Configuration ───────────────────────────────────────────────────────────
 AOO_VERSION="4.1.16"
 TARBALL="Apache_OpenOffice_${AOO_VERSION}_Linux_x86-64_install-deb_en-US.tar.gz"
+# SHA-256 of that release file, computed on 2026-10-11 after its signature
+# verified against the key below: pins the release, not only the signer.
+AOO_SHA256="2b1245a77886939db95c7532af3df8db92d2d22c248e53f846e0aee40553abde"
 BASE_URL="https://downloads.apache.org/openoffice/${AOO_VERSION}/binaries/en-US"
 
 # Apache OpenOffice release signing key (Jim Jagielski).
@@ -26,7 +29,7 @@ sudo apt-get update
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
-fetch_signed "${AOO_KEY_FPR}" "${BASE_URL}/${TARBALL}" .asc "${WORKDIR}" <<'EOF'
+fetch_signed "${AOO_KEY_FPR}" "${BASE_URL}/${TARBALL}" .asc "${WORKDIR}" "${AOO_SHA256}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBEzSCGYBEADM35SrGvF8jjtPHoVtoU3LKaFqqYInTOKiGeBxkCReGSQrUL+g

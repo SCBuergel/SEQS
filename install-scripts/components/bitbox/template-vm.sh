@@ -5,6 +5,9 @@ set -Eeuo pipefail
 # ─── Configuration ───────────────────────────────────────────────────────────
 BITBOX_VERSION="4.51.0"
 DEB="bitbox_${BITBOX_VERSION}_amd64.deb"
+# SHA-256 of that release file, computed on 2026-10-11 after its signature
+# verified against the key below: pins the release, not only the signer.
+BITBOX_SHA256="64fa9976ed76a219a9f10dd0085f9217d2ee91c1376075a2e9274c58540c3493"
 BASE_URL="https://github.com/BitBoxSwiss/bitbox-wallet-app/releases/download/v${BITBOX_VERSION}"
 
 # BitBoxApp (Shift Crypto) release signing key.
@@ -28,7 +31,7 @@ sudo apt-get update
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
-fetch_signed "${BITBOX_KEY_FPR}" "${BASE_URL}/${DEB}" .asc "${WORKDIR}" <<'EOF'
+fetch_signed "${BITBOX_KEY_FPR}" "${BASE_URL}/${DEB}" .asc "${WORKDIR}" "${BITBOX_SHA256}" <<'EOF'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBGKYcqYBEACtZpDdv1FlJmNsN+tFDhoK9EkO2sKwnQh4mPkuWZ0wAWQabo4k

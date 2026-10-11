@@ -17,19 +17,12 @@ DEB="${GNOSISVPN_URL##*/}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
-fetch_signed "${GNOSISVPN_KEY_FPR}" "${GNOSISVPN_URL}" .asc "${tmp}" < "${ASSET_DIR}/gnosisvpn-public-key.asc"
-printf '%s  %s\n' "${GNOSISVPN_SHA256}" "${tmp}/${DEB}" | sha256sum --check --strict
-# The package installs upstream's APT repository (two mirrors) and its
-# keyring. A rerun finds that keyring locked by the chattr +i below; the
-# package rewrites it, so unlock it first.
-KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
-sudo chattr -i "${KEYRING}" 2>/dev/null || true
-sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"
+fetch_signed "${GNOSISVPN_KEY_FPR}" "${GNOSISVPN_URL}" .asc "${tmp}" "${GNOSISVPN_SHA256}" \
+	< "${ASSET_DIR}/gnosisvpn-public-key.asc"
 
-# Treat that repository like every other third-party one: its keyring must
-# hold exactly the pinned key, only the gnosisvpn package may come from it,
-# and the keyring is locked against rewrite by later maintainer scripts.
-gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null | require_exact_keys "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
+# The package installs upstream's APT repository (two mirrors) and its
+# keyring. Like every other third-party repository, it may supply only its
+# own package; the pin is in place before the repository is.
 sudo tee /etc/apt/preferences.d/gnosisvpn.pref > /dev/null <<'EOF'
 Package: *
 Pin: origin "download.vpn.gnosis.eth.limo"
@@ -47,6 +40,16 @@ Package: gnosisvpn
 Pin: origin "download.gnosisvpn.io"
 Pin-Priority: 500
 EOF
+
+# A rerun finds the package's keyring locked by the chattr +i below; the
+# package rewrites it, so unlock it first.
+KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
+sudo chattr -i "${KEYRING}" 2>/dev/null || true
+sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"
+
+# Its keyring must hold exactly the pinned key, and is locked against
+# rewrite by later maintainer scripts.
+gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null | require_exact_keys "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
 sudo chattr +i "${KEYRING}"
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns

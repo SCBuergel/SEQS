@@ -340,21 +340,18 @@ seqs-validation-failed:
 # setup-qubes.sh requires confirmation before taking over any policy without
 # the "Managed by SEQS" header. Salt then owns and converges the files.
 
-{# Ways out of a qube that the Qubes default policy allows without asking:
-   handing a link or file to another qube or a disposable, and starting a
-   disposable (qubes.PdfConvert through the PDF converter's own policy, a
-   default dom0 package). deny_escapes(source) denies all of them. #}
-{% set escape_routes = [
-  ('qubes.OpenURL', '@anyvm'), ('qubes.OpenURL', '@dispvm'),
-  ('qubes.OpenInVM', '@anyvm'), ('qubes.OpenInVM', '@dispvm'),
-  ('qubes.StartApp', '@dispvm'), ('qubes.GetImageRGBA', '@dispvm'),
-  ('qubes.VMShell', '@dispvm'), ('qubes.VMExec', '@dispvm'),
-  ('qubes.VMExecGUI', '@dispvm'), ('qubes.PdfConvert', '@dispvm'),
-] %}
+{# Ways out of a qube: handing a link or file to another qube, and starting a
+   program in another qube or a disposable (qubes.PdfConvert through the PDF
+   converter's own policy, a default dom0 package). The Qubes default policy
+   allows some of these without asking and asks for the rest. deny_escapes
+   denies all of them to @anyvm, which also matches @dispvm and a disposable
+   requested by its template, @dispvm:<template>. #}
+{% set escape_services = ['qubes.OpenURL', 'qubes.OpenInVM', 'qubes.StartApp', 'qubes.GetImageRGBA',
+                          'qubes.VMShell', 'qubes.VMExec', 'qubes.VMExecGUI', 'qubes.PdfConvert'] %}
 {% macro deny_escapes(source) -%}
 {%- set lines = [] -%}
-{%- for service, target in escape_routes -%}
-{%-   do lines.append('%-20s *  %s  %-9s deny' | format(service, source, target)) -%}
+{%- for service in escape_services -%}
+{%-   do lines.append('%-20s *  %s  @anyvm  deny' | format(service, source)) -%}
 {%- endfor -%}
 {{ lines | join('\n') | indent(8) }}
 {%- endmacro %}
@@ -374,9 +371,9 @@ seqs-policy-qr-input-deny:
         qubes.InputMouse     *  {{ webcam_usb_qube }}  @adminvm  deny
         qubes.InputTablet    *  {{ webcam_usb_qube }}  @adminvm  deny
         qubes.Filecopy       *  {{ webcam_usb_qube }}  @anyvm    deny
-        # netvm=none does not block qrexec: close the browser handoff too, or
-        # 29-browser.policy would let a compromised camera-side qube push the
-        # ciphertext to the browser qube without a prompt.
+        # netvm=none does not block qrexec: close the browser handoff and
+        # every disposable too, or a compromised camera-side qube could push
+        # the ciphertext out through them.
         {{ deny_escapes(webcam_usb_qube) }}
         # The transfer scans only in the named scanner below: Qubes 4.3 matches
         # a @dispvm:<template> source against no running qube. A disposable
@@ -477,11 +474,11 @@ seqs-policy-browser-suppress:
         # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
         # Qubes tagged seqs-no-handoff (offline, no_handoff, and firewalled SEQS
         # qubes, and every disposable started from them) may hand no link to
-        # any qube, open nothing in another qube, and start no disposable
-        # through the services the Qubes default policy allows without asking
-        # (qubes.PdfConvert through the PDF converter's own policy): the browser
-        # qube or a networked disposable would be a way out past no_handoff and
-        # any firewall allowlist. Evaluated before 29-browser.policy.
+        # any qube, open nothing in another qube, and start no program in
+        # another qube or a disposable, named by its template or not: the
+        # browser qube or a networked disposable would be a way out past
+        # no_handoff and any firewall allowlist. Evaluated before
+        # 29-browser.policy.
         {{ deny_escapes('@tag:seqs-no-handoff') }}
 {# A failed tag keeps the previous policy instead of a deny nobody matches. #}
 {% set wanted = handoff_tags | dictsort | selectattr('1.want') | map('first') | list %}
@@ -519,7 +516,17 @@ seqs-policy-usb-keyboard:
 # 'seqs-managed' feature is set. If a run dies in between, the next run's
 # no-clobber guard sees the marker and adopts the untagged qube instead of
 # refusing it. For an already-tagged qube neither state runs, so re-runs
-# stay churn-free.
+# stay churn-free. A marker whose qube does not exist and is not built in
+# this run resumes nothing; it is removed, so that a same-named qube created
+# later by someone else is refused rather than adopted.
+{% set planned = [] %}
+{% for name in qmap %}{% do planned.extend([ptpl ~ name, papp ~ name, pdvm ~ name]) %}{% endfor %}
+{% for m in salt['cmd.shell']('ls -A ' ~ intents_dir ~ ' 2>/dev/null').split()
+     if m not in inventory and m not in planned and m | regex_match(name_re) is not none %}
+seqs-stale-intent-{{ m }}:
+  file.absent:
+    - name: {{ intents_dir }}/{{ m }}
+{% endfor %}
 
 {% for name, q in qmap.items() %}
 {%   set recipe = recipes.get(name, '') %}

@@ -36,6 +36,8 @@ FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
 GNOSIS_UPDATE_POLICY="${SEQS_GNOSIS_UPDATE_POLICY:-/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy}"
 GNOSIS_UPDATE_PROXY="seqs-gnosisvpn-update-proxy"
 GNOSIS_PROXY_CREATED=0
+# Largest archive accepted from the repository qube (SEQS's is below 1 MB).
+MAX_ARCHIVE=16000000
 # A safe qube, recipe, or postfix name: no option, path, or glob characters.
 SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'
 
@@ -216,15 +218,20 @@ writeRunManifest() {
 
 # ---- Stage 1 -- fetch and validate -------------------------------------------
 
-# validateTarListing -- die unless every `tar -tvf` line on stdin is safe to
-# extract in dom0: regular files/dirs only (no symlinks/hardlinks/devices),
-# paths rooted at salt/ or install-scripts/, safe charset, no '..'. A hostile
+# validateTarListing -- die unless every `tar --numeric-owner -tvf` line on
+# stdin is safe to extract in dom0: regular files/dirs only (no symlinks,
+# hardlinks, or devices), paths rooted at salt/ or install-scripts/, safe
+# charset, no '..', and no name SEQS uses for its own markers. A hostile
 # REPO_VM controls the archive. Lines are
-# '<perms> <owner> <size> <date> <time> <path>' -- a 7th field means
-# whitespace in the name: reject (no legitimate SEQS file has one).
+# '<perms> <uid>/<gid> <size> <yyyy-mm-dd> <hh:mm> <path>'; every field before
+# the path must have that exact form, or a field such as a huge timestamp,
+# printed as one number, would shift part of the name into the time field.
+# A 7th field means whitespace in the name: reject (no SEQS file has one).
 validateTarListing() {
 	local perms f_owner f_size f_date f_time path extra
 	while read -r perms f_owner f_size f_date f_time path extra; do
+		[[ "${f_owner} ${f_size} ${f_date} ${f_time}" =~ ^[0-9]+/[0-9]+\ [0-9]+\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]] \
+			|| die "refusing tar entry with an unexpected listing: ${perms} ${f_owner} ${f_size} ${f_date} ${f_time} ${path}"
 		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
 		case "${perms:0:1}" in
 			d|-) ;;
@@ -233,12 +240,13 @@ validateTarListing() {
 		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
 		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
 			|| die "refusing unsafe tar path: ${path}"
+		[[ "${path%/}" == */.seqs-* ]] && die "refusing tar entry named like a SEQS marker: ${path}"
 	done
 	return 0
 }
 
 fetchSaltTree() {
-	local tarball stage source_commit
+	local tarball stage source_commit rc
 	tarball=$(mktemp /tmp/seqs-fetch.XXXXXX.tar) || die "mktemp failed"
 	stage=$(mktemp -d /tmp/seqs-stage.XXXXXX) || die "mktemp -d failed"
 	# Remove both on every exit, including each die below; mktemp names are safe.
@@ -247,10 +255,12 @@ fetchSaltTree() {
 	# Resolve HEAD without displaying source-controlled output, then restrict it
 	# to a full object ID before using it in the archive command. Exporting that
 	# exact object avoids both the live working tree and a moving-HEAD race.
+	# Both reads are size-limited (head -c), so that a hostile repository qube
+	# cannot fill dom0's memory: more than the limit fails a check below.
 	source_commit="$(
 		qvm-run -p "${REPO_VM}" \
 			"git -C ${REPO_PATH} rev-parse --verify HEAD^{commit}" \
-			2>/dev/null </dev/null
+			2>/dev/null </dev/null | head -c 100
 	)" || die "could not resolve repository HEAD in ${REPO_VM}:${REPO_PATH}"
 	source_commit="${source_commit,,}"
 	[[ "${source_commit}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] \
@@ -263,11 +273,14 @@ fetchSaltTree() {
 	# Export the resolved Git object, never the source qube's live working tree.
 	# source_commit is restricted to a full hexadecimal object ID above, so it
 	# is safe to interpolate into this fixed remote command.
-	if ! qvm-run -p "${REPO_VM}" \
+	qvm-run -p "${REPO_VM}" \
 		"git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit} && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts" \
-		2>/dev/null </dev/null > "${tarball}"; then
-		die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
-	fi
+		2>/dev/null </dev/null | head -c "${MAX_ARCHIVE}" > "${tarball}"
+	rc=$?
+	[ "$(stat -c %s -- "${tarball}")" -lt "${MAX_ARCHIVE}" ] \
+		|| die "the archive from ${REPO_VM} reached the ${MAX_ARCHIVE}-byte limit -- refusing it"
+	[ "${rc}" -eq 0 ] \
+		|| die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
 
 	echo "    Transfer SHA256 (diagnostic only; the source qube exported the"
 	echo "    resolved commit object rather than its live working tree):"
@@ -275,7 +288,7 @@ fetchSaltTree() {
 
 	tar -tf "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
 
-	validateTarListing < <(tar -tvf "${tarball}" 2>/dev/null)
+	validateTarListing < <(tar --numeric-owner -tvf "${tarball}" 2>/dev/null)
 
 	# tar's warnings can quote archive bytes, such as an unknown pax header
 	# keyword, so its stderr must not reach the dom0 terminal either.

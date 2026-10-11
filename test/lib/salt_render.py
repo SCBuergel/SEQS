@@ -131,6 +131,9 @@ class Scenario:
             return self.release
         if "xl info" in cmd:
             return self.host_cpus
+        if cmd.startswith("ls -A /var/lib/seqs/intents"):
+            return "\n".join(sorted(f.rsplit("/", 1)[1] for f in self.existing_files
+                                     if f.startswith("/var/lib/seqs/intents/")))
         m = re.search(r"qvm-features\s+--\s+(\S+)\s+seqs-managed", cmd)
         if m:
             return "1" if m.group(1) in self.tagged_qubes else ""

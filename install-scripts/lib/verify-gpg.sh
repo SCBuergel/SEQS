@@ -56,8 +56,9 @@ UPDATES_PROXY="127.0.0.1:8082"
 # log/error messages (e.g. "bitbox_4.51.0_amd64.deb").
 #
 # Aborts the calling script with exit 1 on any verification failure --
-# including gpg's own non-zero exit. Echoes "signature OK -- LABEL ..." on
-# success and returns 0.
+# including gpg's own non-zero exit -- after printing one 'rejected:' line
+# that names the cause, when gpg's status lines show one. Echoes
+# "signature OK -- LABEL ..." on success and returns 0.
 verify_detached_sig() {
 	local sigfile="${1}"
 	local datafile="${2}"
@@ -65,16 +66,9 @@ verify_detached_sig() {
 	local label="${4}"
 
 	local status rc=0
-	# Capture STATUS even if gpg failed: we want to dump it on error.
-	# Note: NO `|| true` here -- we keep gpg's exit code in $rc and act on
-	# it explicitly below.
+	# Keep gpg's exit code in rc rather than stop here: on a failure, the
+	# classifier below names its cause from gpg's status lines first.
 	status="$(gpg --status-fd 1 --verify "${sigfile}" "${datafile}" 2>/dev/null)" || rc=$?
-
-	if [ "${rc}" -ne 0 ]; then
-		echo "ERROR: gpg --verify exited ${rc} for ${label} -- not installing." >&2
-		echo "${status}" >&2
-		exit 1
-	fi
 
 	if ! awk -v fpr="${pin_fpr}" '
 		# Positive signals: must see BOTH for a pass.
@@ -92,8 +86,8 @@ verify_detached_sig() {
 			if (!validsig)   { printf "  rejected: no VALIDSIG with primary-key fingerprint %s\n", fpr > "/dev/stderr"; exit 1 }
 			exit 0
 		}
-	' <<< "${status}"; then
-		echo "ERROR: ${label} signature verification FAILED (pin: ${pin_fpr}) -- not installing." >&2
+	' <<< "${status}" || [ "${rc}" -ne 0 ]; then
+		echo "ERROR: ${label} signature verification FAILED (gpg exit ${rc}, pin: ${pin_fpr}) -- not installing." >&2
 		echo "${status}" >&2
 		exit 1
 	fi
@@ -143,21 +137,26 @@ import_pinned_key() {
 	gpg --with-colons --fingerprint 2>/dev/null | require_exact_keys "the key block" "${2}" || exit 1
 }
 
-# fetch_signed FPR URL SIG_SUFFIX DIR < KEY_BLOCK
+# fetch_signed FPR URL SIG_SUFFIX DIR SHA256 < KEY_BLOCK
 # Import the key block on stdin (import_pinned_key, GNUPGHOME=DIR/gnupg),
 # download URL and URL+SIG_SUFFIX into DIR through the update proxy, and
-# abort unless the detached signature chains to FPR. The verified file is
-# DIR/<last path element of URL>. DIR must be a mktemp directory of the
-# calling user (who has passwordless sudo), so nothing less privileged can
-# swap the file between this check and its installation.
+# abort unless the detached signature chains to FPR and the file's SHA-256 is
+# SHA256. The signature proves who released the file; the hash pins which
+# release, so that a mirror cannot serve an older one signed by the same key.
+# The verified file is DIR/<last path element of URL>. DIR must be a mktemp
+# directory of the calling user (who has passwordless sudo), so nothing less
+# privileged can swap the file between this check and its installation.
 fetch_signed() {
-	local fpr="${1}" url="${2}" sig="${3}" dir="${4}" file="${2##*/}"
+	local fpr="${1}" url="${2}" sig="${3}" dir="${4}" sha="${5}" file="${2##*/}"
 	import_pinned_key "${dir}/gnupg" "${fpr}"
 	echo "downloading ${file}..."
 	# -f makes curl fail on an HTTP error instead of saving the error page.
 	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}" "${url}"
 	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}${sig}" "${url}${sig}"
 	verify_detached_sig "${dir}/${file}${sig}" "${dir}/${file}" "${fpr}" "${file}"
+	printf '%s  %s\n' "${sha}" "${dir}/${file}" | sha256sum --check --strict --quiet \
+		|| { echo "ERROR: ${file} does not have the pinned SHA-256 ${sha} -- not installing." >&2; exit 1; }
+	echo "sha256 OK -- ${file}"
 }
 
 # add_pinned_apt_repo NAME KEYRING FPR ARCH REPO ORIGIN ALLOWED < KEY_BLOCK

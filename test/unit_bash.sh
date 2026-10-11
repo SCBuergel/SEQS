@@ -86,17 +86,28 @@ eq "joinCsv one" "$(joinCsv solo)" "solo"
 
 echo "== tar-entry validation accepts the real repo tree, rejects hostile entries =="
 # validateTarListing dies (exits) on a rejected entry, so run it in a subshell.
-validate_tar() { ( validateTarListing ) 2>/dev/null; }
+validate_tar() { ( validateTarListing ) 2>&1; }
 # Real tree must pass.
-if tar -cf - salt install-scripts | tar -tvf - | validate_tar; then ok
-else bad "validation rejected the real repo tree"; fi
-# Hostile entries must each be rejected.
-reject() { if printf '%s\n' "$1" | validate_tar; then bad "accepted hostile: $1"; else ok; fi; }
-reject 'lrwxrwxrwx user 0 2020-01-01 00:00 salt/evil'              # symlink type
-reject '-rw-r--r-- user 0 2020-01-01 00:00 salt/../etc/passwd'     # .. traversal
-reject '-rw-r--r-- user 0 2020-01-01 00:00 /etc/passwd'           # absolute path
-reject '-rw-r--r-- user 0 2020-01-01 00:00 salt/a b'              # whitespace in name
-reject '-rw-r--r-- user 0 2020-01-01 00:00 other/thing'          # outside allowed roots
+out="$(tar -cf - salt install-scripts | tar --numeric-owner -tvf - | validate_tar)" && ok \
+	|| bad "validation rejected the real repo tree: ${out}"
+# Hostile entries must each be rejected, for the stated reason.
+reject() {
+	local out
+	out="$(printf '%s\n' "$1" | validate_tar)" && { bad "accepted hostile: $1"; return; }
+	grep -qF "$2" <<< "${out}" && ok || bad "hostile [$1]: expected [$2], got [${out}]"
+}
+reject 'lrwxrwxrwx 0/0 0 2020-01-01 00:00 salt/evil' "non-regular tar entry"
+reject '-rw-r--r-- 0/0 0 2020-01-01 00:00 salt/../etc/passwd' "containing '..'"
+reject '-rw-r--r-- 0/0 0 2020-01-01 00:00 /etc/passwd' "unsafe tar path"
+reject '-rw-r--r-- 0/0 0 2020-01-01 00:00 salt/a b' "whitespace in its name"
+reject '-rw-r--r-- 0/0 0 2020-01-01 00:00 other/thing' "unsafe tar path"
+reject '-rw-r--r-- 0/0 0 2020-01-01 00:00 salt/seqs/.seqs-complete' "named like a SEQS marker"
+reject 'drwxr-xr-x 0/0 0 2020-01-01 00:00 salt/pillar/seqs/.seqs-managed/' "named like a SEQS marker"
+# A field that is not in its fixed form could shift part of the name out of
+# the path field, as these listings from crafted archives do: a huge mtime
+# prints as one number, and an owner name may contain a space.
+reject '-rw-r--r-- 0/0 1 1000000000000000000 /abs salt/y' "unexpected listing"
+reject '-rw-r--r-- a b/0 1 1969-12-31 19:00 salt/ok' "unexpected listing"
 
 echo "== SAFE_NAME accepts plain names only =="
 for n in keepass A-brave sys-usb_2 a.b; do
@@ -304,14 +315,22 @@ if command -v gpg >/dev/null 2>&1; then
 		&& bad "add_pinned_apt_repo accepted a key block with a second key"
 	grep -q "the key block must hold exactly the pinned key" <<< "${out}" && [ ! -e "${g}/root/k.gpg" ] && ok \
 		|| bad "a second key must stop add_pinned_apt_repo before it writes the keyring: ${out}"
-	mkdir -p "${g}/dl"
-	out="$(lib fetch_signed "${fprs[0]}" https://x.invalid/f.bin .asc "${g}/dl" < "${g}/one.asc")" \
-		&& grep -q "signature OK -- f.bin" <<< "${out}" && ok || bad "fetch_signed rejected a good signature: ${out}"
+	sha="$(sha256sum "${g}/src/f.bin" | cut -d' ' -f1)"
+	fetch() { rm -rf "${g}/dl"; mkdir -p "${g}/dl"; lib fetch_signed "${fprs[0]}" https://x.invalid/f.bin .asc "${g}/dl" "$@" < "${g}/one.asc"; }
+	out="$(fetch "${sha}")" && grep -q "signature OK -- f.bin" <<< "${out}" && grep -q "sha256 OK -- f.bin" <<< "${out}" \
+		&& ok || bad "fetch_signed rejected a good signature: ${out}"
+	# A file with a good signature but another hash is another release.
+	out="$(fetch "$(printf '%064d' 0)")" && bad "fetch_signed accepted a file with another SHA-256"
+	grep -q "f.bin does not have the pinned SHA-256" <<< "${out}" && ok || bad "other hash: wrong message [${out}]"
+	# A file signed by another key names the cause.
+	GNUPGHOME="${g}/home" gpg --batch --yes --quiet --local-user "${fprs[1]}" --armor --detach-sign -o "${g}/src/f.bin.asc" "${g}/src/f.bin"
+	out="$(fetch "${sha}")" && bad "fetch_signed accepted a signature by another key"
+	grep -qE "rejected: gpg emitted (ERRSIG|NO_PUBKEY)" <<< "${out}" && ok || bad "other key: wrong message [${out}]"
 	echo tampered > "${g}/src/f.bin"
-	rm -rf "${g}/dl"; mkdir -p "${g}/dl"
-	out="$(lib fetch_signed "${fprs[0]}" https://x.invalid/f.bin .asc "${g}/dl" < "${g}/one.asc")" \
-		&& bad "fetch_signed accepted a tampered file"
-	grep -q "for f.bin -- not installing" <<< "${out}" && ok || bad "tampered file: wrong message [${out}]"
+	GNUPGHOME="${g}/home" gpg --batch --yes --quiet --local-user "${fprs[0]}" --armor --detach-sign -o "${g}/src/f.bin.asc" "${g}/src/f.bin"
+	echo tampered again > "${g}/src/f.bin"
+	out="$(fetch "${sha}")" && bad "fetch_signed accepted a tampered file"
+	grep -q "rejected: gpg emitted BADSIG" <<< "${out}" && ok || bad "tampered file: wrong message [${out}]"
 	gpgconf --homedir "${g}/home" --kill all 2>/dev/null
 	rm -rf "${g}"
 else

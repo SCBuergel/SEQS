@@ -173,11 +173,3 @@ install_brave_extension() {
 	echo '{ "external_update_url": "https://clients2.google.com/service/update2/crx" }' \
 		| sudo tee "${extensions_path}/${id}.json" > /dev/null
 }
-
-# ensure_brave -- idempotent install: installs Brave only if not already present.
-# Used by the brave-extension-* states in salt/seqs/qube.sls so that a qube
-# containing one or more brave-extension-<name> components auto-installs Brave
-# on the first invocation, no-op thereafter.
-ensure_brave() {
-	dpkg -s brave-browser >/dev/null 2>&1 || install_brave
-}

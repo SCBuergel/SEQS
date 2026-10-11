@@ -2,6 +2,8 @@
 
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
+# Command substitutions stop at a failure too, such as qvm-ls in findUsers.
+shopt -s inherit_errexit
 
 # Removes matching D-/A-/Z- qubes; run with --help and use --dry-run first.
 
@@ -14,6 +16,10 @@ PREFIXES=(D A Z)
 # "running" state before we give up and try qvm-remove anyway.
 SHUTDOWN_TIMEOUT=30
 
+# Creation markers: written by the seqs.dom0 state before it creates a qube,
+# removed once the qube carries the seqs-managed feature.
+INTENTS_DIR=/var/lib/seqs/intents
+
 DRY_RUN=0
 
 usage() {
@@ -22,7 +28,8 @@ Usage: $0 [--dry-run] <name> [<name> ...]
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
 any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
-the seqs-managed feature); same-named qubes without it are skipped. Qubes
+the seqs-managed feature, or the creation marker of an interrupted run);
+same-named qubes without either are skipped. Qubes
 using a match as their NetVM are preserved but disconnected (netvm set to
 none). If another qube uses a match as its template or default disposable, or
 a match is a global default, nothing is changed.
@@ -101,13 +108,14 @@ for app in "${ARGS[@]}"; do
 	fi
 
 	# Build the kill list by literal name + existence check -- no regex. A
-	# same-named qube that SEQS did not build (no seqs-managed feature) is
-	# never touched.
+	# same-named qube that SEQS did not build (no seqs-managed feature and no
+	# creation marker from an interrupted run) is never touched.
 	echo "looking for qubes matching ${PREFIXES[*]/%/-${app}}..."
 	for prefix in "${PREFIXES[@]}"; do
 		candidate="${prefix}-${app}"
 		qvm-check "${candidate}" &>/dev/null || continue
-		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ]; then
+		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ] \
+				|| sudo test -e "${INTENTS_DIR}/${candidate}"; then
 			found+=("${candidate}")
 		else
 			echo "  skipping ${candidate}: SEQS did not build it (no seqs-managed feature)"
@@ -178,12 +186,13 @@ for vm in "${found[@]}"; do
 	qvm-remove "${vm}" -f
 done
 
-# dom0 files SEQS wrote for a removed qube: its CPU pinning would apply to a
-# later qube of the same name, and its recorded firewall is stale.
+# dom0 files SEQS wrote for a removed qube: its CPU pinning or creation
+# marker would apply to a later qube of the same name, and its recorded
+# firewall is stale.
 for vm in "${found[@]}"; do
 	pin="/etc/qubes/templates/libvirt/xen/by-name/${vm}.xml"
 	if head -n 1 -- "${pin}" 2>/dev/null | grep -q 'Managed by SEQS'; then
 		sudo rm -f -- "${pin}"
 	fi
-	sudo rm -f -- "/var/lib/seqs/firewall/${vm}"
+	sudo rm -f -- "/var/lib/seqs/firewall/${vm}" "${INTENTS_DIR}/${vm}"
 done

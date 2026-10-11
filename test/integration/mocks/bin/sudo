@@ -14,6 +14,11 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+# SEQS_MOCK_INTENTS: qube names whose creation marker exists.
+if [ "${1:-} ${2:-}" = "test -e" ] && [[ "${3:-}" == /var/lib/seqs/intents/* ]]; then
+  [[ " ${SEQS_MOCK_INTENTS:-} " == *" ${3##*/} "* ]]
+  exit
+fi
 # The unprivileged test container cannot chown to root; production sudo can.
 if [ "${1:-}" = "chown" ]; then
   exit 0

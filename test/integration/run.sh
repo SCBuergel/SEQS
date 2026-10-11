@@ -235,6 +235,16 @@ i.pax_headers = {"EVIL\x1b]0;PWNED\x07": "1"}
 t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
 out="$(run_setup --all 2>&1)"
 ! grep -q $'\x1b' <<<"$out" && ok || bad "an escape byte from the archive reached the terminal"
+# An endless answer from the repository qube is cut off, not stored whole.
+unset SEQS_MOCK_TAR
+out="$(SEQS_MOCK_ENDLESS=archive timeout 60 python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --repo-vm test-repo --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "reached the 16000000-byte limit" <<<"$out" && ok \
+	|| bad "an endless archive must be refused at the size limit: rc=$rc $(tail -n 2 <<<"$out")"
+out="$(SEQS_MOCK_ENDLESS=commit timeout 60 python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --repo-vm test-repo --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qE "could not resolve repository HEAD|invalid full commit ID" <<<"$out" && ok \
+	|| bad "an endless commit ID must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+[ "$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)" = "${tmp_before}" ] && ok \
+	|| bad "a refused fetch must leave no temporary files in /tmp"
 rm -rf "${SBX}" "${evil}"
 
 # ── Scenario 4: air-gap verification fails closed ──────────────────────────
@@ -355,7 +365,7 @@ grep -qxF "A-keepass running" "${SEQS_MOCK_STATE}" && ok || bad "dry-run must no
 # Real run: A-keepass (running) and Z-keepass go, unrelated A-brave stays.
 out="$(SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
-grep -qxF "rm -f -- /var/lib/seqs/firewall/A-keepass " "${SBX}/sudo.log" && ok \
+grep -qF "rm -f -- /var/lib/seqs/firewall/A-keepass " "${SBX}/sudo.log" && ok \
 	|| bad "the removed qube's recorded firewall must be deleted"
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
@@ -390,6 +400,20 @@ grep -q "skipping A-notes: SEQS did not build it" <<<"$out" && ok || bad "the un
 	|| bad "Z-notes is A-notes's template, so its removal must be refused"
 grep -q "^A-notes " "${SEQS_MOCK_STATE}" && grep -q "^Z-notes " "${SEQS_MOCK_STATE}" && ok \
 	|| bad "a refused deletion must remove nothing"
+# A qube whose creation was interrupted carries no seqs-managed feature yet,
+# only its creation marker: SEQS built it, so it is removed with its marker.
+printf '%s\n' "A-notes halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_UNMANAGED="A-notes" SEQS_MOCK_INTENTS="A-notes" SEQS_MOCK_SUDO_LOG="${SBX}/sudo2.log" \
+	bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -q "^A-notes " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a qube with a creation marker must be removed: ${out}"
+grep -qF "/var/lib/seqs/intents/A-notes" <<< "$(grep '^rm ' "${SBX}/sudo2.log")" && ok \
+	|| bad "the removed qube's creation marker must be deleted"
+# A failing qube listing must stop the deletion, not skip the blocker check.
+printf '%s\n' "A-keepass halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_QVM_LS_FAIL=1 bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "delete-vms.sh must stop when qvm-ls fails: rc=$rc ${out}"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
