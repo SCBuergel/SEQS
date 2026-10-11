@@ -386,6 +386,62 @@ out="$(bash "${REPO}/test/hardware/dom0-test.sh" reset 2>&1)"; rc=$?
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_TMP_DIR SEQS_TEST_DELETE_VMS SEQS_TEST_CTL_VM
 rm -rf "${SBX}"
 
+# ── Scenario 10: the sequential QR script refuses before the camera phase ───
+# Every check before "Type START" must stop the script without powering off.
+# The test runs a copy that reads its configuration from the sandbox and
+# skips the root check; mocks local to this scenario stand in for Qubes.
+echo "== scenario: sequential QR script refuses an unsafe state before START =="
+SBX="$(mktemp -d)"
+mkdir -p "${SBX}/bin"
+sed -e "s#^CONF=.*#CONF=${SBX}/conf#" -e 's/^\[ "\${EUID}" -eq 0 \].*$/:/' \
+	"${REPO}/salt/seqs/files/qr-sequential.sh" > "${SBX}/qr.sh"
+write_mock() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "${SBX}/bin/$1"; chmod +x "${SBX}/bin/$1"; }
+write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
+write_mock qvm-prefs 'awk -v k="$2 $3" '"'"'$1" "$2 == k { print $3; f=1 } END { exit !f }'"'"' "'"${SBX}"'/prefs"'
+write_mock qvm-run 'cat "'"${SBX}"'/staged"'
+write_mock qvm-usb ':'
+write_mock qvm-kill ':'
+write_mock qvm-shutdown ':'
+write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"'
+qr_case() {  # NAME EXPECTED-OUTPUT -- run with the current fixture files
+	local out
+	out="$(PATH="${SBX}/bin:${PATH}" setsid bash "${SBX}/qr.sh" </dev/null 2>&1)" \
+		&& bad "$1: the script must not succeed without START"
+	grep -qF -- "$2" <<<"${out}" && ok || bad "$1: expected '$2', got: $(tail -n 1 <<<"${out}")"
+	[ ! -e "${SBX}/systemctl.log" ] && ok || bad "$1: the script powered off before the camera phase"
+}
+qr_reset() {
+	local vm
+	printf '%s\n' "NORMAL_USB_QUBE=sys-usb" "WEBCAM_USB_QUBE=sys-usb-webcam" "SCANNER_QUBE=seqs-qr-scanner" \
+		"STAGING_QUBE=A-qr-staging" "CONTROLLER=00_14.0" > "${SBX}/conf"
+	printf '%s\n' sys-usb sys-usb-webcam seqs-qr-scanner A-qr-staging > "${SBX}/exists"
+	echo sys-usb > "${SBX}/running"
+	echo ABSENT > "${SBX}/staged"
+	: > "${SBX}/prefs"
+	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
+		printf '%s netvm \n%s default_dispvm \n' "${vm}" "${vm}" >> "${SBX}/prefs"
+	done
+}
+if command -v setsid >/dev/null 2>&1; then
+	qr_reset; qr_case "a safe state" "SEQS SEQUENTIAL-PATH QR SCAN"
+	qr_reset; echo 'SCANNER_QUBE="x;y"' >> "${SBX}/conf"; qr_case "unsafe name" "unsafe qube name"
+	qr_reset; echo 'CONTROLLER=00_14.0x' >> "${SBX}/conf"; qr_case "bad BDF" "invalid controller BDF"
+	qr_reset; sed -i '/^A-qr-staging$/d' "${SBX}/exists"; qr_case "missing qube" "required qube 'A-qr-staging' is missing"
+	qr_reset; echo sys-usb-webcam >> "${SBX}/running"; qr_case "webcam backend running" "sys-usb-webcam is already running"
+	qr_reset; echo seqs-qr-scanner >> "${SBX}/running"; qr_case "scanner running" "seqs-qr-scanner is already running"
+	qr_reset; echo PRESENT > "${SBX}/staged"; qr_case "old key.asc" "already holds an incoming key.asc"
+	qr_reset; : > "${SBX}/staged"; qr_case "staging unreadable" "could not check A-qr-staging"
+	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
+		for pref in netvm default_dispvm; do
+			qr_reset; sed -i "s/^${vm} ${pref} $/${vm} ${pref} sys-firewall/" "${SBX}/prefs"
+			qr_case "${vm} ${pref}" "'${vm}' has ${pref} set"
+		done
+	done
+else
+	printf '  skip: setsid not available\n'
+fi
+rm -rf "${SBX}"
+
 echo
 echo "integration tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
