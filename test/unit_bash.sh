@@ -59,6 +59,27 @@ isManaged "${tmpf}" && bad "the marker on a later line must not count" || ok
 rm -f "${tmpf}"
 unset -f sudo
 
+echo "== adb-pull treats the device's answers as data =="
+# A hostile phone answers stat with a bash arithmetic payload; adb-pull must
+# refuse it without running the embedded command.
+tmpd="$(mktemp -d)"
+cat > "${tmpd}/adb" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+	devices) printf 'List of devices attached\nphone\tdevice\n' ;;
+	*getprop*) printf 'SER\033]0;x\0071\r\n' ;;
+	*stat*) printf 'HOME[$(touch %s/pwned)]\r\n' "$(dirname "$0")" ;;
+esac
+MOCK
+chmod +x "${tmpd}/adb"
+sed "s#^ADB=/usr/bin/adb#ADB=${tmpd}/adb#" install-scripts/components/adb/adb-pull.sh > "${tmpd}/adb-pull"
+out="$(HOME="${tmpd}" bash "${tmpd}/adb-pull" /sdcard/f "${tmpd}/out" 2>&1 </dev/null)" \
+	&& bad "adb-pull must refuse a non-numeric size"
+[ ! -e "${tmpd}/pwned" ] && ok || bad "adb-pull ran a command embedded in the device's size answer"
+grep -q "Device serial captured: SER0x1$" <<< "${out}" && ok \
+	|| bad "the device serial must lose its control characters: $(grep serial <<< "${out}")"
+rm -rf "${tmpd}"
+
 echo "== joinCsv() =="
 eq "joinCsv" "$(joinCsv a b c)" "a,b,c"
 eq "joinCsv one" "$(joinCsv solo)" "solo"

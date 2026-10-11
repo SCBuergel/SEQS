@@ -171,9 +171,11 @@ INITIAL_SERIAL=""
 # empty on failure. ro.serialno is queried via `adb shell`, so a hostile
 # peer could lie -- but a hijacker on the LAN does NOT know the original
 # phone's serial, so a mismatch on reconnect is a strong signal.
+# Everything the device sends is untrusted: keep only characters that can
+# neither drive the terminal nor reach bash arithmetic.
 get_device_serial() {
     timeout "$ADB_TIMEOUT" $ADB shell getprop ro.serialno 2>/dev/null \
-        | tr -d '\r\n' || true
+        | tr -cd 'A-Za-z0-9._-' || true
 }
 
 # verify_device_identity: abort if the current device's serial differs
@@ -271,7 +273,8 @@ echo "Device serial captured: $INITIAL_SERIAL"
 
 # ─── Get remote file size ────────────────────────────────────────────────────
 SIZE=$(timeout "$ADB_TIMEOUT" $ADB shell "stat -c%s $REMOTE_Q" 2>/dev/null | tr -d '\r')
-if [[ -z "$SIZE" ]] || [[ "$SIZE" -eq 0 ]]; then
+# Bash arithmetic would run a $(...) the device placed in SIZE: digits only.
+if ! [[ "$SIZE" =~ ^[0-9]{1,18}$ ]] || [[ "$SIZE" -eq 0 ]]; then
     echo "ERROR: Could not stat remote file or file is empty: $REMOTE"
     exit 1
 fi
@@ -381,7 +384,7 @@ echo "Transfer complete. Verifying transport (transport-only -- NOT authenticity
 echo ""
 
 echo -n "Remote SHA-256: "
-REMOTE_SHA=$(timeout 120 $ADB shell "sha256sum $REMOTE_Q" 2>/dev/null | awk '{print $1}' | tr -d '\r')
+REMOTE_SHA=$(timeout 120 $ADB shell "sha256sum $REMOTE_Q" 2>/dev/null | awk '{print $1}' | tr -cd '0-9a-f')
 echo "$REMOTE_SHA"
 
 echo -n "Local SHA-256:  "
