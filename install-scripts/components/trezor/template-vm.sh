@@ -20,8 +20,6 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="53c1", MODE="0660", 
 KERNEL=="hidraw*", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="53c1", MODE="0660", TAG+="uaccess", TAG+="udev-acl"
 EOF
 
-echo "triggering udevadm..."
-sudo udevadm trigger
-
-echo "reloading rules..."
+echo "reloading udev rules..."
 sudo udevadm control --reload-rules
+sudo udevadm trigger

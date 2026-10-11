@@ -10,6 +10,17 @@ vm="${args[0]:-}"
 property="${args[1]:-}"
 value="${args[2]:-}"
 
+# "qvm-prefs VM" lists netvm and default_dispvm as qvm-prefs does: flag "-"
+# for an explicit value, "D" for an inherited one (SEQS_MOCK_PREFS_INHERITED=1).
+if [ "${#args[@]}" -eq 1 ]; then
+	flag="-"; [ "${SEQS_MOCK_PREFS_INHERITED:-}" = 1 ] && flag="D"
+	for prop in default_dispvm netvm; do
+		v="$("$0" -- "${vm}" "${prop}")"
+		printf '%-21s %s  %s\n' "${prop}" "${flag}" "${v:-None}"
+	done
+	exit 0
+fi
+
 # SEQS_MOCK_PREFS: optional "<vm> <property> <value>" lines, read first.
 if [ -n "${SEQS_MOCK_PREFS:-}" ] && [ "${#args[@]}" -eq 2 ] \
 	&& awk -v v="${vm}" -v p="${property}" '$1 == v && $2 == p { print $3; f=1 } END { exit !f }' "${SEQS_MOCK_PREFS}"; then

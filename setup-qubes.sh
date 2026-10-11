@@ -181,7 +181,7 @@ writeBuildIntent() {
 		done
 		selected="${selected%$'\n'}"
 	fi
-	tree_hash=$(treeHash)
+	tree_hash=$(treeHash) || exit 1
 	plan_hash=$(printf '%s\n%s\n' "${tree_hash}" "${selected}" | sha256sum | awk '{print $1}')
 	sudo mkdir -p "${SELECTION_FILE%/*}" "${RUN_MANIFEST%/*}" \
 		|| die "could not create runtime state directory"
@@ -223,7 +223,7 @@ fetchSaltTree() {
 	source_commit="$(
 		qvm-run -p "${REPO_VM}" \
 			"git -C ${REPO_PATH} rev-parse --verify HEAD^{commit}" \
-			2>/dev/null
+			2>/dev/null </dev/null
 	)" || {
 		rm -rf "${tarball}" "${stage}"
 		die "could not resolve repository HEAD in ${REPO_VM}:${REPO_PATH}"
@@ -243,7 +243,7 @@ fetchSaltTree() {
 	# is safe to interpolate into this fixed remote command.
 	if ! qvm-run -p "${REPO_VM}" \
 		"git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit} && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts" \
-		2>/dev/null > "${tarball}"; then
+		2>/dev/null </dev/null > "${tarball}"; then
 		rm -rf "${tarball}" "${stage}"
 		die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
 	fi
@@ -270,9 +270,11 @@ fetchSaltTree() {
 		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
 		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
 			|| die "refusing unsafe tar path: ${path}"
-	done < <(tar -tvf "${tarball}")
+	done < <(tar -tvf "${tarball}" 2>/dev/null)
 
-	tar -xf "${tarball}" -C "${stage}" --no-same-owner --no-same-permissions \
+	# tar's warnings can quote archive bytes, such as an unknown pax header
+	# keyword, so its stderr must not reach the dom0 terminal either.
+	tar -xf "${tarball}" -C "${stage}" --no-same-owner --no-same-permissions 2>/dev/null \
 		|| die "tar extraction failed"
 
 	# Sanity: the tree must carry the pieces the apply phases rely on.
@@ -479,23 +481,15 @@ readTargets() {
 # security-critical prefs in the setup (wallet/vault air gap), so refuse to
 # provision anything if they are not in effect.
 verifyAirgap() {
-	local vm nv dv
+	local vm prefs
 	for vm in "${OFFLINE_TARGETS[@]}"; do
-		nv="$(qvm-prefs -- "${vm}" netvm 2>/dev/null)" \
-			|| die "could not read the netvm of offline qube '${vm}' -- refusing to provision."
-		# Unset netvm prints as empty on current releases; accept None/none too.
-		case "${nv,,}" in
-			''|none) ;;
-			*) die "offline qube '${vm}' still has netvm '${nv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;
-		esac
-		# A default disposable usually has network access and is reachable
-		# without a prompt through qubes.OpenInVM and similar services.
-		dv="$(qvm-prefs -- "${vm}" default_dispvm 2>/dev/null)" \
-			|| die "could not read the default_dispvm of offline qube '${vm}' -- refusing to provision."
-		case "${dv,,}" in
-			''|none) ;;
-			*) die "offline qube '${vm}' still has default_dispvm '${dv}' after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)" ;;
-		esac
+		prefs="$(qvm-prefs -- "${vm}" 2>/dev/null)" \
+			|| die "could not read the preferences of offline qube '${vm}' -- refusing to provision."
+		# Both must be explicitly None (flag "-"): an inherited value (flag D)
+		# becomes networked when the global default changes. A default
+		# disposable is reachable without a prompt through qubes.OpenInVM.
+		awk '($1 == "netvm" || $1 == "default_dispvm") && $2 == "-" && $3 == "None" { n++ } END { exit n != 2 }' <<< "${prefs}" \
+			|| die "offline qube '${vm}' does not have netvm and default_dispvm explicitly set to none after the dom0 apply -- air gap NOT in effect, refusing to provision. (Check the seqs-offline state in salt/seqs/dom0.sls against your Qubes release.)"
 	done
 	if [ "${#OFFLINE_TARGETS[@]}" -gt 0 ]; then
 		echo "    Air gap verified: no netvm and no default disposable on ${OFFLINE_TARGETS[*]}."
@@ -520,7 +514,7 @@ prepareGnosisPrerequisites() {
 		echo "    ${template}"
 		if ! qvm-run -p -u root "${template}" \
 			"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg openresolv wireguard-tools libc6 systemd iptables logrotate wireguard ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0t64 libayatana-appindicator3-1 libglib2.0-bin" \
-			2>&1 | sanitize; then
+			2>&1 </dev/null | sanitize; then
 			die "could not install GnosisVPN prerequisites in ${template} through the default updates proxy"
 		fi
 		qvm-shutdown --wait "${template}" \
@@ -598,8 +592,15 @@ setupGnosisUpdateProxy() {
 	[[ "${updatevm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
 		|| die "unsafe or empty default UpdateVM name: '${updatevm}'"
 	proxy_template="$(resolveTemplateVM "${updatevm}")"
-	proxy_netvm="$(qvm-prefs -- "${updatevm}" netvm 2>/dev/null)" \
-		|| die "could not determine the NetVM of UpdateVM ${updatevm}"
+	# Download over the UpdateVM's route: through the UpdateVM itself when it
+	# provides network (sys-firewall, or sys-whonix for updates over Tor),
+	# otherwise through its NetVM.
+	if [ "$(qvm-prefs -- "${updatevm}" provides_network 2>/dev/null)" = "True" ]; then
+		proxy_netvm="${updatevm}"
+	else
+		proxy_netvm="$(qvm-prefs -- "${updatevm}" netvm 2>/dev/null)" \
+			|| die "could not determine the NetVM of UpdateVM ${updatevm}"
+	fi
 	for value in "${proxy_template}" "${proxy_netvm}"; do
 		[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
 			|| die "unsafe or empty temporary proxy dependency: '${value}'"
@@ -676,14 +677,25 @@ echo ""
 	echo "         with --verbose for full per-state output)." >&2
 	echo "         Re-run to converge -- finished components are skipped." >&2
 	FAILED=1
+	# Without a per-qube ERROR line, any template may be the failed one.
+	[ "${#FAILED_QUBES[@]}" -gt 0 ] || FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
 	fi
 	FAILED_TEMPLATES=("${FAILED_QUBES[@]}")
 	cleanupGnosisUpdateProxy
 	verifyGnosisUpdateProxyRemoved
 	trap - EXIT INT TERM
 
-# Commit template root volumes before any app qube snapshots them.
+# Commit template root volumes before any app qube snapshots them. A template
+# that is still running counts as failed: its app qubes would start on the
+# old root snapshot.
 shutdownAll "${TEMPLATE_TARGETS[@]}"
+for vm in "${TEMPLATE_TARGETS[@]}"; do
+	if qvm-check --running -q -- "${vm}" >/dev/null 2>&1; then
+		echo "WARNING: ${vm} did not shut down" >&2
+		FAILED=1
+		FAILED_TEMPLATES+=("${vm}")
+	fi
+done
 # A template reports new menu entries while it is provisioned, which refreshes
 # the menus of its app qubes but not of named disposables one level further.
 for vm in "${DISPOSABLE_TARGETS[@]}"; do

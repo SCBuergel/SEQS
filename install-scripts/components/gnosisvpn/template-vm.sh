@@ -4,6 +4,7 @@ set -Eeuo pipefail
 echo "Installing pinned GnosisVPN stable release..."
 
 ASSET_DIR="$(dirname "$0")"
+. "${ASSET_DIR}/verify-gpg.sh"
 # This is the stable-channel package listed on 2026-10-10 in the APT index of
 # https://download.vpn.gnosis.eth.limo/linux/apt, whose InRelease file is
 # signed by the key below; the hash matches that signed index. Fetch the
@@ -16,22 +17,14 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 cd "${tmp}"
 
-got_fpr="$(
-	gpg --show-keys --with-colons "${ASSET_DIR}/gnosisvpn-public-key.asc" 2>/dev/null |
-		awk -F: '$1 == "fpr" { print $10; exit }'
-)"
-[[ "${got_fpr}" = "${GNOSISVPN_KEY_FPR}" ]] || {
-	echo "ERROR: embedded GnosisVPN signing key fingerprint mismatch" >&2
-	exit 1
-}
-
 curl --proxy 127.0.0.1:8082 -fsSL "${GNOSISVPN_URL}" -o g.deb
 curl --proxy 127.0.0.1:8082 -fsSL "${GNOSISVPN_URL}.asc" -o g.deb.asc
 printf '%s  %s\n' "${GNOSISVPN_SHA256}" g.deb | sha256sum --check --strict
 install -d -m 0700 "${tmp}/gnupg"
-gpg --batch --homedir "${tmp}/gnupg" \
-	--import "${ASSET_DIR}/gnosisvpn-public-key.asc" >/dev/null
-gpg --batch --homedir "${tmp}/gnupg" --verify g.deb.asc g.deb
+export GNUPGHOME="${tmp}/gnupg"
+gpg --batch --import "${ASSET_DIR}/gnosisvpn-public-key.asc" 2>/dev/null
+verify_imported_keyring_matches "${GNOSISVPN_KEY_FPR}"
+verify_detached_sig g.deb.asc g.deb "${GNOSISVPN_KEY_FPR}" "gnosisvpn_0.95.2_amd64.deb"
 # The package installs upstream's APT repository (two mirrors) and its
 # keyring. A rerun finds that keyring locked by the chattr +i below; the
 # package rewrites it, so unlock it first.

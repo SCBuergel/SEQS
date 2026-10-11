@@ -185,22 +185,9 @@ verify_detached_sig \
 	"${KEEPASSXC_KEY_FPR}" \
 	"${APPIMAGE}"
 
-# ─── Bind the verified bytes to what gets installed ──────────────────────────
-# Close the TOCTOU window between gpg --verify and `sudo install`: the AppImage
-# sits in a user-owned mktemp dir while it waits to be copied to /usr/bin/.
-# Hash the just-verified file, drop it to 0400 so a tamper attempt has to
-# chmod first (louder), then re-hash immediately before the install and bail
-# on drift. Same pattern as bitbox/template-vm.sh.
-SHA_VERIFIED="$(sha256sum "${WORKDIR}/${APPIMAGE}" | awk '{print $1}')"
-chmod 0400 "${WORKDIR}/${APPIMAGE}"
-
-SHA_PREINSTALL="$(sha256sum "${WORKDIR}/${APPIMAGE}" | awk '{print $1}')"
-if [ "${SHA_VERIFIED}" != "${SHA_PREINSTALL}" ]; then
-	echo "ERROR: AppImage hash changed between gpg --verify and install -- aborting." >&2
-	echo "  at verify:  ${SHA_VERIFIED}" >&2
-	echo "  at install: ${SHA_PREINSTALL}" >&2
-	exit 1
-fi
+# The download stays in a mktemp directory of the template's user, who runs
+# this script with passwordless sudo; nothing less privileged can swap it
+# between the verification above and the install below.
 
 # ─── Install ─────────────────────────────────────────────────────────────────
 sudo install -m 0755 "${WORKDIR}/${APPIMAGE}" /usr/bin/keepassxc.AppImage

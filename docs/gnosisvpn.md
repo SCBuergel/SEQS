@@ -52,7 +52,10 @@ a default-deny firewall allowing only DNS and TCP 443 to
 `download.vpn.gnosis.eth.limo`. A temporary exact-source qrexec rule directs only
 `Z-gnosisvpn` to that proxy. If the configured UpdateVM is a DispVM, the
 runner follows its validated DispVM-to-AppVM template chain to the underlying
-TemplateVM used to create the temporary AppVM.
+TemplateVM used to create the temporary AppVM. The temporary AppVM uses the
+UpdateVM as its NetVM when the UpdateVM provides network itself, such as
+`sys-firewall` or `sys-whonix` for updates over Tor, and otherwise the
+UpdateVM's NetVM.
 
 Upstream currently recommends piping
 `https://download.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable

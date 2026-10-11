@@ -22,11 +22,9 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", MODE="0660", TAG+="uaccess", TAG+="u
 KERNEL=="hidraw*", ATTRS{idVendor}=="2c97", MODE="0660", TAG+="uaccess", TAG+="udev-acl"
 EOF
 
-echo "triggering udevadm..."
-sudo udevadm trigger
-
-echo "reloading rules..."
+echo "reloading udev rules..."
 sudo udevadm control --reload-rules
+sudo udevadm trigger
 
 # Ledger Live AppImage needs FUSE 2 at runtime.
 # Pick the available FUSE 2 package instead of suppressing installation errors;

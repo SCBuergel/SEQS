@@ -46,6 +46,10 @@
 {% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}
 
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}
+{# Reads `qvm-prefs VM` and succeeds only if netvm and default_dispvm are both
+   explicitly None: a value inherited from a global default (flag D) could
+   become networked when that default changes. #}
+{% set explicitly_offline = "awk '($1 == \"netvm\" || $1 == \"default_dispvm\") && $2 == \"-\" && $3 == \"None\" { n++ } END { exit n != 2 }'" %}
 {% set labels = ['red', 'orange', 'yellow', 'green', 'gray', 'blue', 'purple', 'black'] %}
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
@@ -160,6 +164,11 @@ for vm in qubesadmin.Qubes().domains:
 {% if not qcatalog or not base_template or not browser_vm or not ptpl or not papp %}
 {%   do errors.append("pillar 'seqs' is missing or incomplete -- was 'sudo qubesctl top.enable seqs.config pillar=true' run, and does /srv/pillar/seqs/config.sls exist?") %}
 {% endif %}
+
+{# ── Prefixes go into qube names and shell commands. ────────────────────── #}
+{% for field, value in [('prefix_template', ptpl), ('prefix_app', papp), ('prefix_disposable', pdvm)] if value and value | regex_match(name_re) is none %}
+{%   do errors.append(field ~ " '" ~ value ~ "' must match " ~ name_re) %}
+{% endfor %}
 
 {# ── Prefixes must match the globs in the .top files. Top files cannot read
      pillar, so the Z-*/A-* globs are duplicated there; a prefix change with
@@ -598,7 +607,7 @@ seqs-offline-{{ name }}:
         set -e
         qvm-prefs -- {{ app }} netvm none
         qvm-prefs -- {{ app }} default_dispvm none
-    - unless: n="$(qvm-prefs -- {{ app }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ app }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = "None" ] || [ "$n" = "none" ]; } && { [ -z "$d" ] || [ "$d" = "None" ] || [ "$d" = "none" ]; }
+    - unless: qvm-prefs -- {{ app }} | {{ explicitly_offline }}
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}
@@ -723,7 +732,7 @@ seqs-disposable-prefs-{{ name }}:
         qvm-prefs -- {{ dvm }} netvm none
         qvm-prefs -- {{ dvm }} default_dispvm none
         qvm-features -- {{ dvm }} appmenus-dispvm ''
-    - unless: n="$(qvm-prefs -- {{ dvm }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ dvm }} default_dispvm 2>/dev/null)"; { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
+    - unless: qvm-prefs -- {{ dvm }} | {{ explicitly_offline }} && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
     - require:
       - qvm: seqs-app-{{ name }}
 {%     if not dvm_exists %}
@@ -813,7 +822,8 @@ seqs-webcam-usb-backend:
             if qvm-check --running -q -- "$current"; then
               stopped="$stopped $current"
             fi
-            qvm-shutdown --wait "$current" || true
+            # A former owner that keeps running keeps the camera controller.
+            qvm-shutdown --wait "$current" || { echo "ERROR: could not stop $current, which holds dom0:{{ webcam_controller }}" >&2; exit 1; }
             qvm-pci detach "$current" dom0:{{ webcam_controller }} 2>/dev/null || true
           fi
           # An assignment made on Qubes 4.2 and carried into 4.3 records no
@@ -853,7 +863,9 @@ seqs-webcam-usb-backend:
 {% endif %}
         qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
 {% if webcam_mode == 'dedicated' %}
-    - unless: n="$(qvm-prefs -- {{ webcam_usb_qube }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_usb_qube }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_usb_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; } && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i=1; i<=NF; i++) { token=$i; sub(/^\*/, "", token); if (token == vm) found=1 } } END { exit !found }'
+    # Skipped only while the webcam backend is the controller's sole owner,
+    # assigned or attached: a qube listed before "(attached" or "(required".
+    - unless: qvm-check -q -- {{ webcam_usb_qube }} && qvm-prefs -- {{ webcam_usb_qube }} | {{ explicitly_offline }} && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i = 2; i < NF; i++) if ($(i + 1) ~ /^\((attached|required)/) { o = $i; sub(/^\*/, "", o); if (o == vm) mine = 1; else other = 1 } } END { exit !(mine && !other) }'
 {% endif %}
 {# qr-camera is built in this run or was verified to exist in the pre-flight;
    a requisite on a state that this run does not render would fail. #}
@@ -876,7 +888,7 @@ seqs-qr-scanner:
         qvm-prefs -- {{ webcam_scanner_qube }} autostart false
         qvm-features -- {{ webcam_scanner_qube }} appmenus-dispvm ''
         qvm-features -- {{ webcam_scanner_qube }} seqs-managed 1
-    - unless: n="$(qvm-prefs -- {{ webcam_scanner_qube }} netvm 2>/dev/null)"; d="$(qvm-prefs -- {{ webcam_scanner_qube }} default_dispvm 2>/dev/null)"; qvm-check -q -- {{ webcam_scanner_qube }} && { [ -z "$n" ] || [ "$n" = None ] || [ "$n" = none ]; } && { [ -z "$d" ] || [ "$d" = None ] || [ "$d" = none ]; }
+    - unless: qvm-check -q -- {{ webcam_scanner_qube }} && qvm-prefs -- {{ webcam_scanner_qube }} | {{ explicitly_offline }}
 {% if 'qr-camera' in qmap %}
     - require:
       - qvm: seqs-app-qr-camera

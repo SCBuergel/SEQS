@@ -98,8 +98,8 @@ seqs-install-{{ comp }}:
     - name: |
         set -e
         runuser -l user -c 'set -Eeuo pipefail; . /run/seqs/stage/lib/brave.sh; ensure_brave; install_brave_extension {{ eid }}'
-        ({{ stage_hash('lib') }}) > /rw/config/seqs/{{ comp }}.template.done
-    - unless: test "$(cat /rw/config/seqs/{{ comp }}.template.done 2>/dev/null)" = "$({{ stage_hash('lib') }})"
+        (echo {{ eid }}; {{ stage_hash('lib') }}) > /rw/config/seqs/{{ comp }}.template.done
+    - unless: test "$(cat /rw/config/seqs/{{ comp }}.template.done 2>/dev/null)" = "$(echo {{ eid }}; {{ stage_hash('lib') }})"
     - timeout: {{ timeout }}
     - require:
       - file: seqs-stage-lib
@@ -245,6 +245,13 @@ seqs-cleanup-enabled:
       - file: seqs-cleanup-script
       - file: seqs-cleanup-unit
       - cmd: seqs-cleanup-reload
+{% else %}
+# A template that no longer wants the cleanup, such as one that gained
+# preserve_incoming, must stop deleting on the next boot.
+seqs-cleanup-removed:
+  cmd.run:
+    - name: systemctl disable seqs-cleanup.service; rm -f /usr/sbin/seqs-cleanup /etc/systemd/system/seqs-cleanup.service && systemctl daemon-reload
+    - onlyif: test -e /usr/sbin/seqs-cleanup -o -e /etc/systemd/system/seqs-cleanup.service
 {% endif %}
 {% endif %}
 

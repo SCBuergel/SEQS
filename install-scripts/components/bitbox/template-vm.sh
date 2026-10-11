@@ -112,26 +112,11 @@ verify_detached_sig \
 	"${BITBOX_KEY_FPR}" \
 	"${DEB}"
 
-# Bind the verified bytes to what apt actually installs. `apt-get install`
-# below opens the .deb a second time and does NOT re-verify the gpg
-# signature for a local file path; without binding, there is a TOCTOU
-# window between the check above and that second read. Two cheap defenses:
-#   (a) pin the SHA-256 of the just-verified file and re-check it right
-#       before the apt-get install call -- catches any in-place tampering
-#       (or filesystem corruption) during the window;
-#   (b) drop the file to mode 0400 so a tamper attempt has to chmod first
-#       and is therefore louder.
-SHA_VERIFIED="$(sha256sum "${WORKDIR}/${DEB}" | awk '{print $1}')"
-chmod 0400 "${WORKDIR}/${DEB}"
+# The download stays in a mktemp directory of the template's user, who runs
+# this script with passwordless sudo; nothing less privileged can swap it
+# between the verification above and the install below.
 
 # ─── Install (apt resolves the .deb's dependencies) ──────────────────────────
-SHA_PREINSTALL="$(sha256sum "${WORKDIR}/${DEB}" | awk '{print $1}')"
-if [ "${SHA_VERIFIED}" != "${SHA_PREINSTALL}" ]; then
-	echo "ERROR: .deb hash changed between gpg --verify and install -- aborting." >&2
-	echo "  at verify:  ${SHA_VERIFIED}" >&2
-	echo "  at install: ${SHA_PREINSTALL}" >&2
-	exit 1
-fi
 # --no-install-recommends: defense-in-depth against the BitBox .deb pulling
 # in unexpected optional packages from whatever third-party repos may be
 # configured in this template later. The per-repo Pin-Priority: -1 + named

@@ -111,7 +111,13 @@ export SEQS_MOCK_FAIL_RC=0
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "WITH FAILURES" <<<"$out" && ok \
 	|| bad "a qube reported as ERROR must fail the run even when qubesctl exits 0"
-unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC
+# A failure without a per-qube ERROR line counts for every template.
+export SEQS_MOCK_FAIL_TEMPLATE=Z-keepass SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_RC=20
+: > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "skipping A-signal: its template failed" <<<"$out" && ok \
+	|| bad "an unattributed template failure must skip every app qube"
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET
 rm -rf "${SBX}"
 
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────
@@ -125,6 +131,14 @@ out="$(run_setup --qubes gnosisvpn 2>&1)"; rc=$?
 grep -q -- '--class AppVM --template debian-13-xfce --label gray seqs-gnosisvpn-update-proxy' \
 	"${SEQS_MOCK_QVM_CREATE_LOG}" 2>/dev/null && ok \
 	|| bad "temporary proxy must resolve DispVM -> AppVM -> TemplateVM"
+# An UpdateVM that provides network itself (sys-whonix) becomes the proxy's
+# NetVM, so the download takes the UpdateVM's route.
+echo "disp-updates provides_network True" > "${SBX}/prefs"
+export SEQS_MOCK_NETVM_STATE="${SBX}/netvms"; : > "${SEQS_MOCK_NETVM_STATE}"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -qx "seqs-gnosisvpn-update-proxy disp-updates" "${SEQS_MOCK_NETVM_STATE}" && ok \
+	|| bad "the proxy must use a network-providing UpdateVM as its NetVM ($rc): $(cat "${SEQS_MOCK_NETVM_STATE}")"
+unset SEQS_MOCK_NETVM_STATE
 rm -rf "${SBX}"
 
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───
@@ -190,6 +204,15 @@ out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
 grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
 [ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
+# tar warns about an unknown pax keyword and quotes it; its escape bytes must
+# not reach the dom0 terminal.
+python3 -c 'import io, sys, tarfile
+t = tarfile.open(sys.argv[1], "w", format=tarfile.PAX_FORMAT)
+i = tarfile.TarInfo("salt/x"); i.size = 1
+i.pax_headers = {"EVIL\x1b]0;PWNED\x07": "1"}
+t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
+out="$(run_setup --all 2>&1)"
+! grep -q $'\x1b' <<<"$out" && ok || bad "an escape byte from the archive reached the terminal"
 rm -rf "${SBX}" "${evil}"
 
 # ── Scenario 4: air-gap verification fails closed ──────────────────────────
@@ -206,7 +229,16 @@ new_sandbox
 export SEQS_MOCK_DEFAULT_DISPVM="default-dvm"   # reachable via qubes.OpenInVM
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a default_dispvm"
-grep -q "still has default_dispvm" <<<"$out" && ok || bad "expected a default_dispvm failure message"
+grep -q "air gap NOT in effect" <<<"$out" && ok || bad "expected a default_dispvm failure message"
+rm -rf "${SBX}"
+
+echo "== scenario: an air gap inherited from a global default halts provisioning =="
+new_sandbox
+export SEQS_MOCK_PREFS_INHERITED=1   # None now, but only because of a global default
+out="$(run_setup --all 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "air gap NOT in effect" <<<"$out" && ok \
+	|| bad "verifyAirgap must refuse netvm and default_dispvm that are only inherited as None"
+unset SEQS_MOCK_PREFS_INHERITED
 rm -rf "${SBX}"
 
 # ── Scenario 5: an identical re-fetch is reported as already staged ────────

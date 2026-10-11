@@ -3,9 +3,9 @@
 # Shared GPG detached-signature verification helper for SEQS install scripts.
 #
 # Sourced, not executed: this file only defines functions and has no side
-# effects at source time. setup-qubes.sh discovers every *.sh under LIB_PATH
-# (see discoverLibFiles) and ships it next to each install script inside the
-# target VM, so install scripts load it with:
+# effects at source time. The seqs.qube Salt state copies every shared
+# library next to each component's install scripts inside the target qube,
+# so install scripts load it with:
 #
 #     . "$(dirname "$0")/verify-gpg.sh"
 #

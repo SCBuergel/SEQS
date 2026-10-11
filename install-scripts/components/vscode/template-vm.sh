@@ -103,8 +103,13 @@ Pin-Priority: 500
 EOF
 
 # ─── Install VS Code ─────────────────────────────────────────────────────────
+# The code package's maintainer script otherwise writes its own unlocked,
+# unchecked /usr/share/keyrings/microsoft.gpg (seen on Debian 13), which a
+# later upgrade could reference from its own repository entry.
+echo "code code/add-microsoft-repo boolean false" | sudo debconf-set-selections
 sudo apt-get update
 sudo apt-get install -y code
+sudo rm -f /usr/share/keyrings/microsoft.gpg
 
 # ─── Lock the keyring file against in-place rewrite ──────────────────────────
 # `chattr +i` makes ${KEYRING} immutable -- even root cannot modify or

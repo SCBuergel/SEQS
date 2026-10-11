@@ -135,22 +135,20 @@ else bad "readTargets failed on a valid file"; fi
 printf 'template Z-brave brave\napp A-brave; rm -rf / brave\n' > "${TARGETS_FILE}"
 if ( readTargets ) 2>/dev/null; then bad "readTargets accepted an unsafe name"; else ok; fi
 
-echo "== verifyAirgap() only passes when offline qubes truly have no netvm =="
-# Stub qvm-prefs on PATH so verifyAirgap can be exercised without Qubes.
+echo "== verifyAirgap() only passes when offline qubes are explicitly offline =="
+# Stub qvm-prefs on PATH: "qvm-prefs -- VM" lists netvm and default_dispvm in
+# qvm-prefs format, with the netvm from $NETVM and the flag from $FLAG.
 stub="${tmp}/bin"; mkdir -p "${stub}"
 cat > "${stub}/qvm-prefs" <<'EOF'
 #!/usr/bin/env bash
-# args: -- <vm> netvm  ; echo the netvm recorded in $NETVM_<vm>
-vm=""; for a in "$@"; do case "$a" in --) ;; netvm) ;; *) vm="$a";; esac; done
-eval "printf '%s' \"\${NETVM_${vm//-/_}:-}\""
+printf 'default_dispvm  %s  None\nnetvm  %s  %s\n' "${FLAG:--}" "${FLAG:--}" "${NETVM:-None}"
 EOF
 chmod +x "${stub}/qvm-prefs"
 export PATH="${stub}:${PATH}"
 OFFLINE_TARGETS=(A-keepass)
 if ( verifyAirgap ) >/dev/null 2>&1; then ok; else bad "verifyAirgap failed a truly-offline qube"; fi
-export NETVM_A_keepass="sys-firewall"
-if ( verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed a qube that still has a netvm"; else ok; fi
-unset NETVM_A_keepass
+if ( NETVM=sys-firewall verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed a qube that still has a netvm"; else ok; fi
+if ( FLAG=D verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed an air gap inherited from a global default"; else ok; fi
 
 echo "== test machine setup: input validation and generated qube scripts =="
 # test/hardware/setup-test-machine.sh interpolates these values into scripts

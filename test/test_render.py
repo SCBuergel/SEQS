@@ -538,6 +538,10 @@ def test_dom0_dedicated_qr_uses_device_api():
           "dedicated mode must skip dom0, whose qvm-pci list shows every device")
     check('qvm-pci unassign --port "$current" dom0:03_00.0' in backend,
           "dedicated mode must also drop assignments carried over from 4.2")
+    check("could not stop $current" in backend, "a former owner that keeps running must stop the state")
+    unless = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "unless")
+    check("exit !(mine && !other)" in unless,
+          "the backend state may be skipped only while the webcam qube is the controller's sole owner")
     for vm in ("sys-usb-webcam", "seqs-qr-scanner"):
         check("add seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-" + vm, "cmd.run", "name"),
               "the webcam qube %s must be tagged" % vm)
@@ -794,6 +798,8 @@ def test_qube_staging_preserves_incoming():
     _, template = render_state("qube", "Z-qr-staging")
     check("seqs-cleanup-script" not in template,
           "qr-staging template must not erase received ciphertext at shutdown")
+    check("rm -f /usr/sbin/seqs-cleanup" in state_arg(template, "seqs-cleanup-removed", "cmd.run", "name"),
+          "a cleanup installed by an earlier build must be removed from the qr-staging template")
 
 
 def test_qube_app_sets_browser_default():
@@ -972,6 +978,26 @@ def test_qube_validation_catches_bad_component():
           "an unsafe component name must fail in-qube validation")
 
 
+
+
+def test_dom0_rejects_unsafe_prefix():
+    case("dom0.sls: qube-name prefixes are validated before they reach shell commands")
+    for field in ("prefix_template", "prefix_app", "prefix_disposable"):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar[field] = "A;id;"
+        _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+        check("seqs-validation-failed" in parsed and "%s 'A;id;' must match" % field
+              in state_arg(parsed, "seqs-validation-failed", "test.fail_without_changes", "comment"),
+              "an unsafe %s must fail pre-flight with its own message" % field)
+
+
+def test_qube_extension_marker_records_its_id():
+    case("qube.sls: a Brave extension reinstalls when its Web Store ID changes")
+    pillar = render_pillar("Z-wallet-ledger")
+    eid = pillar["brave_extensions"]["rabby"]
+    _, parsed = render_state("qube", "Z-wallet-ledger")
+    unless = state_arg(parsed, "seqs-install-brave-extension-rabby", "cmd.run", "unless")
+    check("echo %s;" % eid in unless, "the extension marker must record the extension ID")
 
 BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
                      "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]

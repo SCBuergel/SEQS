@@ -3,7 +3,7 @@
 #   SEQS_MOCK_STATE set -> stateful inventory file, one "<name> running|halted"
 #                          per line, mutated by the qvm-kill/qvm-remove mocks
 #                          (--running additionally requires the running state);
-#   otherwise           -> exit 0 iff NAME is in the space-separated
+#   otherwise           -> --running fails; else exit 0 iff NAME is in the space-separated
 #                          SEQS_MOCK_EXISTING list (default: base template only).
 name=""; running=0
 for a in "$@"; do case "$a" in --running) running=1 ;; -q|--) ;; *) name="$a" ;; esac; done
@@ -16,5 +16,7 @@ if [ -n "${SEQS_MOCK_STATE:-}" ]; then
 	fi
 	exit $?
 fi
+# Without a state file nothing is running.
+[ "${running}" -eq 0 ] || exit 1
 existing=" ${SEQS_MOCK_EXISTING:-debian-13-xfce} "
 [[ "$existing" == *" $name "* ]] && exit 0 || exit 1

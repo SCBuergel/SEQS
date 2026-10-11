@@ -3,9 +3,9 @@
 # Shared Brave helpers for SEQS install scripts.
 #
 # Sourced, not executed: this file only defines functions and has no side
-# effects at source time. setup-qubes.sh fetches it from REPO_VM and moves it
-# next to each install script inside the target VM, so install scripts load it
-# with:
+# effects at source time. The seqs.qube Salt state copies it next to each
+# component's install scripts inside the target qube, so install scripts load
+# it with:
 #
 #     . "$(dirname "$0")/brave.sh"
 #
@@ -57,7 +57,7 @@ DBF1A116C220B8C7164F98230686B78420038257"
 # install_brave -- add the *verified* Brave apt repository and install the browser.
 install_brave() {
 	local keyring="/usr/share/keyrings/brave-browser-archive-keyring.gpg"
-	local tmp got expected missing extra
+	local tmp gh got expected missing extra
 
 	echo "Installing brave-browser"
 
@@ -74,8 +74,13 @@ install_brave() {
 	tmp="$(mktemp)"
 	curl --proxy "${BRAVE_APT_PROXY}" -fsSL -o "${tmp}" "${BRAVE_KEYRING_URL}"
 
-	# verify the keyring contains EXACTLY the pinned Brave signing keys
-	got="$(gpg --show-keys --with-colons "${tmp}" 2>/dev/null \
+	# Verify the keyring contains EXACTLY the pinned Brave signing keys. The
+	# check runs on an imported copy, and only gpg's own export of the pinned
+	# keys is installed below: apt must not get raw bytes that another OpenPGP
+	# parser could read differently from gpg.
+	gh="$(mktemp -d)"
+	gpg --homedir "${gh}" --batch --quiet --import "${tmp}" 2>/dev/null || true
+	got="$(gpg --homedir "${gh}" --with-colons --fingerprint 2>/dev/null \
 		| awk -F: '$1=="pub"{w=1} $1=="fpr"&&w{print $10; w=0}' | sort)"
 	expected="$(printf '%s\n' "${BRAVE_KEY_FPRS}" | sort)"
 	if [[ "${got}" != "${expected}" ]]; then
@@ -96,9 +101,12 @@ install_brave() {
 			echo "  extra (present in downloaded keyring but not pinned):" >&2
 			printf '    %s\n' ${extra} >&2
 		fi
-		rm -f "${tmp}"
+		rm -rf "${tmp}" "${gh}"
 		exit 1
 	fi
+	# shellcheck disable=SC2086 # one fingerprint per word
+	gpg --homedir "${gh}" --export ${BRAVE_KEY_FPRS} > "${tmp}"
+	rm -rf "${gh}"
 	echo "Brave keyring verified -- $(printf '%s ' ${got})"
 
 	# A rerun finds the keyring locked by the chattr +i below. Unlock it only
@@ -180,7 +188,7 @@ install_brave_extension() {
 }
 
 # ensure_brave -- idempotent install: installs Brave only if not already present.
-# Used by the brave-extension-* dispatch in setup-qubes.sh so that a qube
+# Used by the brave-extension-* states in salt/seqs/qube.sls so that a qube
 # containing one or more brave-extension-<name> components auto-installs Brave
 # on the first invocation, no-op thereafter.
 ensure_brave() {
