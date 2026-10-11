@@ -33,10 +33,10 @@ Usage: $0 [--dry-run] <name> [<name> ...]
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
 any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
 the seqs-managed feature, or the creation marker of an interrupted run);
-same-named qubes without either are skipped. Qubes
-using a match as their NetVM are preserved but disconnected (netvm set to
-none). If another qube uses a match as its template or default disposable, or
-a match is a global default, nothing is changed.
+same-named qubes without either are skipped. Qubes using a match as their
+NetVM are preserved but disconnected (netvm set to none). If another qube uses
+a match as its template or default disposable, or a match is a global default,
+nothing is changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
