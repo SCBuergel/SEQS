@@ -21,8 +21,11 @@ usage() {
 Usage: $0 [--dry-run] <name> [<name> ...]
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
-any qube called D-<name>, A-<name>, or Z-<name>. Qubes using a match as their
-NetVM are preserved but disconnected (netvm set to none).
+any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
+the seqs-managed feature); same-named qubes without it are skipped. Qubes
+using a match as their NetVM are preserved but disconnected (netvm set to
+none). If another qube uses a match as its template or default disposable, or
+a match is a global default, nothing is changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -68,23 +71,25 @@ waitForShutdown() {
 	return 1
 }
 
-# findNetvmUsers TARGET [TARGET ...] -- print "consumer target" pairs for qubes
-# whose netvm property would prevent one of the targets from being removed.
-findNetvmUsers() {
-	local inventory vm target netvm
-	inventory="$(qvm-ls --raw-list)"
-	while IFS= read -r vm; do
-		[ -n "${vm}" ] || continue
-		netvm="$(qvm-prefs -- "${vm}" netvm 2>/dev/null || true)"
-		for target in "$@"; do
-			if [ "${netvm}" = "${target}" ]; then
-				printf '%s %s\n' "${vm}" "${target}"
-				break
-			fi
-		done
-	done <<< "${inventory}"
+# findUsers TARGET [TARGET ...] -- print "consumer property target" for each
+# reference that stops Qubes from removing a target: any qube's netvm, a
+# non-target's template or default_dispvm, and a global default (consumer
+# dom0). netvm users are disconnected; the others block the deletion.
+findUsers() {
+	qvm-ls --raw-data --fields name,netvm,template,default_dispvm | awk -F'|' -v t=" $* " '
+		{
+			split("netvm template default_dispvm", prop, " ")
+			for (i = 2; i <= 4; i++)
+				if ($i != "-" && $i != "" && $i != $1 && index(t, " " $i " ") \
+						&& (i == 2 || !index(t, " " $1 " ")))
+					print $1, prop[i - 1], $i
+		}'
+	qubes-prefs | awk -v t=" $* " 'index(t, " " $3 " ") { print "dom0", $1, $3 }'
 }
 
+# Check every name before changing anything, so that a refusal for one name
+# leaves the others untouched too.
+found=()
 for app in "${ARGS[@]}"; do
 	# Reject anything that isn't a safe identifier. $app is interpolated into
 	# qube names and passed straight to qvm-remove -f, so a value like '.*'
@@ -95,68 +100,80 @@ for app in "${ARGS[@]}"; do
 		exit 1
 	fi
 
-	# Build the kill list by literal name + existence check -- no regex.
+	# Build the kill list by literal name + existence check -- no regex. A
+	# same-named qube that SEQS did not build (no seqs-managed feature) is
+	# never touched.
 	echo "looking for qubes matching ${PREFIXES[*]/%/-${app}}..."
-	found=()
 	for prefix in "${PREFIXES[@]}"; do
 		candidate="${prefix}-${app}"
-		if qvm-check "${candidate}" &>/dev/null; then
+		qvm-check "${candidate}" &>/dev/null || continue
+		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ]; then
 			found+=("${candidate}")
+		else
+			echo "  skipping ${candidate}: SEQS did not build it (no seqs-managed feature)"
 		fi
 	done
+done
 
-	if [ "${#found[@]}" -eq 0 ]; then
-		echo "  no qubes match"
-		continue
-	fi
+if [ "${#found[@]}" -eq 0 ]; then
+	echo "  no qubes match"
+	exit 0
+fi
+echo "found:"
+printf '  %s\n' "${found[@]}"
 
-	echo "found:"
-	printf '  %s\n' "${found[@]}"
-
-	# qvm-remove refuses to remove a qube while another qube uses it as a
-	# NetVM. Preserve those consumers, but disconnect the property explicitly.
-	# Discover all references before changing anything so dry-run is faithful.
-	netvm_users=()
-	netvm_report="$(findNetvmUsers "${found[@]}")"
-	while IFS= read -r pair; do
-		[ -n "${pair}" ] && netvm_users+=("${pair}")
-	done <<< "${netvm_report}"
-	if [ "${#netvm_users[@]}" -gt 0 ]; then
-		echo "qubes using a target as netvm:"
-		for pair in "${netvm_users[@]}"; do
-			read -r consumer provider <<< "${pair}"
-			echo "  ${consumer} -> ${provider}"
-		done
-	fi
-
-	if [ "${DRY_RUN}" -eq 1 ]; then
-		echo "  (dry-run: not killing or removing)"
-		for pair in "${netvm_users[@]}"; do
-			read -r consumer provider <<< "${pair}"
-			echo "  (dry-run: would set ${consumer} netvm to none)"
-		done
-		continue
-	fi
-
-	if [ "${#netvm_users[@]}" -gt 0 ]; then
-		echo "disconnecting netvm users..."
-		for pair in "${netvm_users[@]}"; do
-			read -r consumer provider <<< "${pair}"
-			qvm-prefs -- "${consumer}" netvm none
-		done
-	fi
-
-	# Surface kill errors before attempting removal.
-	echo "killing..."
-	for vm in "${found[@]}"; do
-		qvm-kill "${vm}" || echo "  qvm-kill ${vm} failed (continuing)" >&2
+netvm_users=()
+blockers=()
+users="$(findUsers "${found[@]}")"
+while read -r consumer prop provider; do
+	case "${prop:-}" in
+		'') ;;
+		netvm) netvm_users+=("${consumer} ${provider}") ;;
+		*) blockers+=("${consumer} has ${prop} ${provider}") ;;
+	esac
+done <<< "${users}"
+if [ "${#blockers[@]}" -gt 0 ]; then
+	echo "ERROR: nothing was changed; these use a target, so remove them or change the property first:" >&2
+	printf '  %s\n' "${blockers[@]}" >&2
+	exit 1
+fi
+if [ "${#netvm_users[@]}" -gt 0 ]; then
+	echo "qubes using a target as netvm:"
+	for pair in "${netvm_users[@]}"; do
+		read -r consumer provider <<< "${pair}"
+		echo "  ${consumer} -> ${provider}"
 	done
+fi
 
-	echo "waiting for qubes to shut down..."
-	waitForShutdown "${found[@]}" || true
-
-	echo "removing..."
-	for vm in "${found[@]}"; do
-		qvm-remove "${vm}" -f
+if [ "${DRY_RUN}" -eq 1 ]; then
+	echo "  (dry-run: not killing or removing)"
+	for pair in "${netvm_users[@]}"; do
+		read -r consumer provider <<< "${pair}"
+		echo "  (dry-run: would set ${consumer} netvm to none)"
 	done
+	exit 0
+fi
+
+# qvm-remove refuses to remove a NetVM in use. Preserve the consumers, but
+# disconnect them explicitly.
+if [ "${#netvm_users[@]}" -gt 0 ]; then
+	echo "disconnecting netvm users..."
+	for pair in "${netvm_users[@]}"; do
+		read -r consumer provider <<< "${pair}"
+		qvm-prefs -- "${consumer}" netvm none
+	done
+fi
+
+# Surface kill errors before attempting removal.
+echo "killing..."
+for vm in "${found[@]}"; do
+	qvm-kill "${vm}" || echo "  qvm-kill ${vm} failed (continuing)" >&2
+done
+
+echo "waiting for qubes to shut down..."
+waitForShutdown "${found[@]}" || true
+
+echo "removing..."
+for vm in "${found[@]}"; do
+	qvm-remove "${vm}" -f
 done

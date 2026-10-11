@@ -209,7 +209,7 @@ out="$(run_setup --all 2>&1)"; rc=$?
 grep -q "still has default_dispvm" <<<"$out" && ok || bad "expected a default_dispvm failure message"
 rm -rf "${SBX}"
 
-# ── Scenario 5: identical re-fetch skips the review-gate prompt ────────────
+# ── Scenario 5: an identical re-fetch is reported as already staged ────────
 echo "== scenario: re-running recognizes an identical staged tree =="
 new_sandbox
 run_setup --all >/dev/null 2>&1      # first install (auto-confirmed via pty)
@@ -304,6 +304,36 @@ out="$(bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
+# A qube built on a target blocks the deletion before anything changes.
+printf '%s\n' "A-qr-camera halted" "Z-qr-camera halted" "sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
+echo "sys-usb-webcam template A-qr-camera" > "${SBX}/prefs"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" bash "${REPO}/delete-vms.sh" qr-camera 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "deleting a template that another qube uses must fail"
+grep -q "sys-usb-webcam has template A-qr-camera" <<<"$out" && ok || bad "the blocking qube must be named"
+[ "$(wc -l < "${SEQS_MOCK_STATE}")" -eq 3 ] && grep -qxF "A-qr-camera halted" "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a blocked deletion must change nothing"
+# A refusal for one name leaves the other names untouched too.
+printf '%s\n' "A-keepass halted" "Z-keepass halted" "A-qr-camera halted" "Z-qr-camera halted" \
+	"sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" bash "${REPO}/delete-vms.sh" keepass qr-camera 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qxF "A-keepass halted" "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a blocked name must leave every other name's qubes in place"
+# A target that is a global default blocks the deletion as well.
+printf '%s\n' "A-wireguard halted" "Z-wireguard halted" > "${SEQS_MOCK_STATE}"
+echo "updatevm                  -  A-wireguard" > "${SBX}/global"
+out="$(SEQS_MOCK_GLOBAL_PREFS="${SBX}/global" bash "${REPO}/delete-vms.sh" wireguard 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "dom0 has updatevm A-wireguard" <<<"$out" \
+	&& grep -qxF "A-wireguard halted" "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a global default must block the deletion and be named"
+# A same-named qube that SEQS did not build is never removed; here it also
+# uses the managed Z-notes as its template, so nothing is removed at all.
+printf '%s\n' "A-notes halted" "Z-notes halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_UNMANAGED="A-notes" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
+grep -q "skipping A-notes: SEQS did not build it" <<<"$out" && ok || bad "the unmanaged A-notes must be reported as skipped"
+[ "$rc" -ne 0 ] && grep -q "A-notes has template Z-notes" <<<"$out" && ok \
+	|| bad "Z-notes is A-notes's template, so its removal must be refused"
+grep -q "^A-notes " "${SEQS_MOCK_STATE}" && grep -q "^Z-notes " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a refused deletion must remove nothing"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
@@ -325,6 +355,13 @@ grep -q "^Z-wireguard " "${SEQS_MOCK_STATE}" && bad "Z-wireguard should have bee
 grep -qxF "A-anon running" "${SEQS_MOCK_STATE}" && ok || bad "netvm consumer must be preserved"
 grep -qxF "A-anon none" "${SEQS_MOCK_NETVM_STATE}" && ok \
 	|| bad "netvm consumer should be disconnected before provider removal"
+# A target that uses another target as netvm is disconnected too, so the
+# removal order between names does not matter.
+printf '%s\n' "A-wireguard halted" "Z-wireguard halted" "A-mail halted" "Z-mail halted" > "${SEQS_MOCK_STATE}"
+printf '%s\n' "A-wireguard sys-firewall" "Z-wireguard none" "A-mail A-wireguard" > "${SEQS_MOCK_NETVM_STATE}"
+out="$(bash "${REPO}/delete-vms.sh" wireguard mail 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -qxF "A-mail none" "${SEQS_MOCK_NETVM_STATE}" && ok \
+	|| bad "a target's netvm on another target must be disconnected before removal ($rc)"
 unset SEQS_MOCK_NETVM_STATE
 # A named_disposable qube adds a D- object; all three of D-/A-/Z- must go, and
 # the disposable (D-) must be removed before the A- dispvm template it derives
@@ -361,7 +398,10 @@ export SEQS_TEST_CTL_VM="A-ctl"
 printf '%s\n' "A-ctl running" "sys-net running" "sys-firewall running" \
 	"debian-13-xfce halted" "personal halted" "Z-keepass halted" "A-keepass running" \
 	"Z-qr-display halted" "A-qr-display halted" "D-qr-display halted" \
-	"seqs-qr-scanner running" > "${SEQS_MOCK_STATE}"
+	"seqs-qr-scanner running" "A-orphan halted" > "${SEQS_MOCK_STATE}"
+# A-orphan stands for a qube an interrupted run created but never tagged:
+# delete-vms.sh skips it, so reset must remove it itself.
+export SEQS_MOCK_UNMANAGED="A-orphan"
 export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d"
 export SEQS_ETC_DIR="${SBX}/etc/seqs" SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequential"
 export SEQS_TMP_DIR="${SBX}/tmp" SEQS_TEST_DELETE_VMS="${REPO}/delete-vms.sh"
@@ -388,7 +428,7 @@ echo "qubes.InputKeyboard * sys-usb @adminvm allow" > "${SEQS_POLICY_DIR}/30-use
 out="$(bash "${REPO}/test/hardware/dom0-test.sh" reset 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "reset should fail on an unmarked SEQS policy name"
 [ -e "${SEQS_POLICY_DIR}/30-user-input.policy" ] && ok || bad "reset removed an unmarked policy"
-unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_TMP_DIR SEQS_TEST_DELETE_VMS SEQS_TEST_CTL_VM
+unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_TMP_DIR SEQS_TEST_DELETE_VMS SEQS_TEST_CTL_VM SEQS_MOCK_UNMANAGED
 rm -rf "${SBX}"
 
 # ── Scenario 10: the sequential QR script refuses before the camera phase ───

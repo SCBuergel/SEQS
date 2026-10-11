@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
 # Mock qvm-ls --raw-list from the stateful inventory.
 [ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
+if [ "${1:-}" = "--raw-data" ]; then
+	# --raw-data --fields name,netvm,template,default_dispvm, from the qvm-prefs mock.
+	for vm in $(cut -d' ' -f1 "${SEQS_MOCK_STATE}"); do
+		row="${vm}"
+		for prop in netvm template default_dispvm; do
+			v="$(qvm-prefs -- "${vm}" "${prop}" 2>/dev/null)"
+			row="${row}|${v:--}"
+		done
+		echo "${row}"
+	done
+	exit 0
+fi
 cut -d' ' -f1 "${SEQS_MOCK_STATE}"

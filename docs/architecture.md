@@ -15,8 +15,8 @@ data flow and controls. For the per-component trust analysis see
    and export. Every archive entry is validated before extraction
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
-   These commit-ID and archive responses are the **only** VM→dom0 data flows in
-   the whole system. The transfer SHA256 is printed as a diagnostic. The
+   These commit-ID and archive responses are the only VM→dom0 data that dom0
+   stages or runs. The transfer SHA256 is printed as a diagnostic. The
    operator still verifies the checkout's Git commit hash in the disposable,
    but dom0 does not receive that independent value to compare against the
    source's answer. The bootstrap command obtains `setup-qubes.sh` with
@@ -43,14 +43,15 @@ data flow and controls. For the per-component trust analysis see
 
    It then applies qubes (`qubesctl --skip-dom0 --targets=... state.apply seqs.qube`):
    provisions each template, then each app qube. Qubes Salt runs this through a
-   **disposable management VM** over qrexec: dom0 pushes states and files down;
-   dom0 never executes, parses, or interpolates anything a target qube produces.
-   (qubesctl's own summary output is still routed through the runner's terminal
-   sanitizer.)
+   **disposable management VM** over qrexec: dom0 pushes states and files down and never
+   executes anything a target qube produces. Output from the qubes reaches the
+   dom0 terminal only through the runner's `sanitize()` filter. dom0 reads only
+   failure markers and regex-checked qube names from it, which can only make a
+   run fail or skip failed qubes.
 
 ## Why fetched data and `/srv` are separate
 
-The three locations represent different trust and execution states:
+These locations represent different trust and execution states:
 
 | Location | Meaning |
 |---|---|
@@ -74,8 +75,9 @@ its completion marker in `/rw/config/seqs/` records the SHA-256 of the files
 staged for it (its scripts, pinned keys, and the shared libraries), and runs
 again when any of them changed. Existing qubes are reconfigured rather
 than rebuilt, and qubes not created by SEQS are refused (no-clobber via the
-`seqs-managed` qvm-feature). Catalogue entries omitted from a run are left
-untouched; omission is never interpreted as deletion.
+`seqs-managed` qvm-feature). Catalogue entries omitted from a run are not
+built or changed, except that their link-handoff tag is updated; omission is
+never interpreted as deletion.
 
 Convergence is deliberately non-destructive: removing configuration does not
 automatically uninstall components or delete qubes. Because a changed component
@@ -94,9 +96,10 @@ filter is available), so any bytes the source qube writes to stderr would land
 directly on the dom0 terminal. A compromised repo qube could otherwise emit
 ANSI / CSI / OSC sequences (window-title smuggling, OSC 52 clipboard write,
 repaint of earlier lines) during `git show`. Dropping stderr closes that
-bootstrap window; if the export fails, `s.sh` ends up empty/partial and
-`./s.sh` fails loudly on its own. The runner reuses the same defense on its own
-fetch and routes every later display path through `sanitize()`.
+bootstrap window; if the export fails, `s.sh` ends up empty or partial, and
+running it shows no `SEQS workflow` banner; copy it again. The runner reuses
+the same defense on its own fetch and routes every later display path through
+`sanitize()`.
 
 Neither operation makes Git or `REPO_VM` independently verifiable by dom0.
 A compromised source qube can lie about what `git show`, `rev-parse`, or
@@ -111,6 +114,7 @@ mix-and-match qubes (wallet, developer) list several. The `seqs.dom0` state
 clones the base template and creates the app qube; the `seqs.qube` state then
 runs each component's `template-vm.sh` (system-wide install) in the template,
 installs any `menu.desktop` it carries, runs each `app-vm.sh` (per-app-qube
-setup) in the app qube, and wires up the browser-link policy and cleanup
-service. See [configuration.md](configuration.md) for ordinary runtime
-selection and for advanced catalogue extension.
+setup) in the app qube, and installs the link handler and the cleanup
+service; the `seqs.dom0` state writes the browser-link policy. See
+[configuration.md](configuration.md) for ordinary runtime selection and for
+advanced catalogue extension.

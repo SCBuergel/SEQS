@@ -89,13 +89,18 @@ for vm in qubesadmin.Qubes().domains:
 {%     do errors.append("runtime selection names unknown catalogue entry '" ~ fields[0] ~ "'") %}
 {%   elif fields | length == 2 and fields[1] != fields[0] and not fields[1].startswith(fields[0] ~ '-') %}
 {%     do errors.append("runtime instance '" ~ fields[1] ~ "' is not derived from recipe '" ~ fields[0] ~ "'") %}
-{%   elif fields | length == 2 and fields[1] in qcatalog and fields[1] != fields[0] %}
-{%     do errors.append("generated instance name '" ~ fields[1] ~ "' collides with catalogue recipe '" ~ fields[1] ~ "'") %}
 {%   endif %}
 {% endfor %}
+{# The pillar gives a qube the recipe its name resolves to: an exact catalogue
+   name, else the longest recipe followed by '-'. Refuse an instance that would
+   resolve to another recipe, such as dev-full-x of dev beside dev-full. #}
 {% for instance, recipe in recipes.items() %}
-{%   if instance in qcatalog and instance != recipe %}
-{%     do errors.append("generated instance name '" ~ instance ~ "' collides with catalogue recipe '" ~ instance ~ "'") %}
+{%   set longest = namespace(name='') %}
+{%   for c in qcatalog if (instance == c or instance.startswith(c ~ '-')) and c | length > longest.name | length %}
+{%     set longest.name = c %}
+{%   endfor %}
+{%   if longest.name != recipe %}
+{%     do errors.append("generated instance name '" ~ instance ~ "' collides with catalogue recipe '" ~ longest.name ~ "'") %}
 {%   endif %}
 {% endfor %}
 {% if selection and not qmap %}

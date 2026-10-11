@@ -1,2 +1,9 @@
 #!/usr/bin/env bash
+# Mock qvm-features. Reading seqs-managed prints 1 for a D-/A-/Z- qube not
+# listed in SEQS_MOCK_UNMANAGED; every other call succeeds silently.
+args=()
+for a in "$@"; do [ "$a" = "--" ] || args+=("$a"); done
+if [ "${#args[@]}" -eq 2 ] && [ "${args[1]}" = "seqs-managed" ] && [[ "${args[0]}" =~ ^[DAZ]- ]]; then
+	[[ " ${SEQS_MOCK_UNMANAGED:-} " == *" ${args[0]} "* ]] || echo 1
+fi
 exit 0

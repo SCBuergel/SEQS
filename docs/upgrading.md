@@ -119,20 +119,23 @@ The repo qube can be shut down after `--fetch-only`. In dom0:
 ~/s.sh --build-only --qubes brave,signal
 ```
 
-Before replacing anything, `--stage-only` displays a recursive diff between
+Before replacing anything, `--stage-only` prints a recursive diff between
 the reviewed fetched copy in `/var/lib/seqs/fetched` and the Salt tree currently
 active under `/srv`. This preview shows changes to Salt states, component
 scripts, and pillar configuration; it does not describe changes to installed
 qubes. No diff means the two trees are identical, while "is not yet staged" is
-expected for a tree being installed for the first time. A comparison or
-permission error aborts staging instead of being treated as a difference.
+expected for a tree being installed for the first time. It stages right after
+printing, without asking, so review the fetched tree before running it. A
+comparison or permission error aborts staging instead of being treated as a
+difference.
 
 These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
 
 1. validates configuration and applies dom0 policies/preferences;
 2. creates missing templates and app qubes without adopting unrelated
    same-named VMs;
-3. verifies every selected offline app qube has no NetVM;
+3. verifies every selected offline app qube and named disposable has no NetVM
+   and no default disposable;
 4. provisions templates and shuts them down to commit their root volumes; and
 5. provisions app qubes and shuts them down.
 
@@ -224,7 +227,7 @@ routine upgrade step.
 
 After updating the checkout to a revision containing the QR setup, complete the
 hardware qualification at the start of
-[secure-qr-transfer.md](secure-qr-transfer.md#start-here-determine-which-path-the-machine-qualifies-for).
+[secure-qr-transfer.md](secure-qr-transfer.md#choose-the-hardware-isolation-path).
 Then edit the repository's `salt/pillar/seqs/config.sls`.
 
 For a separately isolated webcam controller:
@@ -261,7 +264,7 @@ Z-qr-staging    A-qr-staging
 template so the display ceremony is launchable from the Qubes menu (a bare
 dispvm template only appears under "Templates").
 
-An active webcam mode also creates `sys-usb-webcam`; sequential mode creates
-`seqs-qr-scanner` and installs `/usr/local/sbin/seqs-qr-sequential`. Do not run
+An active webcam mode also creates `sys-usb-webcam` and `seqs-qr-scanner`;
+sequential mode also installs `/usr/local/sbin/seqs-qr-sequential`. Do not run
 the ceremony until the post-install checks in the QR guide pass on real Qubes
 hardware.

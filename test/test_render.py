@@ -211,6 +211,19 @@ def test_dom0_runtime_selection():
           and "app A-signal-alpha signal" in targets,
           "targets must retain recipe identity for postfixed instances")
 
+    # Beside a recipe brave-full, a brave instance named brave-full-x would get
+    # brave-full's components from the pillar, so dom0 must refuse it.
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["catalogue"]["brave-full"] = copy.deepcopy(pillar["catalogue"]["brave"])
+    _, shadowed = render_state("dom0", "dom0", Scenario(selection="brave brave-full-x", existing_qubes=["A-brave"],
+                                                        tagged_qubes=["A-brave"]), pillar_seqs=pillar)
+    check("seqs-validation-failed" in shadowed and "collides with catalogue recipe 'brave-full'"
+          in state_arg(shadowed, "seqs-validation-failed", "test.fail_without_changes", "comment"),
+          "an instance name that resolves to a longer recipe must fail pre-flight")
+    _, fine = render_state("dom0", "dom0", Scenario(selection="brave brave-alpha", existing_qubes=["A-brave"],
+                                                    tagged_qubes=["A-brave"]), pillar_seqs=pillar)
+    check("seqs-validation-failed" not in fine, "an ordinary postfix must still pass beside brave-full")
+
 
 def test_dom0_idempotent_rerun():
     case("dom0.sls: a fully-provisioned re-run is churn-free (no clone/tag states)")

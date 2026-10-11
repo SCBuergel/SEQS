@@ -67,7 +67,7 @@ needs `A-brave` too; see
 | Component | What it installs |
 |---|---|
 | `adb`          | Android Debug Bridge + `pv` (Debian apt) + chunked, resumable `/usr/bin/adb-pull` helper |
-| `brave`        | Brave browser (apt repo, embedded verified key); asks once per qube for a keyring password, which may be empty |
+| `brave`        | Brave browser (apt repo; the downloaded keyring must hold exactly the pinned fingerprints); asks once per qube for a keyring password, which may be empty |
 | `bitbox`       | BitBoxApp `.deb` (GPG-verified) |
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
@@ -90,7 +90,7 @@ needs `A-brave` too; see
 ## `qube_catalog` flags
 
 Each entry is `{'name': ..., 'label': ..., 'components': [...]}` plus optional
-flags:
+flags; a duplicate name aborts the pre-flight:
 
 - `'offline': True` — detaches the app qube from netvm (air gap) and unsets its
   default disposable, which would otherwise have network access. Implies
@@ -106,7 +106,7 @@ flags:
   not, and disposables started from a tagged qube inherit it.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
-  [secure QR transfer](secure-qr-transfer.md). Sensitive disposable templates
+  [secure QR transfer](secure-qr-transfer.md). Every disposable template
   must also set `offline: True` (enforced by pre-flight validation).
 - `'named_disposable': True` — also creates a named DisposableVM (`D-<name>`,
   the `prefix_disposable`) from the `A-<name>` dispvm template, so the
@@ -145,8 +145,6 @@ tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
 [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped download path,
 verification, and runtime checks.
 
-Duplicate names abort the pre-flight.
-
 ## Secure QR USB modes
 
 `webcam_usb_mode` is `disabled` by default. After completing the qualification
@@ -169,7 +167,9 @@ such reference in a qube.
   component list.
 - **Add** a new extension (e.g. Ambire): add a `brave_extensions` line, then
   reference it as `brave-extension-ambire` in any wallet qube.
-- **Retire** an extension entirely: remove its line from `brave_extensions`.
+- **Retire** an extension entirely: remove every `brave-extension-<name>`
+  reference, then its `brave_extensions` line. Templates already built keep it
+  installed until you rebuild them.
 
 ## Browser-link handoff requires `A-brave`
 

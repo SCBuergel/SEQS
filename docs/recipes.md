@@ -34,56 +34,39 @@ sudo apt install systemd-timesyncd
 
 ![Qubes tray showing download and upload stats](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
 
-To show the bandwidth consumed by a WireGuard interface (e.g. of a VPN qube) in
-the system tray:
+This shows the bandwidth consumed by a WireGuard interface (e.g. of a VPN qube)
+in the system tray. The tray plugin interprets markup in what it displays,
+including click actions that run commands in dom0, so the VPN qube only reports
+numbers and dom0 shows nothing else:
 
-1. Create a script `~/wg.sh` on the VPN app qube that has the WireGuard
-   interface (by default assumes interface name `wg0_gnosisvpn`):
+1. In a terminal of the VPN qube (here `A-gnosisvpn`, interface
+   `wg0_gnosisvpn`), create `~/wg.sh`, which prints the total and last-second
+   received and sent bytes:
    ```bash
    #!/usr/bin/env bash
    set -euo pipefail
-
    IFACE="${1:-wg0_gnosisvpn}"
-
    get_bytes() {
-     sudo wg show "$IFACE" transfer 2>/dev/null \
-       | awk '{rx+=$2; tx+=$3} END {print rx+0, tx+0}'
+     sudo wg show "$IFACE" transfer | awk '{rx+=$2; tx+=$3} END {print rx+0, tx+0}'
    }
-
-   human() {
-     local bytes="$1"
-     awk -v b="$bytes" 'BEGIN {
-       split("B KB MB GB TB", u, " ")
-       i=1
-       while (b>=1024 && i<5) { b/=1024; i++ }
-
-       # Always exactly 2 decimals to keep fixed width
-       val=sprintf("%.2f", b)
-
-       # 6 chars for number (incl. dot), 2 chars for unit
-       printf "%6s %-2s", val, u[i]
-     }'
-   }
-
    read -r rx1 tx1 < <(get_bytes)
    sleep 1
    read -r rx2 tx2 < <(get_bytes)
-
-   delta_rx=$((rx2 - rx1))
-   delta_tx=$((tx2 - tx1))
-
-   printf " ↑ %s (+ %s), ↓ %s (+ %s)\n" \
-     "$(human "$tx2")" "$(human "$delta_tx")" \
-     "$(human "$rx2")" "$(human "$delta_rx")"
+   echo "$rx2 $tx2 $((rx2 - rx1)) $((tx2 - tx1))"
    ```
-2. Create a `vpn_monitor.sh` script in dom0 which calls the bandwidth monitor on
-   the VPN app VM (assumes `A-gnosisvpn`):
+2. In a dom0 terminal, create `~/vpn_monitor.sh` and make it executable with
+   `chmod +x ~/vpn_monitor.sh`. It accepts only four numbers from the qube and
+   does not start the qube when it is shut down:
+   ```bash
+   #!/bin/bash
+   out="$(timeout 5 qvm-run --no-autostart --pass-io A-gnosisvpn 'bash ~/wg.sh' 2>/dev/null | head -c 100)"
+   [[ "$out" =~ ^[0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}$ ]] || { echo " VPN: n/a"; exit 0; }
+   read -r rx tx drx dtx <<< "$out"
+   h() { numfmt --to=iec --suffix=B --format='%.2f' "$1"; }
+   printf ' ↑ %s (+ %s), ↓ %s (+ %s)\n' "$(h "$tx")" "$(h "$dtx")" "$(h "$rx")" "$(h "$drx")"
    ```
-   qvm-run --pass-io "A-gnosisvpn" "bash ~/wg.sh"
-   ```
-3. Add a generic monitor to the tray which runs the `vpn_monitor.sh` script
-   above. Set the interval to **2s and not 1s**, otherwise the window manager
-   might freeze!
+3. Add a generic monitor to the tray which runs `~/vpn_monitor.sh`. Set the
+   interval to **2s and not 1s**, otherwise the window manager might freeze!
 
 ## CPU pinning for `A-gnosisvpn`
 
@@ -92,23 +75,13 @@ cores 0 and 2) on the i7-1265U.
 
 **One-time setup (dom0)**
 
-Create the pin script:
-```bash
-cat > ~/pimpmyvpn.sh << 'EOF'
-#!/bin/bash
-xl vcpu-pin A-gnosisvpn 0 0
-xl vcpu-pin A-gnosisvpn 1 2
-xl sched-credit2 -d A-gnosisvpn -w 512
-EOF
-chmod +x ~/pimpmyvpn.sh
-```
-
 Set vCPU count:
 ```bash
 qvm-prefs A-gnosisvpn vcpus 2
 ```
 
-Create the xenstore watcher:
+Create the xenstore watcher, which pins the qube's vCPUs again on every
+xenstore event while it runs:
 ```bash
 sudo vim /usr/local/bin/watch-gnosisvpn.sh
 ```

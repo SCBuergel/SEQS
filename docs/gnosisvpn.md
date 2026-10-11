@@ -17,7 +17,7 @@ This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 Rerunning the same command upgrades an existing instance in place: when the
 pinned release or any other part of the component changed, its installers run
 again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
-`delete-vms.sh gnosisvpn` only to destroy the instance and rebuild it from
+`~/d.sh gnosisvpn` (see [Deleting SEQS qubes](deleting-vms.md)) only to destroy the instance and rebuild it from
 scratch; that also destroys the private VPN state, so back up anything that
 must survive first.
 

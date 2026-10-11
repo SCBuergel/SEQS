@@ -84,7 +84,7 @@ Before copying anything into dom0:
 2. Read [TRUST.md](../TRUST.md). Items marked ⚠️ or ❌ require an explicit
    decision.
 3. Read [architecture.md](architecture.md) for the VM→dom0 transfer, archive
-   validation, review gate, and bootstrap-window defense.
+   validation, and bootstrap-window defense.
 4. Compare the complete revision through an independent trusted channel. If the
    chosen revision has a verifiable signature, verify it; do not assume every
    commit is signed.

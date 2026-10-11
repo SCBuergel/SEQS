@@ -10,8 +10,8 @@ require deletion.
 Deletion is destructive. Back up any data that must survive and close work in
 the affected qubes first.
 
-The argument is a **base name** available in `qube_catalog`, not a complete VM
-name. For example, use `keepass` to target both `A-keepass` and `Z-keepass`.
+The argument is a **base name**, such as an entry of `qube_catalog`, not a
+complete VM name. For example, use `keepass` to target both `A-keepass` and `Z-keepass`.
 For a postfixed instance, pass its full generated base name: `gnosisvpn-alpha`
 targets `A-gnosisvpn-alpha` and `Z-gnosisvpn-alpha`, while leaving the
 canonical `gnosisvpn` instance untouched.
@@ -31,8 +31,8 @@ Review what would happen without changing anything:
 ~/d.sh --dry-run keepass
 ```
 
-The output lists the matching qubes and the qubes whose network would be
-disconnected. Check every name,
+The output lists the matching qubes, the qubes whose network would be
+disconnected, and any qube that blocks the deletion. Check every name,
 then perform the deletion:
 
 ```bash
@@ -60,19 +60,28 @@ For each supplied base name, the helper:
 
 1. Rejects unsafe names instead of treating arguments as patterns or options.
 2. Looks for exactly `D-<name>`, `A-<name>`, and `Z-<name>`; unrelated qubes are
-   ignored. (`D-<name>` exists only for a `named_disposable` entry.)
-3. Finds qubes whose `netvm` property points to a match and sets that property
+   ignored. (`D-<name>` exists only for a `named_disposable` entry.) A match
+   without the `seqs-managed` feature, such as a qube you made yourself, is
+   skipped and reported.
+3. Stops, before changing anything for any name, if another qube uses a match
+   as its template or default disposable, such as `sys-usb-webcam` on
+   `A-qr-camera`, or a match is a global default such as the UpdateVM; it names
+   the reference, which you then remove or change first.
+4. Finds qubes whose `netvm` property points to a match and sets that property
    to `none`. This preserves the dependent qubes and their data while
    disconnecting their network; Qubes otherwise refuses to remove a NetVM that
    is in use. Dry-run lists every dependency it would disconnect.
-4. Calls `qvm-kill` for matches, then waits up to 30 seconds for them to stop.
-5. Calls `qvm-remove -f` for each match in dependency order — the disposable
+5. Calls `qvm-kill` for matches, then waits up to 30 seconds for them to stop.
+6. Calls `qvm-remove -f` for each match in dependency order — the disposable
    (`D-`) before the `A-` template it derives from, and `A-` before its `Z-`
    template — permanently removing the qube and its volumes. A removal failure
    stops the script.
 
-The helper changes no policy file: the dom0 handoff denies match the
-`seqs-no-handoff` tag, which disappears with the qube.
+The helper changes no policy file: the dom0 handoff rules match the qubes'
+tags, which disappear with them. Deleting the browser qube (`brave`) leaves
+the rule that lets `seqs-handoff` qubes open links in `A-brave`, so a qube you
+later create under that name receives those links without a prompt; change
+`browser_vm` in `config.sls` and rebuild before you do.
 
 `--dry-run` performs the same discovery but does not kill qubes, remove volumes,
 or change any `netvm` property.

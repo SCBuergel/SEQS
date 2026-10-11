@@ -10,6 +10,12 @@ vm="${args[0]:-}"
 property="${args[1]:-}"
 value="${args[2]:-}"
 
+# SEQS_MOCK_PREFS: optional "<vm> <property> <value>" lines, read first.
+if [ -n "${SEQS_MOCK_PREFS:-}" ] && [ "${#args[@]}" -eq 2 ] \
+	&& awk -v v="${vm}" -v p="${property}" '$1 == v && $2 == p { print $3; f=1 } END { exit !f }' "${SEQS_MOCK_PREFS}"; then
+	exit 0
+fi
+
 if [ "${vm}" = "disp-updates" ] && [ "${property}" = "klass" ]; then
 	echo "DispVM"
 	exit 0

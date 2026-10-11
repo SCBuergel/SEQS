@@ -75,12 +75,14 @@ Runs the **real** `setup-qubes.sh` end to end against a sandbox dom0: mock
 `qvm-*` / `qubesctl` / `sudo` on `PATH` (`test/integration/mocks/bin`) and
 scratch `/srv` + `/var/lib` paths via the `SEQS_*` overrides. A small pty driver
 (`test/lib/pty_run.py`) answers the `confirm()` prompts that read from
-`/dev/tty`. Scenarios: full workflow, stage/build prerequisite guards, a hostile
-archive rejected at the tar gate, air-gap-fails-closed, an identical re-fetch
-skipping the review prompt, and `delete-vms.sh` removing exactly the named
-`A-`/`Z-` qubes (dry-run inert, unrelated qubes untouched, unsafe names
-refused — the destructive script gets its own guard-rail scenario against a
-stateful mock inventory). This is the only layer that exercises the runner's
+`/dev/tty`. Scenarios: full workflow, a failed template skipping its app qube,
+stage/build prerequisite guards, a hostile archive rejected at the tar gate,
+air-gap-fails-closed, an identical re-fetch reported as already staged,
+`delete-vms.sh` removing exactly the named SEQS-built `D-`/`A-`/`Z-` qubes
+(dry-run inert, unrelated and unmanaged qubes untouched, dependent qubes and
+global defaults refusing the whole run, unsafe names refused — the destructive
+script gets its own guard-rail scenario against a stateful mock inventory), the
+hardware-test reset, and the sequential QR script's refusals. This is the only layer that exercises the runner's
 fetch → validate → stage → build → verify control flow as one piece.
 
 ### Layer 5 — real Qubes (manual, hardware-bound)

@@ -97,7 +97,9 @@ reset() {
 	local -a others=() bases=()
 	note "Removing SEQS qubes"
 	while IFS= read -r vm; do
-		if [[ "${vm}" =~ ^[DAZ]-(.+)$ ]]; then
+		# delete-vms.sh skips qubes SEQS did not tag, such as one left by an
+		# interrupted run; on the test machine they are removed directly.
+		if [[ "${vm}" =~ ^[DAZ]-(.+)$ ]] && [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ]; then
 			bases+=("${BASH_REMATCH[1]}")
 		else
 			others+=("${vm}")
