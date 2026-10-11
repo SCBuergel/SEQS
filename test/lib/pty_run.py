@@ -19,8 +19,10 @@ import sys
 import select
 
 # PTY_RUN_ANSWERS: comma-separated answers to the prompts in turn, the last
-# one repeating, such as "y,n" or "" (Enter); default y.
+# one repeating, such as "y,n" or "" (Enter); default y. PTY_RUN_PROMPT: the
+# prompt text to answer; default [y/N].
 ANSWERS = os.environb.get(b"PTY_RUN_ANSWERS", b"y").split(b",")
+PROMPT = os.environb.get(b"PTY_RUN_PROMPT", b"[y/N]")
 
 
 def main():
@@ -55,7 +57,7 @@ def main():
         out.write(data)
         out.flush()
         window = (window + data)[-400:]
-        if b"[y/N]" in window:
+        if PROMPT in window:
             window = b""
             os.write(fd, (ANSWERS.pop(0) if len(ANSWERS) > 1 else ANSWERS[0]) + b"\n")
 

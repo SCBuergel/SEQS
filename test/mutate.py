@@ -29,6 +29,7 @@ D = "delete-vms.sh"
 S = "salt/seqs/dom0.sls"
 Q = "salt/seqs/qube.sls"
 G = "install-scripts/lib/verify-gpg.sh"
+QR = "salt/seqs/files/qr-sequential.sh"
 
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
@@ -94,6 +95,14 @@ MUTATIONS = [
     ("dom0-firewall-entry", S, "has invalid firewall entry", "x\") %}{% if false %}{% do errors.append(\"y"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),
     ("dom0-sequential-staging-offline", S, "(not qcatalog.get('qr-staging', {}).get('offline') or ", "("),
+    ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
+    # The sequential QR script in dom0: offline camera side, one device, power-off.
+    ("qr-start-word", QR, '[ "$answer" = START ]', '[ -n "$answer" ]'),
+    ("qr-one-device", QR, '[ "${#devices[@]}" -eq 1 ] ||', '[ "${#devices[@]}" -ge 1 ] ||'),
+    ("qr-device-id", QR, '=~ ^[0-9]+-[0-9]+(\\.[0-9]+)*$ ]]', '=~ ^[0-9]+-.*$ ]]'),
+    ("qr-poweroff", QR, "		systemctl poweroff\n", ""),
+    ("qr-offline-pref", QR, "			''|None|none) ;;", "			*) ;;"),
+    ("qr-old-key", QR, "	ABSENT) ;;", "	ABSENT|PRESENT) ;;"),
     # Installer helpers: pinned keys, signatures, hashes, apt pins.
     ("gpg-exact-keys", G, '[[ "${got}" != "${expected}" ]]', '[[ -z "${got}" ]]'),
     ("gpg-validsig-pin", G, '$NF==fpr { validsig=1; next }', '{ validsig=1; next }'),

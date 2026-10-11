@@ -242,8 +242,8 @@ validateTarListing() {
 
 fetchSaltTree() {
 	local tarball stage source_commit rc
-	tarball=$(mktemp /tmp/seqs-fetch.XXXXXX.tar) || die "mktemp failed"
-	stage=$(mktemp -d /tmp/seqs-stage.XXXXXX) || die "mktemp -d failed"
+	tarball=$(mktemp -t seqs-fetch.XXXXXX) || die "mktemp failed"
+	stage=$(mktemp -d -t seqs-stage.XXXXXX) || die "mktemp -d failed"
 	# Remove both on every exit, including each die below; mktemp names are safe.
 	trap "rm -rf -- '${tarball}' '${stage}'" EXIT
 

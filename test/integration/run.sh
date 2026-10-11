@@ -20,6 +20,7 @@ bad() { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$*"; }
 # A fresh sandbox + environment for one run of setup-qubes.sh.
 new_sandbox() {
 	SBX="$(mktemp -d)"
+	mkdir "${SBX}/tmp"   # the runner's TMPDIR, so that a leftover is seen in isolation
 	export SEQS_SALT_TREE="${SBX}/srv/salt/seqs"
 	export SEQS_PILLAR_TREE="${SBX}/srv/pillar/seqs"
 	export SEQS_TARGETS_FILE="${SBX}/var/lib/seqs/targets"
@@ -44,12 +45,12 @@ run_setup() {  # supplies the explicit repository qube to workflows with FETCH
 	for arg in "$@"; do
 		case "${arg}" in
 			--stage-only|--build-only)
-				python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" "$@"
+				TMPDIR="${SBX}/tmp" python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" "$@"
 				return
 				;;
 		esac
 	done
-	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	TMPDIR="${SBX}/tmp" python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
 		--repo-vm test-repo "$@"
 }
 
@@ -223,12 +224,11 @@ mkdir -p "${evil}/salt"
 ln -s /etc/passwd "${evil}/salt/steal"   # symlink entry -> non-regular, must reject
 export SEQS_MOCK_TAR="${SBX}/evil.tar"
 tar -C "${evil}" -cf "${SEQS_MOCK_TAR}" salt
-tmp_before="$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)"
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
 grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
-[ "$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)" = "${tmp_before}" ] && ok \
-	|| bad "a refused archive must leave no temporary files in /tmp"
+[ -z "$(ls -A "${SBX}/tmp")" ] && ok \
+	|| bad "a refused archive must leave no temporary files"
 [ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
 # tar warns about an unknown pax keyword and quotes it; its escape bytes must
 # not reach the dom0 terminal.
@@ -241,14 +241,14 @@ out="$(run_setup --all 2>&1)"
 ! grep -q $'\x1b' <<<"$out" && ok || bad "an escape byte from the archive reached the terminal"
 # An endless answer from the repository qube is cut off, not stored whole.
 unset SEQS_MOCK_TAR
-out="$(SEQS_MOCK_ENDLESS=archive timeout 60 python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --repo-vm test-repo --fetch-only 2>&1)"; rc=$?
+out="$(SEQS_MOCK_ENDLESS=archive run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "reached the 16000000-byte limit" <<<"$out" && ok \
 	|| bad "an endless archive must be refused at the size limit: rc=$rc $(tail -n 2 <<<"$out")"
-out="$(SEQS_MOCK_ENDLESS=commit timeout 60 python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" --repo-vm test-repo --fetch-only 2>&1)"; rc=$?
+out="$(SEQS_MOCK_ENDLESS=commit run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -qE "could not resolve repository HEAD|invalid full commit ID" <<<"$out" && ok \
 	|| bad "an endless commit ID must be refused: rc=$rc $(tail -n 2 <<<"$out")"
-[ "$(ls -d /tmp/seqs-fetch.* /tmp/seqs-stage.* 2>/dev/null)" = "${tmp_before}" ] && ok \
-	|| bad "a refused fetch must leave no temporary files in /tmp"
+[ -z "$(ls -A "${SBX}/tmp")" ] && ok \
+	|| bad "a refused fetch must leave no temporary files"
 rm -rf "${SBX}" "${evil}"
 
 # ── Scenario 4: air-gap verification fails closed ──────────────────────────
@@ -618,6 +618,35 @@ if command -v setsid >/dev/null 2>&1; then
 else
 	printf '  skip: setsid not available\n'
 fi
+# After START, the keyboard's controller is exposed to the camera side: every
+# outcome, success included, must end in a power-off. The camera phase runs
+# under a pseudo-terminal that types the answer.
+write_mock sleep ':'
+write_mock qvm-start ':'
+write_mock qvm-shutdown 'sed -i "/^${!#}$/d" "'"${SBX}"'/running"'
+write_mock qvm-usb 'cat "'"${SBX}"'/usb" 2>/dev/null; :'
+write_mock qvm-run 'case "$*" in *zbarcam*) exit "$(cat "'"${SBX}"'/scan_rc")" ;; *) cat "'"${SBX}"'/staged" ;; esac'
+qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no)
+	local out
+	rm -f "${SBX}/systemctl.log"
+	out="$(PATH="${SBX}/bin:${PATH}" PTY_RUN_PROMPT="Type START" PTY_RUN_ANSWERS="$2" \
+		python3 "${REPO}/test/lib/pty_run.py" bash "${SBX}/qr.sh" 2>&1)"
+	grep -qF -- "$3" <<<"${out}" && ok || bad "$1: expected '$3', got: $(tail -n 2 <<<"${out}" | tr -d '\r')"
+	if [ "$4" = yes ]; then
+		grep -qx poweroff "${SBX}/systemctl.log" 2>/dev/null && ok || bad "$1: the camera phase must end in a power-off"
+	else
+		[ ! -e "${SBX}/systemctl.log" ] && ok || bad "$1: the script powered off without START"
+	fi
+}
+qr_reset; echo 0 > "${SBX}/scan_rc"; printf 'sys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"
+qr_camera "wrong answer" start "Not confirmed; nothing changed." no
+qr_camera "one webcam" START "Ciphertext copy completed" yes
+printf 'sys-usb-webcam:2-1 Webcam\nsys-usb-webcam:2-2 Keyboard\n' > "${SBX}/usb"
+qr_camera "two devices" START "expected exactly one USB device in sys-usb-webcam, found 2" yes
+printf 'sys-usb-webcam:2-1;x Webcam\n' > "${SBX}/usb"
+qr_camera "unsafe device" START "unsafe device identifier" yes
+printf 'sys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"; echo 1 > "${SBX}/scan_rc"
+qr_camera "failed scan" START "scan/copy failed" yes
 rm -rf "${SBX}"
 
 echo
