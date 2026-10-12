@@ -41,6 +41,8 @@ MUTATIONS = [
     ("takeover-skip", R, 'if [ -e "${p}" ] && ! isManaged "${p}"; then', 'if false; then'),
     ("takeover-usb-failsafe", R, 'vms="$(qvm-ls --raw-list 2>/dev/null)" && !', '{ vms="$(qvm-ls --raw-list 2>/dev/null)" || true; } && !'),
     ("qubesctl-result-false", R, "Result:([[:space:]]|\\[[0-9;]*m)*False|", ""),
+    ("qubesctl-unattributed", R, '[ "${UNATTRIBUTED_FAILURE}" -eq 0 ] \\', 'true \\'),
+    ("gnosis-stale-cleanup", R, '\t# A temporary GnosisVPN proxy or policy that a killed run left behind.\n\tcleanupGnosisUpdateProxy\n', ''),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
     # Runner: fetch and archive validation.
@@ -75,6 +77,7 @@ MUTATIONS = [
     # dom0.sls: names, offline, adoption, policy, pinning, cleanup paths.
     ("dom0-name-re", S, "{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\\\Z' %}", "{% set name_re = '^.*' %}"),
     ("dom0-offline-dispvm", S, "        qvm-prefs -- {{ app }} default_dispvm none\n", ""),
+    ("dom0-tag-after-offline", S, "      - file: seqs-intent-app-{{ name }}\n{%     if q.get('offline') %}", "      - file: seqs-intent-app-{{ name }}\n{%     if false %}"),
     ("dom0-offline-netvm", S, "        qvm-prefs -- {{ app }} netvm none\n", ""),
     ("dom0-dvm-netvm", S, "        qvm-prefs -- {{ dvm }} netvm none\n", ""),
     ("dom0-dispvm-tpl-offline", S, "{%     if q.get('dispvm_template') and not q.get('offline') %}", "{%     if false %}"),

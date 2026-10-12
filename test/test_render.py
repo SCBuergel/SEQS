@@ -135,6 +135,11 @@ def test_dom0_happy_path():
           and "qvm-prefs -- A-keepass default_dispvm none" in offline_cmd,
           "the offline state must clear both the netvm and the default disposable")
     check("seqs-offline-brave" not in parsed, "brave must NOT be air-gapped")
+    # The managed tag (and the intent marker's removal) waits for the air gap,
+    # so a failed offline step never leaves a SEQS-owned qube with network.
+    tag_requires = state_arg(parsed, "seqs-tag-app-keepass", "cmd.run", "require")
+    check({"cmd": "seqs-offline-keepass"} in (tag_requires or []),
+          "seqs-tag-app-keepass must require seqs-offline-keepass")
     # netvm=none does not gate qrexec, so offline, no_handoff and firewalled
     # qubes carry the seqs-no-handoff tag and the policy denies by tag; a
     # disposable inherits the tag from its template, named or not.

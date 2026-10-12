@@ -97,6 +97,7 @@ confirm() {
 # scanned for salt's own failure markers.
 runQubesctl() {
 	local out rc
+	UNATTRIBUTED_FAILURE=0
 	# The output is shown as it comes and kept in memory for the scans below;
 	# a temporary file would be left behind if the run is interrupted.
 	out="$(sudo qubesctl "$@" 2>&1 | sanitize | tee /dev/stderr; exit "${PIPESTATUS[0]}")"
@@ -108,6 +109,7 @@ runQubesctl() {
 			&& grep -qE 'Result:([[:space:]]|\[[0-9;]*m)*False|Failed:([[:space:]]|\[[0-9;]*m)*[1-9]' <<< "${out}"; then
 		echo "NOTE: qubesctl exited 0 but its output reports failed states -- treating as failure." >&2
 		rc=1
+		UNATTRIBUTED_FAILURE=1
 	fi
 	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
 	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
@@ -532,6 +534,7 @@ prepareGnosisPrerequisites() {
 }
 
 cleanupGnosisUpdateProxy() {
+	sudo rm -f "${GNOSIS_UPDATE_POLICY}.new" || true
 	if sudo test -f "${GNOSIS_UPDATE_POLICY}" \
 		&& isManaged "${GNOSIS_UPDATE_POLICY}"; then
 		sudo rm -f "${GNOSIS_UPDATE_POLICY}" || true
@@ -620,9 +623,11 @@ setupGnosisUpdateProxy() {
 	done
 
 	echo "==> Creating domain-restricted temporary GnosisVPN updates proxy"
+	# Set first: a qube of this name that an interrupt leaves behind is ours,
+	# since none existed after the cleanup above.
+	GNOSIS_PROXY_CREATED=1
 	qvm-create --class AppVM --template "${proxy_template}" --label gray \
 		"${GNOSIS_UPDATE_PROXY}" || die "could not create temporary GnosisVPN updates proxy"
-	GNOSIS_PROXY_CREATED=1
 	qvm-features "${GNOSIS_UPDATE_PROXY}" seqs-gnosisvpn-temporary-proxy 1 \
 		|| die "could not mark temporary GnosisVPN updates proxy"
 	qvm-prefs -- "${GNOSIS_UPDATE_PROXY}" netvm "${proxy_netvm}" \
@@ -649,10 +654,12 @@ setupGnosisUpdateProxy() {
 			printf 'qubes.UpdatesProxy * %s @default allow target=%s\n' "${template}" "${GNOSIS_UPDATE_PROXY}"
 			printf 'qubes.UpdatesProxy * %s @anyvm deny\n' "${template}"
 		done
-	} | sudo tee "${GNOSIS_UPDATE_POLICY}" >/dev/null \
+	} | sudo tee "${GNOSIS_UPDATE_POLICY}.new" >/dev/null \
 		|| die "could not install temporary GnosisVPN updates policy"
-	sudo chmod 0644 "${GNOSIS_UPDATE_POLICY}" \
-		|| die "could not protect temporary GnosisVPN updates policy"
+	# qrexec reads only *.policy files, so it never sees a half-written one.
+	sudo chmod 0644 "${GNOSIS_UPDATE_POLICY}.new" \
+		&& sudo mv -f "${GNOSIS_UPDATE_POLICY}.new" "${GNOSIS_UPDATE_POLICY}" \
+		|| die "could not install temporary GnosisVPN updates policy"
 }
 
 buildQubes() {
@@ -660,6 +667,8 @@ buildQubes() {
 		|| die "stage is incomplete -- run --stage-only first"
 	# Ask before anything is recorded or changed, so a refusal leaves no trace.
 	confirmPolicyTakeover
+	# A temporary GnosisVPN proxy or policy that a killed run left behind.
+	cleanupGnosisUpdateProxy
 	writeBuildIntent
 	writeRunManifest started
 	echo ""
@@ -702,8 +711,10 @@ buildQubes() {
 		echo "         with --verbose for full per-state output)." >&2
 		echo "         Re-run to converge -- finished components are skipped." >&2
 		FAILED=1
-		# Without a per-qube ERROR line, any template may be the failed one.
-		[ "${#FAILED_QUBES[@]}" -gt 0 ] || FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
+		# Without a per-qube ERROR line from qubesctl, any template may be the
+		# failed one; ERROR lines then may come from a template's own output.
+		[ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ] \
+			|| FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
 	fi
 	FAILED_TEMPLATES=("${FAILED_QUBES[@]}")
 	cleanupGnosisUpdateProxy

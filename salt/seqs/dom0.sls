@@ -746,6 +746,9 @@ seqs-tag-app-{{ name }}:
     - require:
       - qvm: seqs-app-{{ name }}
       - file: seqs-intent-app-{{ name }}
+{%     if q.get('offline') %}
+      - cmd: seqs-offline-{{ name }}
+{%     endif %}
 {%   endif %}
 
 seqs-recipe-app-{{ name }}:

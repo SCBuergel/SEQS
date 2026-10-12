@@ -273,7 +273,7 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, GnosisVP
   (`20-seqs-gnosisvpn-updates.policy`) scoped to the selected GnosisVPN
   template instance(s); the runner resolves a configured DispVM UpdateVM
   through its template chain to a TemplateVM, and removes both proxy and
-  policy afterward. It refuses an UpdateVM built on a Whonix gateway, behind
+  policy afterward (after a killed run, at the start of the next build). It refuses an UpdateVM built on a Whonix gateway, behind
   which that firewall is not enforced.
 - **Residual risk:** The embedded key and fingerprint originate from the same
   upstream project, so this is not an independent trust anchor by itself. The

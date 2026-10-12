@@ -118,7 +118,12 @@ export SEQS_MOCK_FAIL_TEMPLATE=Z-keepass SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_R
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-signal: its template failed" <<<"$out" && ok \
 	|| bad "an unattributed template failure must skip every app qube"
-unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET
+# Neither may an ERROR line printed by another template narrow it down.
+export SEQS_MOCK_FAIL_RC=0 SEQS_MOCK_FAIL_OUTPUT='          Result: False\nZ-signal: ERROR forged by a template'
+out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
+	|| bad "a forged ERROR line must not narrow an unattributed failure"
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
 rm -rf "${SBX}"
 
 # ── Scenario 1a2: a template left running by an interrupted run is stopped ──
@@ -159,6 +164,25 @@ out="$(SEQS_MOCK_FEATURES="${SBX}/features" run_setup --build-only --qubes gnosi
 [ "$rc" -ne 0 ] && grep -q "is a Whonix gateway" <<<"$out" \
 	&& ! grep -q seqs-gnosisvpn-update-proxy "${SEQS_MOCK_QVM_CREATE_LOG}" && ok \
 	|| bad "a Whonix UpdateVM must stop the GnosisVPN build before the proxy exists"
+rm -rf "${SBX}"
+
+# ── Scenario 1b2: a killed run's GnosisVPN proxy and policy are removed ─────
+echo "== scenario: any build first removes a GnosisVPN proxy and policy a killed run left =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+printf '%s\n' "debian-13-xfce halted" "seqs-gnosisvpn-update-proxy halted" > "${SEQS_MOCK_STATE}"
+echo "seqs-gnosisvpn-update-proxy seqs-gnosisvpn-temporary-proxy 1" > "${SBX}/features"
+mkdir -p "${SEQS_POLICY_DIR}"
+echo "# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten." \
+	| tee "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" > "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy.new"
+# The air-gap check stops this build before its own proxy cleanup would run.
+SEQS_MOCK_NETVM=sys-firewall SEQS_MOCK_FEATURES="${SBX}/features" run_setup --qubes keepass >/dev/null 2>&1
+! grep -q "^seqs-gnosisvpn-update-proxy " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "a build must remove the temporary GnosisVPN proxy a killed run left"
+[ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" ] \
+	&& [ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy.new" ] && ok \
+	|| bad "a build must remove the temporary GnosisVPN policy and its partial copy"
+unset SEQS_MOCK_STATE
 rm -rf "${SBX}"
 
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───

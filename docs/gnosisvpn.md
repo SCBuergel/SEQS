@@ -78,8 +78,9 @@ The template downloads the pinned `.deb` and detached signature through
 and checks SHA-256
 `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`
 before installation. After template provisioning—even on failure—the runner
-removes the temporary policy and marked proxy qube. Qubes' default UpdateVM
-policy then applies again.
+removes the temporary policy and marked proxy qube; a run killed before that
+leaves them until the next build, which removes them first. Qubes' default
+UpdateVM policy then applies again.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
 test below. For a second GnosisVPN qube, use `--postfix` as shown above rather
