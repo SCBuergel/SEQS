@@ -294,6 +294,8 @@ wg_conf() {  # EXTRA-LINE... -- a complete full-tunnel config plus the given lin
 wg_import() { PATH="${wg}/bin:${PATH}" bash install-scripts/components/wireguard/seqs-wireguard "${wg}/t.conf" 2>&1; }
 wg_conf; rm -f "${wg}/sudo.log"
 out="$(wg_import)" && grep -q "seqs-wireguard/wg0.conf" "${wg}/sudo.log" && ok || bad "a provider export was refused: ${out}"
+wg_conf; sed -i 's|^AllowedIPs = .*|AllowedIPs = 0.0.0.0/0 # all traffic|' "${wg}/t.conf"; rm -f "${wg}/sudo.log"
+out="$(wg_import)" && ok || bad "a full tunnel with a trailing comment was refused: ${out}"
 for extra in 'PostUp = touch /tmp/x' $'Post\x01Up = touch /tmp/x' 'Table = off' 'SaveConfig = true'; do
 	wg_conf "${extra}"; rm -f "${wg}/sudo.log"
 	out="$(wg_import)" && bad "the import accepted [${extra}]"
