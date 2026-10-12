@@ -491,19 +491,20 @@ handoffTag() {
 
 CLIENT=seqs-test-client
 
-# reaches NETVM -- a throwaway client qube behind NETVM opens a TCP connection
-# to 1.1.1.1:443 (three tries, for a qube that is still starting).
+# reaches NETVM -- a throwaway client qube behind NETVM tries to open a TCP
+# connection to 1.1.1.1:443 (three tries, for a qube that is still starting).
+# Prints REACHED or BLOCKED; nothing if the client could not be set up or run.
 reaches() {
 	if ! qvm-check --quiet -- "${CLIENT}" >/dev/null 2>&1; then
 		qvm-create --class AppVM --template "$(pillarValue seqs:base_template)" --label red -- "${CLIENT}" >/dev/null 2>&1 \
-			|| { fail "could not create ${CLIENT}"; return 2; }
+			|| return
 	fi
 	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
-	qvm-prefs -- "${CLIENT}" netvm "$1" || return 2
+	qvm-prefs -- "${CLIENT}" netvm "$1" >/dev/null 2>&1 || return
 	# shellcheck disable=SC2016 # runs inside the qube
 	qvm-run --pass-io --no-gui "${CLIENT}" \
-		'for i in 1 2 3; do timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" && exit 0; sleep 2; done; exit 1' \
-		>/dev/null 2>&1 </dev/null
+		'for i in 1 2 3; do timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" && { echo REACHED; exit; }; sleep 2; done; echo BLOCKED' \
+		2>/dev/null </dev/null | grep -xE 'REACHED|BLOCKED'
 }
 
 # failsClosed VM [WHEN] -- a client behind the network provider VM cannot reach
@@ -511,15 +512,16 @@ reaches() {
 # through the default NetVM, or the result would mean nothing.
 failsClosed() {
 	if [ -z "${CLIENT_BASELINE:-}" ]; then
-		reaches "$(qubes-prefs default_netvm)" && CLIENT_BASELINE=ok || CLIENT_BASELINE=bad
-		[ "${CLIENT_BASELINE}" = ok ] || fail "${CLIENT} cannot reach the internet through the default NetVM"
+		CLIENT_BASELINE="$(reaches "$(qubes-prefs default_netvm)")"
+		[ "${CLIENT_BASELINE}" = REACHED ] \
+			|| fail "${CLIENT} could not reach the internet through the default NetVM (${CLIENT_BASELINE:-did not run})"
 	fi
-	[ "${CLIENT_BASELINE}" = ok ] || return
-	if reaches "$1"; then
-		fail "$1: a client reached the internet without a working tunnel${2:+ ($2)}"
-	else
-		pass "$1: a client has no internet without a working tunnel${2:+ ($2)}"
-	fi
+	[ "${CLIENT_BASELINE}" = REACHED ] || return
+	case "$(reaches "$1")" in
+		BLOCKED) pass "$1: a client has no internet without a working tunnel${2:+ ($2)}" ;;
+		REACHED) fail "$1: a client reached the internet without a working tunnel${2:+ ($2)}" ;;
+		*) fail "$1: could not run a client behind it${2:+ ($2)}" ;;
+	esac
 }
 
 # WG_IMPORT -- run as the user in the WireGuard qube: the importer refuses a
@@ -529,7 +531,7 @@ WG_IMPORT='set -u
 d=$(mktemp -d); k=$(wg genkey); p=$(wg genkey | wg pubkey)
 printf "[Interface]\nPrivateKey = %s\nAddress = 10.9.0.2/32\nDNS = 198.51.100.53\nPostUp = touch /tmp/seqs-pwn\n\n[Peer]\nPublicKey = %s\nEndpoint = 192.0.2.1:51820\nAllowedIPs = 0.0.0.0/0\n" "$k" "$p" > "$d/x.conf"
 seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 && echo WG-HOOK-ACCEPTED
-sudo test -e /rw/config/seqs-wireguard/wg0.conf || test -e /tmp/seqs-pwn && echo WG-HOOK-RAN
+{ sudo test -e /rw/config/seqs-wireguard/wg0.conf || test -e /tmp/seqs-pwn; } && echo WG-HOOK-RAN
 sed -i /PostUp/d "$d/x.conf"
 seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 || echo WG-VALID-REFUSED
 sudo nft list chain ip qubes dnat-dns 2>/dev/null | grep -qE "dnat (ip )?to 198\.51\.100\.53" || echo WG-NO-DNAT
@@ -539,11 +541,11 @@ rm -rf "$d"'
 # tunnel, with a tunnel whose peer never answers, and after wg-quick down.
 checkWireguard() {
 	local out
-	failsClosed "$1" "no configuration"
 	if qvm-run --pass-io --no-gui -u root "$1" 'test -e /rw/config/seqs-wireguard/wg0.conf' </dev/null >/dev/null 2>&1; then
-		note "$1 already holds a WireGuard configuration; skipping the import checks"
+		note "$1 already holds a WireGuard configuration; skipping its checks"
 		return
 	fi
+	failsClosed "$1" "no configuration"
 	out="$(qvm-run --pass-io --no-gui "$1" "${WG_IMPORT}" </dev/null 2>&1)"
 	if grep -q '^WG-' <<< "${out}"; then
 		fail "$1: importer: $(grep '^WG-' <<< "${out}" | tr '\n' ' ')"
@@ -560,7 +562,7 @@ checkWireguard() {
 # GV_DNS -- run as root in the GnosisVPN qube, with a dummy interface in place
 # of the tunnel: the reconciler installs the DNS translation only while the
 # interface is up and the fallback resolvers route through it, and removes it
-# with the interface.
+# with the interface (the timer runs every 5 s; allow 15).
 GV_DNS='set -u; i=wg0_gnosisvpn; t=seqs_gnosisvpn_dns; r=/usr/sbin/seqs-gnosisvpn-dns
 ip link show "$i" >/dev/null 2>&1 && { echo GV-SKIP; exit 0; }
 nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-WHILE-DOWN
@@ -568,7 +570,8 @@ ip link add "$i" type dummy && ip link set "$i" up || { echo GV-NO-DUMMY; exit 0
 "$r" >/dev/null 2>&1; nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-WITHOUT-ROUTE
 ip route add 1.1.1.1/32 dev "$i"; ip route add 8.8.8.8/32 dev "$i"
 "$r" >/dev/null 2>&1; nft list table ip "$t" 2>/dev/null | grep -q "dnat to 1.1.1.1" || echo GV-NO-TABLE-WHEN-ROUTED
-ip link del "$i"; sleep 7
+ip link del "$i"
+for n in $(seq 15); do nft list table ip "$t" >/dev/null 2>&1 || break; sleep 1; done
 nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-KEPT-BY-TIMER
 systemctl is-active --quiet seqs-gnosisvpn-dns.timer || echo GV-TIMER-INACTIVE
 true'

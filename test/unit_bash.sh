@@ -313,6 +313,19 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(tag A-keepass keepass 'seqs-no-handoff\nseqs-handoff\n')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted both tags"
 	[[ "$(tag A-signal signal 'seqs-no-handoff\n')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted the wrong tag"
 	[[ "$(tag A-keepass keepass '')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted no tag"
+	# failsClosed passes only on a client that ran and was blocked, after the
+	# same client got out through the default NetVM.
+	probe() {
+		qvm-check() { return 0; }; qvm-shutdown() { :; }; qubes-prefs() { echo sys-firewall; }
+		qvm-prefs() { NET="$4"; }
+		qvm-run() { local r; [ "${NET}" = sys-firewall ] && r="${BASE}" || r="${OUT}"; [ -z "$r" ] || echo "$r"; }
+		CLIENT_BASELINE="" BASE="$1" OUT="$2" failsClosed A-vpn
+	}
+	[[ "$(probe REACHED BLOCKED)" == CHECK-OK* ]] || echo "FAIL failsClosed blocked"
+	[[ "$(probe REACHED REACHED)" == *"CHECK-FAIL: A-vpn: a client reached"* ]] || echo "FAIL failsClosed accepted a leak"
+	[[ "$(probe REACHED '')" == *"CHECK-FAIL: A-vpn: could not run"* ]] || echo "FAIL failsClosed accepted a client that did not run"
+	[[ "$(probe BLOCKED BLOCKED)" == *"CHECK-FAIL: seqs-test-client could not reach"* ]] || echo "FAIL failsClosed ran without a baseline"
+	[[ "$(probe '' BLOCKED)" == *"did not run"* ]] || echo "FAIL failsClosed accepted a baseline that did not run"
 ) > "${tmp}/dom0test.out" 2>&1
 if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
