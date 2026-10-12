@@ -15,7 +15,7 @@ under a minute, on any Linux box (or CI), with **no Qubes at all**.
 
 ```
 ./test/run-tests.sh            # run every Qubes-free layer, summarised
-./test/run-tests.sh render     # or just one layer: lint | render | unit | integration
+./test/run-tests.sh render     # or one layer: lint | render | unit | integration | fast
 ./test/run-tests.sh prove      # do the new tests fail against the committed code?
 ./test/run-tests.sh mutate     # does every security check have a test?
 ```
@@ -35,8 +35,9 @@ runs the layers until one fails. A weakened check that every layer accepts has
 no test. It takes several minutes; add an entry when you add a security check.
 
 The only dependencies are `python3` with `jinja2` + `pyyaml` (for the render
-layers) and `bash`. `shellcheck` is used if present and skipped with a note if
-not. CI installs all three (`.github/workflows/tests.yml`).
+layers) and `bash`; `prove` and `mutate` also need `git`. `shellcheck` and
+`gpg` are used if present and skipped with a note if not; CI has all of them
+(`.github/workflows/tests.yml`).
 
 ---
 
@@ -48,7 +49,8 @@ the repo deliberately carries some info/warning-level patterns, and a gate that
 fails on style gets bypassed), a smoke render of every Salt template, and
 `test/doc_coherence.py`, which fails when the docs do not name a catalogue
 flag, setting, component, option, pinned fingerprint, or guarded policy file
-that the code defines, or a relative Markdown link does not resolve.
+that the code defines, a `--qubes` example names no catalogue entry, or a
+relative Markdown link does not resolve.
 Catches shell-syntax errors, "does it even compile" breakage, and docs that
 fell behind the code instantly.
 
@@ -151,5 +153,3 @@ needs a real Salt run. Two options, in ascending fidelity:
 | the fetch / apply orchestration | a scenario in `test/integration/run.sh` |
 | `delete-vms.sh` | the delete scenario in `test/integration/run.sh` |
 
-Run `./test/run-tests.sh` before every push (or wire it into a pre-push hook /
-let CI do it).

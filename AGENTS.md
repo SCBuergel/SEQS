@@ -123,7 +123,8 @@ formatting or cleanup alongside a functional change.
 
 Run commands from the repository root. The portable entry point is
 `./test/run-tests.sh help`; it requires no task runner. If `make` is installed,
-the Makefile provides equivalent short aliases through `make help`.
+the Makefile provides equivalent short aliases, without the REV and NAME
+arguments, through `make help`.
 
 - `./test/run-tests.sh lint`: shell syntax, optional ShellCheck, Salt render
   smoke tests, the expiry of embedded signing keys, and whether the docs name
@@ -174,7 +175,7 @@ weakening a check or an invariant above), rerun, and compare durations and
 product size with the previous run. Only the test machine may be targeted;
 never run these scripts against another Qubes installation.
 
-Use `--quick` after each change; it takes about 8 minutes. Use `--all` with
+Use `--quick` after each change; it takes about 10 minutes. Use `--all` with
 its rerun before pushing a batch that touches several components or the
 runner, and add `--force-rerun` when installers changed. While a run is in
 progress, watch its `progress.log` and give the user a short status with the

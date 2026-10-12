@@ -360,6 +360,7 @@ test/hardware/system-test.sh --quick
 test/hardware/system-test.sh --qubes keepass,signal
 test/hardware/system-test.sh --all
 test/hardware/system-test.sh --no-rerun
+test/hardware/system-test.sh --host other-test   # an SSH host other than seqs-test
 ```
 
 `--no-rerun` skips the second install, which saves time while you work on a
