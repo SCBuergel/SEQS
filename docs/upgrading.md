@@ -12,7 +12,8 @@ managed qubes, and reapplies supported settings to existing managed qubes.
 
 An installed system normally has three relevant copies:
 
-1. The repository checkout in an explicitly selected `REPO_VM`, such as
+1. The repository checkout in the repository qube (the one you pass to
+   `--repo-vm`), such as
    `seqs-repo:/home/user/SEQS`. This should be the long-term source of truth.
 2. A small runner copied into dom0 as `s.sh`.
 3. The root-owned tree currently staged in dom0 under `/srv/salt/seqs` and
@@ -119,6 +120,9 @@ The repo qube can be shut down after `--fetch-only`. In dom0:
 ~/s.sh --build-only --qubes brave,signal
 ```
 
+Select every qube you want upgraded; an omitted one is left as it is. The
+`selection=` line of `/var/lib/seqs/last-run` lists the previous run's qubes.
+
 Before replacing anything, `--stage-only` prints a recursive diff between
 the reviewed fetched copy in `/var/lib/seqs/fetched` and the Salt tree currently
 active under `/srv`. This preview shows changes to Salt states, component
@@ -129,7 +133,8 @@ printing, without asking, so review the fetched tree before running it. A
 comparison or permission error aborts staging instead of being treated as a
 difference.
 
-These commands stage `/srv` and build without contacting `REPO_VM`. The runner:
+These commands stage `/srv` and build without contacting the repository qube.
+The runner:
 
 1. validates configuration and applies dom0 policies/preferences;
 2. creates missing templates and app qubes without adopting unrelated
@@ -151,13 +156,13 @@ recipe:
 
 Rerun that exact selection and postfix to upgrade or repair the `*-alpha`
 instances. A run without the postfix continues to target only the canonical
-instances. Existing managed qubes are reported explicitly and reconciled in
+instances. Existing managed templates and app qubes are reported and reconciled in
 place; neither form overwrites or reclones them.
 
 ## 5. Verify the intended change
 
 Verify the specific outcome instead of treating a successful summary as the
-only check. Useful examples include:
+only check. Useful examples, in a dom0 terminal:
 
 ```bash
 qvm-ls
@@ -200,7 +205,7 @@ build after upgrading SEQS runs every selected component once more.
 
 Every component script must therefore be safe to run over its earlier
 installation. To force one component to run again without a change, empty its
-marker and rerun the build, for example:
+marker and rerun the build, for example in a dom0 terminal:
 
 ```bash
 qvm-run -u root Z-qr-camera ': > /rw/config/seqs/qr-camera.template.done'
@@ -212,7 +217,7 @@ qvm-shutdown --wait Z-qr-camera
 
 Removing an entry from configuration is intentionally non-destructive. If you
 intend to destroy its qubes, copy the reviewed helper into dom0 and inspect
-with a dry run:
+with a dry run, in a dom0 terminal:
 
 ```bash
 qvm-run -p seqs-repo "git -C /home/user/SEQS show HEAD:delete-vms.sh" 2>/dev/null > ~/d.sh && chmod 700 ~/d.sh

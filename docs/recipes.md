@@ -5,7 +5,6 @@ Apply the ones you want by hand.
 
 ## Contents
 
-- [`delete-vms.sh` — rebuild a qube from scratch](#delete-vmssh)
 - [Sync clock in the base template](#sync-clock-in-the-base-template)
 - [WireGuard bandwidth monitor in the tray](#wireguard-bandwidth-monitor-in-the-tray)
 - [CPU pinning for `A-gnosisvpn`](#cpu-pinning-for-a-gnosisvpn)
@@ -16,16 +15,11 @@ Apply the ones you want by hand.
 - [Mount a USB drive](#mount-a-usb-drive)
 - [Minimal templates](#minimal-templates)
 
-## `delete-vms.sh`
-
-Re-running `setup-qubes.sh` converges on its own; you need `delete-vms.sh`
-only to rebuild a qube from scratch. See [Deleting SEQS qubes](deleting-vms.md).
-
 ## Sync clock in the base template
 
-Several apps have issues with exactly synced time (e.g. 2FA authenticator apps).
-To mitigate that, install the following package in your base template (e.g.
-`debian-13-xfce`):
+Some apps, such as 2FA authenticator apps, fail when the clock drifts. To keep
+it synchronised, install the following package in your base template (e.g.
+`debian-13-xfce`) before SEQS clones it, or in each `Z-` template:
 ```
 sudo apt install systemd-timesyncd
 ```
@@ -79,7 +73,8 @@ example on the i7-1265U, whose Xen CPUs 0 and 2 lie on two performance cores:
 {'name': 'gnosisvpn', ..., 'cpu_pinning': {'cpus': [0, 2], 'weight': 512}},
 ```
 
-After the build and a restart of the qube, check in a dom0 terminal:
+Commit the edit and rebuild as in [upgrading](upgrading.md); the build leaves
+the qube shut down. Start it, then check in a dom0 terminal:
 
 ```bash
 xl vcpu-list A-gnosisvpn
@@ -135,7 +130,7 @@ echo 'export SAL_USE_VCLPLUGIN=gen' >> ~/.bashrc
 ## Reliably copy large files from/to an Android phone
 
 Default Qubes methods for copying large files to/from Android phones are
-unreliable. The setup builds a dedicated `A-usb-data-transfer` qube (red label)
+unreliable. Selecting `usb-data-transfer` builds a dedicated `A-usb-data-transfer` qube (red label)
 with `adb` and `pv` pre-installed from the Debian repos — `sys-usb` stays
 untouched.
 
@@ -161,8 +156,6 @@ certify peer authenticity; prefer USB-attached ADB on untrusted networks.
 
 ## vim mappings
 
-*(TODO: script this)*
-
 Move screen lines in vim instead of wrapped physical lines — put this in
 `~/.vimrc`:
 ```
@@ -174,8 +167,8 @@ inoremap <down> <C-o>gj
 
 ## Mount a USB drive
 
-Mount an attached USB drive without having all files be default executable and
-root-owned, even if it's FAT formatted:
+Mount an attached FAT, exFAT or NTFS USB drive so that its files belong to the
+qube's user and are not executable (ext4 rejects these options):
 ```
 sudo mount -o uid=1000,gid=1000,fmask=177,dmask=077 /dev/xvdi /mnt
 ```

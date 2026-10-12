@@ -6,7 +6,8 @@ integration.
 
 ## Build the prepared qube
 
-After fetching, reviewing, and staging this revision, run in dom0:
+After fetching, reviewing, and staging this revision (see
+[first install](first-install.md) or [upgrading](upgrading.md)), run in dom0:
 
 ```bash
 ~/s.sh --build-only --qubes gnosisvpn
@@ -14,7 +15,8 @@ After fetching, reviewing, and staging this revision, run in dom0:
 
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
-Rerunning the same command upgrades an existing instance in place: when the
+After a newer revision is fetched and staged, rerunning the same command
+upgrades an existing instance in place: when the
 pinned release or any other part of the component changed, its installers run
 again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
 `~/d.sh gnosisvpn` (see [Deleting SEQS qubes](deleting-vms.md)) only to destroy the instance and rebuild it from
@@ -123,7 +125,7 @@ tunnel.
 
 ## Verify before attaching clients
 
-With GnosisVPN disconnected:
+In a terminal of `A-gnosisvpn`, with GnosisVPN disconnected:
 
 ```bash
 getent hosts example.com
@@ -149,19 +151,28 @@ table should target `1.1.1.1` and `8.8.8.8`. `/etc/resolv.conf` should still
 contain Qubes' synthetic addresses, name resolution should succeed, and the
 nftables counters should increase.
 
-In another terminal, confirm that translated DNS crosses the tunnel.
-`tcpdump` is not in the template; this install lasts until the qube restarts:
+Next, confirm that translated DNS crosses the tunnel. `tcpdump` is not in the
+template; install it in `A-gnosisvpn` (this lasts until the qube restarts):
 
 ```bash
 sudo apt-get install -y tcpdump
+```
+
+Then run each capture in its own new `A-gnosisvpn` terminal:
+
+```bash
 sudo tcpdump -ni wg0_gnosisvpn 'port 53'
+```
+
+```bash
 sudo tcpdump -ni eth0 'port 53'
 ```
 
-Trigger a lookup. Provider DNS should appear on `wg0_gnosisvpn`, not `eth0`.
+Run `getent hosts example.com` in the terminal where you installed `tcpdump`. Provider DNS should
+appear on `wg0_gnosisvpn`, not `eth0`.
 
-Only then attach a non-sensitive disposable test client to `A-gnosisvpn`.
-Inside that client:
+Only then attach a non-sensitive disposable test client: in its Qubes settings,
+set **Networking** to `A-gnosisvpn`. Inside that client:
 
 ```bash
 cat /etc/resolv.conf

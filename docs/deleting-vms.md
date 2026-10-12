@@ -47,8 +47,8 @@ Multiple base names can be handled in one invocation:
 
 For permanent removal from this machine, do not select that base name in later
 builds. The catalogue may remain unchanged: availability is separate from the
-per-run selection. A later build that explicitly selects the name will recreate
-the qubes.
+per-run selection. A later build that selects the name, or uses `--all`, will
+recreate the qubes.
 
 To rebuild from scratch, leave the catalogue entry in place, delete the qubes,
 and rerun a build that explicitly selects the base name. Fetch and stage again
@@ -62,7 +62,8 @@ For each supplied base name, the helper:
 2. Looks for exactly `D-<name>`, `A-<name>`, and `Z-<name>`; unrelated qubes are
    ignored. (`D-<name>` exists only for a `named_disposable` entry.) A match
    without the `seqs-managed` feature, such as a qube you made yourself, is
-   skipped and reported.
+   skipped and reported, unless an interrupted SEQS build left a creation
+   marker for it.
 3. Stops, before changing anything for any name, if another qube uses a match
    as its template or default disposable, such as `sys-usb-webcam` on
    `A-qr-camera`, or a match is a global default such as the UpdateVM; it names

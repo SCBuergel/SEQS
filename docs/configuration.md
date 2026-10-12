@@ -23,7 +23,7 @@ entire catalogue. The postfix is part of the persistent instance name; use the
 same command to converge that instance later.
 
 Without `--postfix`, selecting an entry whose managed qubes already exist
-reuses and reconciles them. SEQS prints an explicit existing-qube message,
+reuses and reconciles them. SEQS prints an existing-qube message for each template and app qube,
 never clones over them, and refuses a same-named qube it does not own. A
 postfixed instance that already exists is handled identically.
 
@@ -115,7 +115,7 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   leaves the qube's link handler unset, and dom0 tags the qube
   `seqs-no-handoff` and denies by that tag, to every qube and disposable,
   `qubes.OpenURL`, `qubes.OpenInVM`, and the services that start a program in
-  a disposable. Every build updates the tag on all SEQS app qubes and named
+  another qube or a disposable. Every build updates the tag on all SEQS app qubes and named
   disposables, selected or not, and disposables started from a tagged qube
   inherit it.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
@@ -217,7 +217,9 @@ default, which asks. Qubes with those flags never hand links off, so a run
 that selects only such qubes (for example `keepass` or the wallets) does not
 need the browser qube. For any other selected qube,
 the pre-flight refuses a `browser_vm` that is neither selected in the same run
-nor already existing. If you remove `brave` from `qube_catalog`, also change
+nor already existing. With `--postfix`, selecting `brave` builds
+`A-brave-<postfix>`, which is not the browser qube, so the plain `A-brave` must
+already exist. If you remove `brave` from `qube_catalog`, also change
 `browser_vm` in `config.sls` to a browser qube you do have.
 
 ## Adding a new component

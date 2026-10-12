@@ -68,7 +68,8 @@ These locations represent different trust and execution states:
 Qubes Salt convention—not SEQS naming—defines `/srv/salt` as the state root
 and `/srv/pillar` as the pillar root. The runner uses `mkdir -p`, so it can
 create missing `/srv` ancestors defensively, but it claims and replaces only
-the `seqs` leaves carrying its management markers. Fetching alone cannot make
+the `seqs` leaves carrying its management markers, and makes `/srv/salt` and
+`/srv/pillar` readable by all users. Fetching alone cannot make
 Salt see the data; staging alone cannot create qubes; only the build stage runs
 `qubesctl`.
 
@@ -112,13 +113,13 @@ working-tree drift; the source qube remains an explicit trust assumption.
 
 ## Composition model
 
-Every qube the setup builds is composed from one or more **components** in
-`install-scripts/components/<name>/`. Single-tool qubes are 1-component;
+Every qube the setup builds is composed from zero or more **components** in
+`install-scripts/components/<name>/` (`qr-staging` has none). Single-tool qubes are 1-component;
 mix-and-match qubes (wallet, developer) list several. The `seqs.dom0` state
 clones the base template and creates the app qube; the `seqs.qube` state then
 runs each component's `template-vm.sh` (system-wide install) in the template,
 installs any `menu.desktop` it carries, runs each `app-vm.sh` (per-app-qube
-setup) in the app qube, and installs the link handler and the cleanup
-service; the `seqs.dom0` state writes the browser-link policy. See
+setup) in the app qube, and installs the link handler and, unless
+`preserve_incoming` is set, the cleanup service in the template; the `seqs.dom0` state writes the browser-link policy. See
 [configuration.md](configuration.md) for ordinary runtime selection and for
 advanced catalogue extension.
