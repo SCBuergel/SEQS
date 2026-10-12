@@ -186,8 +186,8 @@ change them only to avoid a clash with an existing qube.
 ## `brave_extensions`
 
 Maps name → Chrome Web Store ID for each Brave wallet extension. Reference them
-in qube specs as `brave-extension-<name>`; Brave is auto-installed on the first
-such reference in a qube.
+in qube specs as `brave-extension-<name>`; each such component installs or
+updates Brave first.
 
 - **Enable** an extension in a qube: add `brave-extension-<name>` to that qube's
   component list.

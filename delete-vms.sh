@@ -2,7 +2,7 @@
 
 # exit on errors, undefined variables, ensure errors in pipes are not hidden
 set -Eeuo pipefail
-# Command substitutions stop at a failure too, such as qvm-ls in findUsers.
+# Command substitutions stop at a failure too.
 shopt -s inherit_errexit
 
 # Removes matching D-/A-/Z- qubes; run with --help and use --dry-run first.
@@ -94,8 +94,9 @@ findUsers() {
 				if ($i != "-" && $i != "" && $i != $1 && index(t, " " $i " ") \
 						&& (i == 2 || !index(t, " " $1 " ")))
 					print $1, prop[i - 1], $i
-		}'
-	qubes-prefs | awk -v t=" $* " 'index(t, " " $3 " ") { print "dom0", $1, $3 }'
+		}' || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; return 1; }
+	qubes-prefs | awk -v t=" $* " 'index(t, " " $3 " ") { print "dom0", $1, $3 }' \
+		|| { echo "ERROR: could not read the global defaults -- nothing was changed" >&2; return 1; }
 }
 
 # Check every name before changing anything, so that a refusal for one name
@@ -118,8 +119,10 @@ for app in "${ARGS[@]}"; do
 	for prefix in "${PREFIXES[@]}"; do
 		candidate="${prefix}-${app}"
 		qvm-check "${candidate}" &>/dev/null || continue
-		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ] \
-				|| sudo test -e "${INTENTS_DIR}/${candidate}"; then
+		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ]; then
+			found+=("${candidate}")
+		elif sudo test -e "${INTENTS_DIR}/${candidate}"; then
+			echo "  ${candidate}: no seqs-managed feature, but an interrupted SEQS build left its creation marker"
 			found+=("${candidate}")
 		else
 			echo "  skipping ${candidate}: SEQS did not build it (no seqs-managed feature or creation marker)"

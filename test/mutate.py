@@ -70,8 +70,8 @@ MUTATIONS = [
     ("delete-name", D, '=~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then', '=~ ^.*$ ]]; then'),
     ("delete-unmanaged", D, 'seqs-managed 2>/dev/null)" = "1" ]', 'seqs-managed 2>/dev/null)" != "x" ]'),
     ("delete-blockers", D, 'if [ "${#blockers[@]}" -gt 0 ]; then', 'if false; then'),
-    ("delete-intent-marker", D, '|| sudo test -e "${INTENTS_DIR}/${candidate}"; then', '; then'),
-    ("delete-inherit-errexit", D, "shopt -s inherit_errexit\n", ""),
+    ("delete-intent-marker", D, 'elif sudo test -e "${INTENTS_DIR}/${candidate}"; then', 'elif false; then'),
+    ("delete-qvm-ls-fail", D, """}' || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; return 1; }""", "}' || true"),
     ("delete-pin-sudo", D, "	if sudo head -n 1 --", "	if head -n 1 --"),
     ("delete-pin-unmarked", D, "| grep -q 'Managed by SEQS'; then", "| true; then"),
     # dom0.sls: names, offline, adoption, policy, pinning, cleanup paths.

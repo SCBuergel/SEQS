@@ -476,6 +476,8 @@ printf '%s\n' "A-notes halted" "Z-notes halted" > "${SEQS_MOCK_STATE}"
 out="$(SEQS_MOCK_UNMANAGED="A-notes" SEQS_MOCK_SUDO_LOG="${SBX}/sudo3.log" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -q "^A-notes " "${SEQS_MOCK_STATE}" && ok \
 	|| bad "a qube with a creation marker must be removed: ${out}"
+grep -q "A-notes: no seqs-managed feature, but an interrupted SEQS build left its creation marker" <<<"$out" && ok \
+	|| bad "a match by creation marker alone must be named as such: ${out}"
 # On dom0 only root can read the pinning directory.
 grep -qF "head -n 1 -- ${SEQS_LIBVIRT_DIR}/A-notes.xml" "${SBX}/sudo3.log" && ok \
 	|| bad "the CPU-pinning file must be read through sudo"
@@ -486,8 +488,9 @@ unset SEQS_STATE_DIR SEQS_LIBVIRT_DIR
 # A failing qube listing must stop the deletion, not skip the blocker check.
 printf '%s\n' "A-keepass halted" > "${SEQS_MOCK_STATE}"
 out="$(SEQS_MOCK_QVM_LS_FAIL=1 bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && ok \
-	|| bad "delete-vms.sh must stop when qvm-ls fails: rc=$rc ${out}"
+[ "$rc" -ne 0 ] && grep -q "^A-keepass " "${SEQS_MOCK_STATE}" \
+	&& grep -q "ERROR: could not list the qubes -- nothing was changed" <<<"$out" && ok \
+	|| bad "delete-vms.sh must stop, and say why, when qvm-ls fails: rc=$rc ${out}"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
