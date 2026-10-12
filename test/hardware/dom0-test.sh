@@ -31,7 +31,7 @@ CTL_VM="${SEQS_TEST_CTL_VM:-test-ctl}"
 PROTECTED=(dom0 "${CTL_VM}" sys-net)
 # SEQS qubes without a D-/A-/Z- prefix. Removed before the prefixed ones: a
 # named disposable blocks removal of its disposable template.
-SPECIAL_QUBES=(seqs-qr-scanner seqs-gnosisvpn-update-proxy sys-usb-webcam)
+SPECIAL_QUBES=(seqs-qr-scanner seqs-gnosisvpn-update-proxy sys-usb-webcam seqs-test-client)
 
 SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
 PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
@@ -476,10 +476,116 @@ refused() {
 	done
 }
 
-# hasTag VM -- VM carries seqs-no-handoff, which the dom0 policy denies by.
-hasTag() {
-	qvm-tags -- "$1" list 2>/dev/null | grep -qx seqs-no-handoff \
-		&& pass "$1: tagged seqs-no-handoff" || fail "$1: not tagged seqs-no-handoff"
+# handoffTag VM RECIPE -- VM carries exactly one handoff tag: seqs-no-handoff,
+# which 28-browser-suppress denies by, when the recipe forbids handoff, and
+# seqs-handoff, which 29-browser allows, otherwise.
+handoffTag() {
+	local tags keep=seqs-handoff drop=seqs-no-handoff
+	noHandoff "$2" && keep=seqs-no-handoff drop=seqs-handoff
+	tags="$(qvm-tags -- "$1" list 2>/dev/null)"
+	grep -qx "${keep}" <<< "${tags}" && ! grep -qx "${drop}" <<< "${tags}" \
+		&& pass "$1: tagged ${keep} only" || fail "$1: tags are '$(tr '\n' ' ' <<< "${tags}")', expected ${keep} only"
+}
+
+# ---- network providers -----------------------------------------------------
+
+CLIENT=seqs-test-client
+
+# reaches NETVM -- a throwaway client qube behind NETVM opens a TCP connection
+# to 1.1.1.1:443 (three tries, for a qube that is still starting).
+reaches() {
+	if ! qvm-check --quiet -- "${CLIENT}" >/dev/null 2>&1; then
+		qvm-create --class AppVM --template "$(pillarValue seqs:base_template)" --label red -- "${CLIENT}" >/dev/null 2>&1 \
+			|| { fail "could not create ${CLIENT}"; return 2; }
+	fi
+	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+	qvm-prefs -- "${CLIENT}" netvm "$1" || return 2
+	# shellcheck disable=SC2016 # runs inside the qube
+	qvm-run --pass-io --no-gui "${CLIENT}" \
+		'for i in 1 2 3; do timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" && exit 0; sleep 2; done; exit 1' \
+		>/dev/null 2>&1 </dev/null
+}
+
+# failsClosed VM [WHEN] -- a client behind the network provider VM cannot reach
+# the internet while no working tunnel exists. The same client must reach it
+# through the default NetVM, or the result would mean nothing.
+failsClosed() {
+	if [ -z "${CLIENT_BASELINE:-}" ]; then
+		reaches "$(qubes-prefs default_netvm)" && CLIENT_BASELINE=ok || CLIENT_BASELINE=bad
+		[ "${CLIENT_BASELINE}" = ok ] || fail "${CLIENT} cannot reach the internet through the default NetVM"
+	fi
+	[ "${CLIENT_BASELINE}" = ok ] || return
+	if reaches "$1"; then
+		fail "$1: a client reached the internet without a working tunnel${2:+ ($2)}"
+	else
+		pass "$1: a client has no internet without a working tunnel${2:+ ($2)}"
+	fi
+}
+
+# WG_IMPORT -- run as the user in the WireGuard qube: the importer refuses a
+# hook, accepts a provider file whose endpoint is unreachable (TEST-NET), and
+# installs the DNS translation to its DNS server.
+WG_IMPORT='set -u
+d=$(mktemp -d); k=$(wg genkey); p=$(wg genkey | wg pubkey)
+printf "[Interface]\nPrivateKey = %s\nAddress = 10.9.0.2/32\nDNS = 198.51.100.53\nPostUp = touch /tmp/seqs-pwn\n\n[Peer]\nPublicKey = %s\nEndpoint = 192.0.2.1:51820\nAllowedIPs = 0.0.0.0/0\n" "$k" "$p" > "$d/x.conf"
+seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 && echo WG-HOOK-ACCEPTED
+sudo test -e /rw/config/seqs-wireguard/wg0.conf || test -e /tmp/seqs-pwn && echo WG-HOOK-RAN
+sed -i /PostUp/d "$d/x.conf"
+seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 || echo WG-VALID-REFUSED
+sudo nft list chain ip qubes dnat-dns 2>/dev/null | grep -qE "dnat (ip )?to 198\.51\.100\.53" || echo WG-NO-DNAT
+rm -rf "$d"'
+
+# checkWireguard VM -- the importer, then fail-closed forwarding with no
+# tunnel, with a tunnel whose peer never answers, and after wg-quick down.
+checkWireguard() {
+	local out
+	failsClosed "$1" "no configuration"
+	if qvm-run --pass-io --no-gui -u root "$1" 'test -e /rw/config/seqs-wireguard/wg0.conf' </dev/null >/dev/null 2>&1; then
+		note "$1 already holds a WireGuard configuration; skipping the import checks"
+		return
+	fi
+	out="$(qvm-run --pass-io --no-gui "$1" "${WG_IMPORT}" </dev/null 2>&1)"
+	if grep -q '^WG-' <<< "${out}"; then
+		fail "$1: importer: $(grep '^WG-' <<< "${out}" | tr '\n' ' ')"
+	else
+		pass "$1: importer refuses a PostUp hook, installs a valid file and its DNS translation"
+	fi
+	failsClosed "$1" "tunnel up, peer unreachable"
+	qvm-run --pass-io --no-gui -u root "$1" 'wg-quick down /run/seqs-wireguard/wg0.conf' </dev/null >/dev/null 2>&1
+	failsClosed "$1" "after wg-quick down"
+	qvm-run --pass-io --no-gui -u root "$1" 'rm -f /rw/config/seqs-wireguard/wg0.conf' </dev/null >/dev/null 2>&1
+	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+}
+
+# GV_DNS -- run as root in the GnosisVPN qube, with a dummy interface in place
+# of the tunnel: the reconciler installs the DNS translation only while the
+# interface is up and the fallback resolvers route through it, and removes it
+# with the interface.
+GV_DNS='set -u; i=wg0_gnosisvpn; t=seqs_gnosisvpn_dns; r=/usr/sbin/seqs-gnosisvpn-dns
+ip link show "$i" >/dev/null 2>&1 && { echo GV-SKIP; exit 0; }
+nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-WHILE-DOWN
+ip link add "$i" type dummy && ip link set "$i" up || { echo GV-NO-DUMMY; exit 0; }
+"$r" >/dev/null 2>&1; nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-WITHOUT-ROUTE
+ip route add 1.1.1.1/32 dev "$i"; ip route add 8.8.8.8/32 dev "$i"
+"$r" >/dev/null 2>&1; nft list table ip "$t" 2>/dev/null | grep -q "dnat to 1.1.1.1" || echo GV-NO-TABLE-WHEN-ROUTED
+ip link del "$i"; sleep 7
+nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-KEPT-BY-TIMER
+systemctl is-active --quiet seqs-gnosisvpn-dns.timer || echo GV-TIMER-INACTIVE
+true'
+
+# checkGnosisvpn VM -- fail-closed forwarding, and the DNS reconciler.
+checkGnosisvpn() {
+	local out
+	failsClosed "$1" "not connected"
+	out="$(qvm-run --pass-io --no-gui -u root "$1" "${GV_DNS}" </dev/null 2>&1)"
+	if grep -q '^GV-SKIP' <<< "${out}"; then
+		note "$1 has a GnosisVPN interface up; skipping the DNS reconciler checks"
+	elif grep -q '^GV-' <<< "${out}"; then
+		fail "$1: DNS reconciler: $(grep '^GV-' <<< "${out}" | tr '\n' ' ')"
+	else
+		pass "$1: DNS translation only while the tunnel interface is up and routes the resolvers"
+	fi
+	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
 }
 
 # policyDecision SERVICE SOURCE TARGET -- what dom0's qrexec policy decides,
@@ -557,6 +663,8 @@ check() {
 	EXTENSIONS_JSON="$(sudo qubesctl --dom0-only --out=json pillar.get seqs:brave_extensions 2>/dev/null)"
 	BROWSER_VM="$(pillarValue seqs:browser_vm)"
 	BROWSER_DESKTOP="$(pillarValue seqs:browser_desktop)"
+	PREFIX_TEMPLATE="$(pillarValue seqs:prefix_template)"
+	PREFIX_APP="$(pillarValue seqs:prefix_app)"
 	[ -n "${BROWSER_VM}" ] && [ -n "${BROWSER_DESKTOP}" ] || fail "could not read browser_vm and browser_desktop from the pillar"
 
 	while read -r kind name recipe flags; do
@@ -588,8 +696,8 @@ check() {
 				;;
 			app)
 				tpl="$(qvm-prefs -- "${name}" template 2>/dev/null)"
-				grep -qE "^template ${tpl} " < <(sudo cat "${targets}") \
-					|| fail "${name} is based on ${tpl:-?}, not on a SEQS template"
+				[ "${tpl}" = "${PREFIX_TEMPLATE}${name#"${PREFIX_APP}"}" ] \
+					|| fail "${name} is based on ${tpl:-?}, not on its own ${PREFIX_TEMPLATE}${name#"${PREFIX_APP}"}"
 				qvm-check --running --quiet -- "${name}" >/dev/null 2>&1 || ours=1
 				checkMarkers "${name}" app "${recipe}"
 				checkSetup app "${name}" "${recipe}"
@@ -599,8 +707,12 @@ check() {
 				# the browser qube and start no disposable through any service
 				# the default policy allows: a networked disposable would be a
 				# way out.
+				handoffTag "${name}" "${recipe}"
+				case "${recipe}" in
+					wireguard) checkWireguard "${name}" ;;
+					gnosisvpn) checkGnosisvpn "${name}" ;;
+				esac
 				if noHandoff "${recipe}"; then
-					hasTag "${name}"
 					[ "$(catField "${recipe}" dispvm_template)" != "True" ] || unnamedDisposableRefused "${name}"
 					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM
 					refused "${name}" @dispvm qubes.OpenURL qubes.OpenInVM qubes.StartApp+xterm \
@@ -615,8 +727,8 @@ check() {
 				;;
 			disposable)
 				checkSetup disposable "${name}" "${recipe}"
+				handoffTag "${name}" "${recipe}"
 				if noHandoff "${recipe}"; then
-					hasTag "${name}"
 					policyRefused "${name}"
 				fi
 				checkMenu disposable "${name}" "${recipe}"
@@ -673,6 +785,12 @@ check() {
 		|| fail "the temporary GnosisVPN updates policy was left behind"
 	[ -z "$(find "${TMP_DIR}" -maxdepth 1 -name 'seqs-*' 2>/dev/null)" ] \
 		|| fail "the runner left temporary files in ${TMP_DIR}"
+	[ -z "$(sudo ls -A "${STATE_DIR}/intents" 2>/dev/null)" ] \
+		|| fail "creation markers were left in ${STATE_DIR}/intents: $(sudo ls -A "${STATE_DIR}/intents" | tr '\n' ' ')"
+	if qvm-check --quiet -- "${CLIENT}" >/dev/null 2>&1; then
+		qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+		qvm-remove -f -- "${CLIENT}" >/dev/null 2>&1 || fail "could not remove ${CLIENT}"
+	fi
 
 	if [ "${#started[@]}" -gt 0 ]; then
 		qvm-shutdown --wait -- "${started[@]}" >/dev/null 2>&1 || true
@@ -745,6 +863,10 @@ lifecycle() {
 		# stop-hook: the shutdown cleanup alone, run in the live qube, so the
 		# files are gone before the qube is off; kill: no shutdown hook runs,
 		# so only the boot cleanup can remove them; shutdown: the normal path.
+		qvm-run --pass-io --no-gui -u root "${subject}" \
+				'test -x /usr/sbin/seqs-cleanup && ! systemctl is-failed --quiet seqs-cleanup.service' </dev/null >/dev/null 2>&1 \
+			&& pass "${subject}: the cleanup service is installed and has not failed" \
+			|| fail "${subject}: the cleanup service is missing or failed"
 		for way in stop-hook kill shutdown; do
 			inQube "${subject}" "${SEED}" || fail "${subject}: could not create the test files"
 			inQube "${subject}" '[ -f ~/QubesIncoming/seqs-src/f ] && [ -f ~/Downloads/seqs-a ]' \

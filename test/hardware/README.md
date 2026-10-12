@@ -277,7 +277,7 @@ the results, changes the code, and runs the test again.
 | reset | dom0 | Deletes every SEQS qube (all `D-`, `A-`, and `Z-` qubes and those tagged by SEQS) and all SEQS files in dom0, then verifies that none are left. |
 | install | dom0 | Runs the SEQS runner from the commit under test for the selected qubes, answering each `[y/N]` prompt with `y`. |
 | check | dom0 | Verifies what was built: see below. |
-| lifecycle | dom0 | Restarts the app qubes and checks that the boot and shutdown cleanup ran (and did not, with `preserve_incoming`) and that state kept through bind-dirs survived. |
+| lifecycle | dom0 | Restarts the app qubes and checks that the cleanup service has not failed, that the boot and shutdown cleanup ran (and did not, with `preserve_incoming`) and that state kept through bind-dirs survived. |
 | invalidate | dom0 | Only with `--force-rerun`: empties every completion marker. |
 | rerun-install, rerun-check | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
 | update, update-check | dom0 | Only with `--update`: updates the templates as a user would, then checks again. |
@@ -295,15 +295,23 @@ The check phase verifies, for every qube the runner was asked to build, that:
 - every component recorded its completion marker
   (`/rw/config/seqs/<component>.<role>.done` inside the qube, holding the hash
   of the files installed for it);
-- templates are shut down after the install, and app qubes are based on
-  their SEQS template;
+- templates are shut down after the install, and each app qube is based on
+  its own SEQS template;
+- each app qube and named disposable carries exactly the handoff tag its
+  catalogue entry calls for;
 - offline qubes have no network qube and no default disposable, and an
   offline app qube really cannot open a connection to the internet;
-- networked app qubes have a network qube.
+- networked app qubes have a network qube;
+- a network-provider qube (WireGuard, GnosisVPN) gives a throwaway client
+  qube, `seqs-test-client`, no internet without a working tunnel, while the
+  same client reaches it through the default network qube. For WireGuard, the
+  importer must refuse a `PostUp` hook, and a tunnel whose peer never answers
+  must still block the client. For GnosisVPN, a stand-in tunnel interface
+  must get the DNS translation only while it is up and routes the resolvers.
 
 It also checks that the runner recorded success, that every SEQS policy file
-in dom0 carries the SEQS marker, and that no temporary qube, policy, or file
-was left behind.
+in dom0 carries the SEQS marker, and that no temporary qube, policy, file, or
+creation marker was left behind.
 
 ### Running it
 

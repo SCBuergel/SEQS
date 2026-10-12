@@ -302,6 +302,17 @@ echo "== hardware system test: dom0-side helpers =="
 		bash -n <<< "${cmd}" 2>/dev/null || echo "FAIL smoke test of $c is not valid shell"
 		[[ "${cmd}" != false* ]] || echo "FAIL smoke test of $c could not be built: ${cmd}"
 	done
+	# The scripts run inside the provider qubes are valid shell.
+	bash -n <<< "${WG_IMPORT}" 2>/dev/null || echo "FAIL WG_IMPORT is not valid shell"
+	bash -n <<< "${GV_DNS}" 2>/dev/null || echo "FAIL GV_DNS is not valid shell"
+	# A qube carries exactly the handoff tag its recipe calls for.
+	CATALOGUE_JSON='{"keepass": {"offline": true}, "signal": {}}'
+	tag() { qvm-tags() { printf '%b' "${TAGS}"; }; TAGS="$3" handoffTag "$1" "$2"; }
+	[[ "$(tag A-keepass keepass 'seqs-no-handoff\n')" == CHECK-OK* ]] || echo "FAIL handoffTag offline"
+	[[ "$(tag A-signal signal 'seqs-handoff\n')" == CHECK-OK* ]] || echo "FAIL handoffTag handoff"
+	[[ "$(tag A-keepass keepass 'seqs-no-handoff\nseqs-handoff\n')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted both tags"
+	[[ "$(tag A-signal signal 'seqs-no-handoff\n')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted the wrong tag"
+	[[ "$(tag A-keepass keepass '')" == CHECK-FAIL* ]] || echo "FAIL handoffTag accepted no tag"
 ) > "${tmp}/dom0test.out" 2>&1
 if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
