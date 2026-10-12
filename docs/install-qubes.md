@@ -62,5 +62,11 @@ Suggested partitions / mount points:
 
   ![Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
 
+- **Debian template:** SEQS builds on the `debian-13-xfce` template, which the
+  installer offers as an option. If you did not select it there, install it
+  after connecting to wifi, in a dom0 terminal:
+  ```
+  qvm-template install debian-13-xfce
+  ```
 - After connecting to wifi, the system-update icon should appear in the tray
   (top right). Run all updates and reboot.

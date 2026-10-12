@@ -159,7 +159,8 @@ the authoritative review.
 
 The fetcher transfers all of `salt/` and `install-scripts/` — the full
 catalogue and every component script, never narrowed by `--qubes` — and remaps
-them into the layout Qubes Salt expects under `/srv`:
+them into the layout Qubes Salt expects under `/srv` (states in `/srv/salt`,
+pillar configuration in `/srv/pillar`):
 
 | Fetched path | Comes from the repository's |
 |---|---|
@@ -229,9 +230,8 @@ When your review is satisfied, in the dom0 terminal:
 ~/s.sh --stage-only
 ```
 
-`/srv` is not a SEQS product name. It is the standard location used by
-[Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html):
-states live under `/srv/salt` and pillar configuration under `/srv/pillar`.
+`/srv` is the standard location used by
+[Qubes Salt](https://doc.qubes-os.org/en/latest/user/advanced-topics/salt.html), not a SEQS name.
 SEQS owns only the `seqs` subdirectories. Staging makes the reviewed files
 available to `qubesctl`; it still does not create or provision any qube.
 
@@ -288,7 +288,7 @@ Watch for:
 
 `==> SEQS setup finished WITH FAILURES -- see warnings above.` means a run
 failed; re-runs converge, so fix the reported cause and rerun `--build-only`
-with the same selection. Some applications require a one-time app-qube reboot.
+with the same selection.
 
 ## 9. Verify before use
 

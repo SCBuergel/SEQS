@@ -45,9 +45,12 @@ from one reviewed configuration.
 
    Use `--all` instead of `--qubes` for the full catalogue.
 
-   - If the `SEQS workflow and paths:` banner does not appear, the copy failed:
-     check the qube name and copy again.
-   - At the `[y/N]` prompt, type `y`; Enter alone aborts.
+   - If neither the `SEQS workflow and paths:` banner nor an `ERROR:` line
+     appears, the copy failed: check the qube name and copy again.
+   - At the `Install: ... [y/N]` prompt, type `y`; Enter alone aborts. If an
+     `Overwrite the file(s) above?` prompt appears, answer `N`: a policy file
+     SEQS did not write would be replaced (see
+     [first-install §8](docs/first-install.md#8-build-the-qubes)).
    - Success ends with `==> SEQS setup complete. All targets provisioned.`
 
 Do not put secrets into the resulting qubes until completing the post-install
