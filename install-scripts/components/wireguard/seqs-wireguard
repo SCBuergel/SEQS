@@ -26,15 +26,17 @@ grep -Eq '^[[:space:]]*\[Interface\][[:space:]]*$' "$source_file" &&
 	grep -Eq '^[[:space:]]*DNS[[:space:]]*=.*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "$source_file" &&
 	grep -Eq '^[[:space:]]*PublicKey[[:space:]]*=' "$source_file" &&
 	grep -Eq '^[[:space:]]*Endpoint[[:space:]]*=' "$source_file" &&
-	grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=.*0\.0\.0\.0/0' "$source_file" || {
+	grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=([^#]*,)?[[:space:]]*0\.0\.0\.0/0[[:space:]]*(,.*)?$' "$source_file" || {
 	echo "ERROR: file is not a complete full-tunnel WireGuard configuration" >&2
 	exit 1
 }
 
-# wg-quick executes hook values as root. Provider exports do not need them, so
-# refuse a file that could turn import into arbitrary command execution.
-if grep -Eiq '^[[:space:]]*(PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "$source_file"; then
-	echo "ERROR: executable wg-quick hook directives are not accepted" >&2
+# wg-quick executes hook values (PreUp, PostUp, ...) as root. Accept only the
+# keys that provider exports use: a deny-list of hooks would miss a spelling
+# such as Post<NUL>Up, which grep reads as two words and wg-quick's bash
+# parser, which drops NUL bytes, as PostUp.
+if LC_ALL=C grep -Eviq '^[[:space:]]*(#.*|\[(Interface|Peer)\]|(PrivateKey|Address|DNS|MTU|ListenPort|PublicKey|PresharedKey|Endpoint|AllowedIPs|PersistentKeepalive)[[:space:]]*=.*)?[[:space:]]*$' "$source_file"; then
+	echo "ERROR: only the keys PrivateKey, Address, DNS, MTU, ListenPort, PublicKey, PresharedKey, Endpoint, AllowedIPs, PersistentKeepalive are accepted; wg-quick hooks such as PostUp would run as root" >&2
 	exit 1
 fi
 

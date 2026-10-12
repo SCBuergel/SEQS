@@ -282,6 +282,33 @@ if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
 else ok; fi
 
+echo "== seqs-wireguard-import accepts a provider export, refuses hooks =="
+# A stub sudo records what the import would install instead of doing it.
+wg="${tmp}/wg"; mkdir -p "${wg}/bin"
+printf '#!/bin/sh\necho "$*" >> "%s/sudo.log"\n' "${wg}" > "${wg}/bin/sudo"; chmod +x "${wg}/bin/sudo"
+wg_conf() {  # EXTRA-LINE... -- a complete full-tunnel config plus the given lines
+	printf '%s\n' '[Interface]' '# provider comment' 'PrivateKey = AAAA' 'Address = 10.2.0.2/32' \
+		'DNS = 10.2.0.1' '[Peer]' 'PublicKey = BBBB' 'Endpoint = 198.51.100.1:51820' \
+		'AllowedIPs = 0.0.0.0/0, ::/0' 'PersistentKeepalive = 25' "$@" > "${wg}/t.conf"
+}
+wg_import() { PATH="${wg}/bin:${PATH}" bash install-scripts/components/wireguard/seqs-wireguard "${wg}/t.conf" 2>&1; }
+wg_conf; rm -f "${wg}/sudo.log"
+out="$(wg_import)" && grep -q "seqs-wireguard/wg0.conf" "${wg}/sudo.log" && ok || bad "a provider export was refused: ${out}"
+for extra in 'PostUp = touch /tmp/x' $'Post\x01Up = touch /tmp/x' 'Table = off' 'SaveConfig = true'; do
+	wg_conf "${extra}"; rm -f "${wg}/sudo.log"
+	out="$(wg_import)" && bad "the import accepted [${extra}]"
+	grep -q "wg-quick hooks such as PostUp would run as root" <<< "${out}" && [ ! -e "${wg}/sudo.log" ] && ok \
+		|| bad "[${extra}]: wrong message or installed anyway [${out}]"
+done
+# A NUL byte inside a key: grep sees two words, wg-quick's bash parser PostUp.
+wg_conf; printf 'Post\0Up = touch /tmp/x\n' >> "${wg}/t.conf"; rm -f "${wg}/sudo.log"
+out="$(wg_import)" && bad "the import accepted Post<NUL>Up"
+[ ! -e "${wg}/sudo.log" ] && ok || bad "Post<NUL>Up was installed"
+# Only an exact 0.0.0.0/0 entry is a full tunnel.
+wg_conf; sed -i 's|^AllowedIPs = .*|AllowedIPs = 100.0.0.0/08|' "${wg}/t.conf"; rm -f "${wg}/sudo.log"
+out="$(wg_import)" && bad "the import accepted a split tunnel"
+grep -q "not a complete full-tunnel" <<< "${out}" && ok || bad "split tunnel: wrong message [${out}]"
+
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 printf '#!/bin/sh\nexec "$@"\n' > "${stub}/sudo"
 printf '#!/bin/sh\nprintf "%%b\\n" "$QOUT"\n' > "${stub}/qubesctl"

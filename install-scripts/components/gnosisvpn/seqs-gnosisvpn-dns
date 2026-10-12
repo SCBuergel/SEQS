@@ -7,7 +7,8 @@ table=seqs_gnosisvpn_dns
 state_file=/run/seqs-gnosisvpn-dns.state
 fallback_dns=(1.1.1.1 8.8.8.8)
 
-exec 9>/run/lock/seqs-gnosisvpn-dns.lock
+# /run, not the world-writable /run/lock, where another user could plant the file.
+exec 9>/run/seqs-gnosisvpn-dns.lock
 flock 9
 
 remove_table() {

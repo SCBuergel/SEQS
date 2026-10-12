@@ -47,9 +47,12 @@ seqs-wireguard-import ~/WireGuard/provider.conf
 ```
 
 The importer validates that the file contains a full-tunnel IPv4 route and an
-IPv4 DNS server. It rejects executable `PreUp`, `PostUp`, `PreDown`, and
-`PostDown` directives. On success, it stores a root-only copy and starts the
-tunnel immediately.
+IPv4 DNS server, and accepts only the keys provider exports use
+(`PrivateKey`, `Address`, `DNS`, `MTU`, `ListenPort`, `PublicKey`,
+`PresharedKey`, `Endpoint`, `AllowedIPs`, `PersistentKeepalive`), so that
+executable directives such as `PostUp`, which wg-quick runs as root, are
+refused. On success, it stores a root-only copy and starts the tunnel
+immediately.
 
 Confirm the connection:
 

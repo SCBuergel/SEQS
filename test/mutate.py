@@ -103,6 +103,8 @@ MUTATIONS = [
     ("qr-poweroff", QR, "		systemctl poweroff\n", ""),
     ("qr-offline-pref", QR, "			''|None|none) ;;", "			*) ;;"),
     ("qr-old-key", QR, "	ABSENT) ;;", "	ABSENT|PRESENT) ;;"),
+    ("wg-allowlist", "install-scripts/components/wireguard/seqs-wireguard", "PersistentKeepalive)[[:space:]]*=.*)?", "PersistentKeepalive|[A-Za-z]+)[[:space:]]*=.*)?"),
+    ("wg-full-tunnel", "install-scripts/components/wireguard/seqs-wireguard", "=([^#]*,)?[[:space:]]*0\\.0\\.0\\.0/0[[:space:]]*(,.*)?$'", "=.*0\\.0\\.0\\.0/0'"),
     # Installer helpers: pinned keys, signatures, hashes, apt pins.
     ("gpg-exact-keys", G, '[[ "${got}" != "${expected}" ]]', '[[ -z "${got}" ]]'),
     ("gpg-validsig-pin", G, '$NF==fpr { validsig=1; next }', '{ validsig=1; next }'),
