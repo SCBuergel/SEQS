@@ -101,6 +101,8 @@ MUTATIONS = [
     ("dom0-sequential-staging-offline", S, "(not qcatalog.get('qr-staging', {}).get('offline') or ", "("),
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
     # The sequential QR script in dom0: offline camera side, one device, power-off.
+    ("qr-running-webcam-poweroff", QR, "\texposed=1; exit 1;", "\texit 1;"),
+    ("qr-poweroff-force", QR, "systemctl poweroff || systemctl poweroff --force --force", "systemctl poweroff"),
     ("qr-start-word", QR, '[ "$answer" = START ]', '[ -n "$answer" ]'),
     ("qr-one-device", QR, '[ "${#devices[@]}" -eq 1 ] ||', '[ "${#devices[@]}" -ge 1 ] ||'),
     ("qr-device-id", QR, '=~ ^[0-9]+-[0-9]+(\\.[0-9]+)*$ ]]', '=~ ^[0-9]+-.*$ ]]'),

@@ -37,7 +37,9 @@ teardown_and_poweroff() {
 	if [ "$exposed" -eq 1 ]; then
 		echo "Camera phase ended (status $rc). Powering off; do not reconnect USB input before power is off."
 		sync
-		systemctl poweroff
+		# Never return to a running system: force the power-off if the
+		# orderly one is refused.
+		systemctl poweroff || systemctl poweroff --force --force
 	fi
 	exit "$rc"
 }
@@ -47,8 +49,11 @@ trap teardown_and_poweroff EXIT HUP INT QUIT TERM
 for vm in "$NORMAL_USB_QUBE" "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
 	qvm-check -q -- "$vm" || { echo "ERROR: required qube '$vm' is missing" >&2; exit 1; }
 done
+# A running webcam backend has had the controller outside this script, so
+# the controller may not return to the keyboard side without a power cycle.
 qvm-check --running -q -- "$WEBCAM_USB_QUBE" && {
-	echo "ERROR: $WEBCAM_USB_QUBE is already running" >&2; exit 1;
+	echo "ERROR: $WEBCAM_USB_QUBE is already running; it has had the shared controller" >&2
+	exposed=1; exit 1;
 }
 qvm-check --running -q -- "$SCANNER_QUBE" && {
 	echo "ERROR: $SCANNER_QUBE is already running" >&2; exit 1;
@@ -165,14 +170,16 @@ esac
 [[ "$usb_path" =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]] || {
 	echo "ERROR: webcam backend returned an unsafe device identifier" >&2; exit 1;
 }
-qvm-usb attach "$SCANNER_QUBE" "$device"
+qvm-usb attach "$SCANNER_QUBE" "$device" >/dev/null 2>&1 \
+	|| { echo "ERROR: could not attach the webcam to $SCANNER_QUBE" >&2; exit 1; }
 
 # No scanner/backend output reaches the dom0 terminal. The untrusted scanner
 # may invoke only qubes.Filecopy to the fixed staging qube under qrexec policy.
 # The camera node appears a moment after the USB attach; waiting for it keeps
 # a slow enumeration from costing a power cycle.
 scan_rc=0
-if qvm-run --pass-io "$SCANNER_QUBE" \
+# The scanner's own timeout runs in the untrusted qube; dom0 bounds it too.
+if timeout 240 qvm-run --pass-io "$SCANNER_QUBE" \
 	"set -euo pipefail; umask 077; for _ in \$(seq 15); do test -e /dev/video0 && break; sleep 1; done; timeout 180 zbarcam -q --raw --oneshot -Sdisable -Sqrcode.enable > key.asc; test -s key.asc; test \"\$(stat -c %s key.asc)\" -le 16384; qvm-copy-to-vm '$STAGING_QUBE' key.asc" \
 	</dev/null >/dev/null 2>/dev/null; then
 	echo "Ciphertext copy completed. Physically unplug the webcam now."

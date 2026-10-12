@@ -993,8 +993,10 @@ switched back on, for example by a firmware update: do not type `START`; press
 script again. If the script reports that `A-qr-staging` already holds an
 incoming `key.asc`, left by an earlier scan or rehearsal, delete
 `~/QubesIncoming/seqs-qr-scanner` in `A-qr-staging` once you no longer need
-it, shut `A-qr-staging` down, and run the script again. Otherwise, type `START`
-in capital letters. After that:
+it, shut `A-qr-staging` down, and run the script again. If it reports that
+`sys-usb-webcam` is already running, that qube has had the shared controller,
+so the script powers the computer off; run it again after the restart.
+Otherwise, type `START` in capital letters. After that:
 
 1. Unplug every USB keyboard and mouse right away. After 10 seconds the
    script stops normal `sys-usb`. If you cannot unplug them in time, press

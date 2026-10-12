@@ -629,7 +629,13 @@ if command -v setsid >/dev/null 2>&1; then
 	qr_reset; echo 'SCANNER_QUBE="x;y"' >> "${SBX}/conf"; qr_case "unsafe name" "unsafe qube name"
 	qr_reset; echo 'CONTROLLER=00_14.0x' >> "${SBX}/conf"; qr_case "bad BDF" "invalid controller BDF"
 	qr_reset; sed -i '/^A-qr-staging$/d' "${SBX}/exists"; qr_case "missing qube" "required qube 'A-qr-staging' is missing"
-	qr_reset; echo sys-usb-webcam >> "${SBX}/running"; qr_case "webcam backend running" "sys-usb-webcam is already running"
+	# A webcam backend running before the script has had the shared
+	# controller: refuse, but end this boot with a power-off.
+	qr_reset; echo sys-usb-webcam >> "${SBX}/running"; rm -f "${SBX}/systemctl.log"
+	out="$(PATH="${SBX}/bin:${PATH}" setsid bash "${SBX}/qr.sh" </dev/null 2>&1)"
+	grep -qF "sys-usb-webcam is already running" <<<"${out}" && grep -qx poweroff "${SBX}/systemctl.log" 2>/dev/null && ok \
+		|| bad "webcam backend running: expected a refusal and a power-off, got: $(tail -n 1 <<<"${out}")"
+	rm -f "${SBX}/systemctl.log"
 	qr_reset; echo seqs-qr-scanner >> "${SBX}/running"; qr_case "scanner running" "seqs-qr-scanner is already running"
 	qr_reset; echo PRESENT > "${SBX}/staged"; qr_case "old key.asc" "already holds an incoming key.asc"
 	qr_reset; : > "${SBX}/staged"; qr_case "staging unreadable" "could not check A-qr-staging"
@@ -674,6 +680,10 @@ printf 'sys-usb-webcam:2-1;x Webcam\n' > "${SBX}/usb"
 qr_camera "unsafe device" START "unsafe device identifier" yes
 printf 'sys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"; echo 1 > "${SBX}/scan_rc"
 qr_camera "failed scan" START "scan/copy failed" yes
+# A refused orderly power-off falls back to the forced one.
+write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"; [ "$*" != poweroff ]'
+qr_camera "refused power-off" START "scan/copy failed" yes
+grep -qx -- "poweroff --force --force" "${SBX}/systemctl.log" && ok || bad "a refused power-off must be forced"
 rm -rf "${SBX}"
 
 echo
