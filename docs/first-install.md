@@ -94,16 +94,7 @@ Editing `config.sls` is necessary only to customize the definitions themselves,
 such as adding a new component combination, changing the base template, or
 configuring qualified secure-QR hardware. Such an edit changes the *tree* (the
 Salt state, pillar, and component-script files SEQS transfers and applies as a
-unit) and must be committed, reviewed, fetched, and staged normally. Catalogue
-definitions have this form:
-
-```jinja
-{%- set qube_catalog = [
-  {'name': 'keepass', 'label': 'black', 'components': ['keepass'], 'offline': True},
-  {'name': 'claude-code', 'label': 'orange', 'components': ['claude-code']},
-  {'name': 'dev-full', 'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
-] %}
-```
+unit) and must be committed, reviewed, fetched, and staged normally.
 
 For security-sensitive hardware configuration such as QR transfer, complete
 the qualification steps in [secure-qr-transfer.md](secure-qr-transfer.md)
@@ -217,11 +208,6 @@ For the fuller file-by-file order and rationale, use
 [architecture.md](architecture.md); for what each catalogue option means, read
 [configuration.md](configuration.md).
 
-Dom0 receives whatever the disposable claims `HEAD` and its archive are; a
-compromised disposable could lie, so this review of the fetched tree is what
-covers the code that will run (see
-[architecture.md](architecture.md#what-the-runner-does-in-order)).
-
 ### Stage the reviewed tree
 
 When your review is satisfied, in the dom0 terminal:
@@ -252,9 +238,7 @@ reads it. In the dom0 terminal:
    ```
 
    No output means the staged files are byte-for-byte the fetched tree you
-   reviewed — nothing was substituted between review and staging. Re-running
-   `~/s.sh --stage-only` performs the same comparison for you: it reports
-   `Fetched tree is identical to the tree already staged in /srv.`
+   reviewed — nothing was substituted between review and staging.
 
 2. **Root-owned and not user-writable.** Confirm the dom0 user cannot modify the
    staged tree before the build consumes it:
