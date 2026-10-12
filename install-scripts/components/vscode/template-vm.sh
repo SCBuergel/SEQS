@@ -39,7 +39,7 @@ echo "Installing VS Code"
 sudo install -m 0755 -d /etc/apt/keyrings
 # Microsoft signs many products with this one key; the pin allows only the
 # code package set from packages.microsoft.com.
-# A rerun finds the keyring locked by the chattr +i below.
+# A rerun finds the keyring locked by lock_keyring below.
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
 add_pinned_apt_repo vscode "${KEYRING}" "${MS_KEY_FPR}" amd64,arm64,armhf \
 	"https://packages.microsoft.com/repos/code stable main" \
@@ -72,4 +72,4 @@ echo "code code/add-microsoft-repo boolean false" | sudo debconf-set-selections
 sudo apt-get update
 sudo apt-get install -y code
 sudo rm -f /usr/share/keyrings/microsoft.gpg
-sudo chattr +i "${KEYRING}"
+lock_keyring "${KEYRING}" "${MS_KEY_FPR}"

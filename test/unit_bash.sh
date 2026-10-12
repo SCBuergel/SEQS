@@ -256,15 +256,18 @@ else ok; fi
 
 echo "== component scripts that lock a file unlock it first, so they can run twice =="
 # A component runs again whenever its files change (hash markers). A file it
-# locked with chattr +i on the first run must be unlocked before it is
-# rewritten, or the rerun fails.
+# locked with chattr +i or lock_keyring on the first run must be unlocked
+# before it is rewritten, or the rerun fails. lock_keyring's own chattr on its
+# argument "${1}" is the helper, not a lock.
+lock_re='^[[:space:]]*(sudo chattr \+i|lock_keyring) "?'
 for f in install-scripts/components/*/*.sh install-scripts/lib/*.sh; do
 	while IFS= read -r target; do
-		lock_line="$(grep -nE "^[[:space:]]*sudo chattr \+i \"?${target}" "$f" | head -n 1 | cut -d: -f1)"
+		[ "${target}" = '\$\{1\}' ] && continue
+		lock_line="$(grep -nE "${lock_re}${target}" "$f" | head -n 1 | cut -d: -f1)"
 		unlock_line="$(grep -nE "^[[:space:]]*sudo chattr -i \"?${target}" "$f" | head -n 1 | cut -d: -f1)"
 		if [ -n "${unlock_line}" ] && [ "${unlock_line}" -lt "${lock_line}" ]; then ok
 		else bad "$f locks ${target} without unlocking it earlier"; fi
-	done < <(grep -oE '^[[:space:]]*sudo chattr \+i "?[^" ]+' "$f" | sed -E 's/.*chattr \+i "?//; s/[$]/\\$/g; s/[{}]/\\&/g')
+	done < <(grep -oE "${lock_re}"'[^" ]+' "$f" | sed -E 's/.*(chattr \+i|lock_keyring) "?//; s/[$]/\\$/g; s/[{}]/\\&/g')
 done
 
 echo "== hardware system test: dom0-side helpers =="
@@ -405,6 +408,15 @@ if command -v gpg >/dev/null 2>&1; then
 		gpg() { printf '[GNUPG:] GOODSIG X\n[GNUPG:] VALIDSIG a b %s\n' "${fprs[0]}"; return 2; }
 		verify_detached_sig s d "${fprs[0]}" f.bin ) 2>&1 )" && bad "verify_detached_sig ignored gpg's exit code"
 	grep -q "f.bin signature verification FAILED (gpg exit 2" <<< "${out}" && ok || bad "gpg exit: wrong message [${out}]"
+	# lock_keyring locks a keyring only while it holds exactly the pinned key.
+	GNUPGHOME="${g}/home" gpg --export "${fprs[0]}" > "${g}/one.gpg"
+	GNUPGHOME="${g}/home" gpg --export > "${g}/two.gpg"
+	lock() { ( set -Eeuo pipefail; . install-scripts/lib/verify-gpg.sh; sudo() { echo "sudo $*"; }; lock_keyring "$1" "${fprs[0]}" ) 2>&1; }
+	out="$(lock "${g}/one.gpg")" && grep -qx "sudo chattr +i ${g}/one.gpg" <<< "${out}" && ok \
+		|| bad "lock_keyring did not lock a keyring with the pinned key: ${out}"
+	out="$(lock "${g}/two.gpg")" && bad "lock_keyring accepted a keyring with a second key"
+	grep -q "must hold exactly the pinned key" <<< "${out}" && ! grep -q chattr <<< "${out}" && ok \
+		|| bad "a second key must stop lock_keyring before chattr: ${out}"
 	gpgconf --homedir "${g}/home" --kill all 2>/dev/null
 	rm -rf "${g}"
 else

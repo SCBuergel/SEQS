@@ -174,11 +174,21 @@ fetch_signed() {
 #     infrastructure could ship a higher-version bash / libc6 / systemd and
 #     apt would prefer it over Debian's.
 # The caller unlocks KEYRING before (a rerun finds it locked) and, after
-# installing, locks it with `sudo chattr +i`: the pin bounds which packages
+# installing, locks it with lock_keyring: the pin bounds which packages
 # the repo can ship, not what their root-run maintainer scripts do, and one
 # that rewrote KEYRING would silently rotate the trust anchor. Locked, such
 # a write fails loudly; a genuine key rotation needs the pinned fingerprint
 # re-verified and updated.
+# lock_keyring KEYRING FPR
+# After the vendor package is installed, check that KEYRING still holds
+# exactly the key FPR, then lock it with chattr +i. The package's root-run
+# maintainer scripts ran while KEYRING was unlocked, so a key they wrote there
+# must not be locked in unchecked.
+lock_keyring() {
+	gpg --show-keys --with-colons "${1}" 2>/dev/null | require_exact_keys "${1}" "${2}" || exit 1
+	sudo chattr +i "${1}"
+}
+
 add_pinned_apt_repo() (
 	local name="${1}" keyring="${2}" fpr="${3}" arch="${4}" repo="${5}" origin="${6}" allowed="${7}"
 	local gh

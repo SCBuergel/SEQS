@@ -41,16 +41,15 @@ Pin: origin "download.gnosisvpn.io"
 Pin-Priority: 500
 EOF
 
-# A rerun finds the package's keyring locked by the chattr +i below; the
+# A rerun finds the package's keyring locked by lock_keyring below; the
 # package rewrites it, so unlock it first.
 KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
 sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"
 
-# Its keyring must hold exactly the pinned key, and is locked against
-# rewrite by later maintainer scripts.
-gpg --show-keys --with-colons "${KEYRING}" 2>/dev/null | require_exact_keys "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
-sudo chattr +i "${KEYRING}"
+# The package wrote its keyring; it must hold exactly the pinned key, and is
+# locked against rewrite by later maintainer scripts.
+lock_keyring "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall

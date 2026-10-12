@@ -44,8 +44,9 @@ sudo apt-get install -y curl
 # unversioned ("latest"), so the download cannot be cryptographically
 # verified or version-pinned -- see TRUST.md, "Ledger Live ❌".
 #
-# Install system-wide and root-owned so qube-user processes cannot replace the
-# AppImage between sessions.
+# Install it root-owned in the template: the app qube then gets it from the
+# template's root volume at every start, so a swap takes root and a hook under
+# /rw rather than a write to the home directory (see TRUST.md).
 #
 # Templates have no direct network; route the curl through the Qubes
 # apt proxy. -f makes curl fail on an HTTP error instead of saving an
@@ -55,4 +56,4 @@ TMP=$(mktemp)
 trap 'rm -f "${TMP}"' EXIT
 curl --proxy 127.0.0.1:8082 -fsSL https://download.live.ledger.com/latest/linux -o "${TMP}"
 sudo install -m 0755 -o root -g root "${TMP}" /usr/bin/LedgerLive.AppImage
-echo "installed /usr/bin/LedgerLive.AppImage (root-owned, immutable to qube user)"
+echo "installed /usr/bin/LedgerLive.AppImage (root-owned)"

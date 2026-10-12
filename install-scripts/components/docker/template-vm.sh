@@ -22,7 +22,7 @@ echo "Installing docker"
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
-# A rerun finds the keyring locked by the chattr +i below. The allowlist
+# A rerun finds the keyring locked by lock_keyring below. The allowlist
 # includes containerd.io, which Docker's repo ships in place of Debian's
 # containerd.
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
@@ -96,7 +96,7 @@ EOF
 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo chattr +i "${KEYRING}"
+lock_keyring "${KEYRING}" "${DOCKER_KEY_FPR}"
 
 # Add the user to the docker group. NOTE: docker-group membership is equivalent
 # to root inside this qube -- see TRUST.md.

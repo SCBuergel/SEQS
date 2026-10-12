@@ -27,7 +27,7 @@ ELEMENT_KEY_FPR="12D4CD600C2240A9F4A82071D7B0B66941D01538"
 
 echo "Installing Element Desktop"
 
-# A rerun finds the keyring locked by the chattr +i below.
+# A rerun finds the keyring locked by lock_keyring below.
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
 add_pinned_apt_repo element-io "${KEYRING}" "${ELEMENT_KEY_FPR}" amd64 \
 	"https://packages.element.io/debian/ default main" \
@@ -94,4 +94,4 @@ EOF
 
 sudo apt-get update
 sudo apt-get install -y element-desktop
-sudo chattr +i "${KEYRING}"
+lock_keyring "${KEYRING}" "${ELEMENT_KEY_FPR}"

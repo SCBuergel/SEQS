@@ -336,7 +336,7 @@ checkTemplateApt() {
 	for comp in $(componentsFor "${recipe}"); do
 		script="${SALT_TREE}/files/components/${comp}/template-vm.sh"
 		case "${comp}" in brave|brave-extension-*) script="${SALT_TREE}/files/lib/brave.sh" ;; esac
-		sudo test -f "${script}" && sudo grep -q 'chattr +i' "${script}" || continue
+		sudo test -f "${script}" && sudo grep -qE 'chattr \+i|lock_keyring' "${script}" || continue
 		while IFS= read -r path; do
 			paths+=("${path}")
 		done < <(sudo grep -oiE 'keyring="/[^"]+"' "${script}" | cut -d'"' -f2)

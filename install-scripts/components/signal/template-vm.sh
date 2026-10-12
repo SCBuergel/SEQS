@@ -25,7 +25,7 @@ echo "Installing Signal Desktop"
 # Signal's Release file uses a generic "xenial" suite label and a placeholder
 # Origin (literally ". xenial"), so without the pin this repo would have the
 # same apt priority as Debian's and could satisfy any package name.
-# A rerun finds the keyring locked by the chattr +i below.
+# A rerun finds the keyring locked by lock_keyring below.
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
 add_pinned_apt_repo signal-xenial "${KEYRING}" "${SIGNAL_KEY_FPR}" amd64 \
 	"https://updates.signal.org/desktop/apt xenial main" \
@@ -85,4 +85,4 @@ EOF
 
 sudo apt-get update
 sudo apt-get install -y signal-desktop
-sudo chattr +i "${KEYRING}"
+lock_keyring "${KEYRING}" "${SIGNAL_KEY_FPR}"

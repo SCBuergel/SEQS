@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# LedgerLive.AppImage is installed system-wide in the template phase
-# (template-vm.sh -> /usr/bin/LedgerLive.AppImage, owned root:root) so
-# the binary cannot be silently replaced by anything compromising the
-# wallet qube user account between sessions. No per-app-qube action is needed.
+# The AppImage is installed in the template phase (template-vm.sh).
 echo "ledger: AppImage installed in template phase; nothing to do per-qube."
