@@ -11,6 +11,7 @@ every name the documentation that should explain it does not mention:
   * runner and delete-vms.sh options in their usage text and the docs;
   * pinned signing-key fingerprints in TRUST.md and VERIFY-HUMAN.md;
   * qrexec policy files the runner guards in TRUST.md;
+  * `--qubes` examples in the docs name catalogue entries;
   * relative Markdown links: the file exists, and so does the #anchor.
 """
 import glob
@@ -79,6 +80,14 @@ def main():
     runner = read("setup-qubes.sh")
     policies = set(re.findall(r'"\$\{POLICY_DIR\}/([0-9a-z.-]+\.policy)"', runner))
     require(policies, trust, "TRUST.md", "policy file")
+
+    names = set(re.findall(r"'name': '([a-z0-9-]+)'", catalogue))
+    for path in glob.glob(os.path.join(ROOT, "**/*.md"), recursive=True):
+        if "/results/" in path:
+            continue
+        for arg in re.findall(r"--qubes ([a-z0-9,-]+)", read(os.path.relpath(path, ROOT))):
+            for name in set(arg.split(",")) - names:
+                FAILURES.append("%s selects %s, which is not in the catalogue" % (os.path.relpath(path, ROOT), name))
 
     check_links()
     for f in FAILURES:
