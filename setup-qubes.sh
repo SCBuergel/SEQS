@@ -408,14 +408,15 @@ confirmPolicyTakeover() {
 	# 30-user-input.policy is only written on Qubes 4.3 with sys-usb present
 	# (mirrors the gate in salt/seqs/dom0.sls); skip it elsewhere so a
 	# hand-written copy doesn't trigger a recurring prompt for a file salt never
-	# touches. Only skip when the release is positively known -- an unreadable
-	# release keeps the prompt (fail safe).
-	local usb_applies=1 release
+	# touches. Only skip when the release or the absence of sys-usb is
+	# positively known -- an unreadable release or a failed qvm-ls keeps the
+	# prompt (fail safe).
+	local usb_applies=1 release vms
 	release="$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)" || true
-	if [ -n "${release}" ]; then
-		if [ "${release}" != "4.3" ] || ! qvm-check -q -- sys-usb >/dev/null 2>&1; then
-			usb_applies=0
-		fi
+	if [ -n "${release}" ] && [ "${release}" != "4.3" ]; then
+		usb_applies=0
+	elif [ -n "${release}" ] && vms="$(qvm-ls --raw-list 2>/dev/null)" && ! grep -qxF sys-usb <<< "${vms}"; then
+		usb_applies=0
 	fi
 
 	local p unmanaged=()

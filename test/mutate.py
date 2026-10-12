@@ -39,6 +39,7 @@ MUTATIONS = [
     ("confirm-empty", R, "y|Y) return 0 ;;", "y|Y|'') return 0 ;;"),
     ("ismanaged-anywhere", R, 'grep -q "^# ${MANAGED_MARKER}"', 'grep -q "${MANAGED_MARKER}"'),
     ("takeover-skip", R, 'if [ -e "${p}" ] && ! isManaged "${p}"; then', 'if false; then'),
+    ("takeover-usb-failsafe", R, 'vms="$(qvm-ls --raw-list 2>/dev/null)" && !', '{ vms="$(qvm-ls --raw-list 2>/dev/null)" || true; } && !'),
     ("qubesctl-result-false", R, "Result:([[:space:]]|\\[[0-9;]*m)*False|", ""),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
