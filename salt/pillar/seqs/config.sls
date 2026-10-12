@@ -102,7 +102,6 @@ seqs:
   base_template: '{{ base_template }}'
   browser_vm: '{{ browser_vm }}'
   browser_desktop: '{{ browser_desktop }}'
-  component_timeout: {{ component_timeout }}
   config_errors: {{ config_errors | tojson }}
   catalogue: {{ qubes | tojson }}
   brave_extensions: {{ brave_extensions | tojson }}

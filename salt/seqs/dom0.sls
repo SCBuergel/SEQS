@@ -268,7 +268,7 @@ for vm in qubesadmin.Qubes().domains:
      recipe they were built for. Iterates instances, not catalogue names,
      so --postfix instances are covered too. ─────────────────────────── #}
 {% for name, q in qmap.items() %}
-{%   set recipe = recipes.get(name, '') %}
+{%   set recipe = recipes[name] %}
 {%   for vmname in [ptpl ~ name, papp ~ name] + ([pdvm ~ name] if q.get('named_disposable') and pdvm else []) if vmname in inventory %}
 {%     if not inventory[vmname].managed and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}
 {%       do errors.append("qube '" ~ vmname ~ "' already exists but is not marked seqs-managed -- refusing to adopt it (remove or rename it, or set: qvm-features " ~ vmname ~ " seqs-managed 1)") %}
@@ -535,7 +535,7 @@ seqs-stale-intent-{{ m }}:
 {% endfor %}
 
 {% for name, q in qmap.items() %}
-{%   set recipe = recipes.get(name, '') %}
+{%   set recipe = recipes[name] %}
 {%   set tpl = ptpl ~ name %}
 {%   set app = papp ~ name %}
 {%   set dvm = pdvm ~ name %}
@@ -1012,13 +1012,13 @@ seqs-targets:
         # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
         # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline]
         {%- for name in qmap %}
-        template {{ ptpl }}{{ name }} {{ recipes.get(name, '') }}
+        template {{ ptpl }}{{ name }} {{ recipes[name] }}
         {%- endfor %}
         {%- for name, q in qmap.items() %}
-        app {{ papp }}{{ name }} {{ recipes.get(name, '') }}{{ ' offline' if q.get('offline') else '' }}
+        app {{ papp }}{{ name }} {{ recipes[name] }}{{ ' offline' if q.get('offline') else '' }}
         {%- endfor %}
         {%- for name, q in qmap.items() if q.get('named_disposable') %}
-        disposable {{ pdvm }}{{ name }} {{ recipes.get(name, '') }}{{ ' offline' if q.get('offline') else '' }}
+        disposable {{ pdvm }}{{ name }} {{ recipes[name] }}{{ ' offline' if q.get('offline') else '' }}
         {%- endfor %}
 
 {% endif %}

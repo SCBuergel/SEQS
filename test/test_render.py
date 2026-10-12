@@ -670,7 +670,6 @@ def _bad_pillar(**overrides):
         "base_template": "debian-13-xfce",
         "browser_vm": "A-brave",
         "browser_desktop": "open-links-in-browser-qube.desktop",
-        "component_timeout": 900,
         "config_errors": [],
         "catalogue": {"brave": {"label": "red", "components": ["brave"]}},
         "brave_extensions": {"rabby": "acmacodkjbdgmoleebolmdjonilkdbch"},

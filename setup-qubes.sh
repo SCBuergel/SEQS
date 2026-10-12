@@ -140,11 +140,7 @@ showWorkflow() {
 canonicalizeSelection() {
 	local name instance
 	local -a requested=()
-	if [ "${SELECT_ALL}" -eq 1 ]; then
-		SELECTED_NAMES=("@all")
-		SELECTED_INSTANCES=("@all")
-		return 0
-	fi
+	[ "${SELECT_ALL}" -eq 0 ] || return 0
 	IFS=',' read -r -a requested <<< "${SELECT_QUBES}"
 	[ "${#requested[@]}" -gt 0 ] || die "--qubes requires a comma-separated list"
 	for name in "${requested[@]}"; do
@@ -508,7 +504,6 @@ verifyAirgap() {
 	if [ "${#OFFLINE_TARGETS[@]}" -gt 0 ]; then
 		echo "    Air gap verified: no netvm and no default disposable on ${OFFLINE_TARGETS[*]}."
 	fi
-	return 0
 }
 
 # shutdownAll VM... -- barrier between phases: templates must be verifiably

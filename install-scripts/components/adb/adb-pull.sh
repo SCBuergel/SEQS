@@ -7,9 +7,7 @@ set -euo pipefail
 # to run inside A-usb-data-transfer with the phone either USB-attached via
 # qvm-usb or paired over wireless ADB.
 #
-# adb and pv are expected to be pre-installed by the template; this script no
-# longer downloads platform-tools from dl.google.com (that path was unsigned
-# and is gone -- see TRUST.md, "ADB file transfer").
+# adb and pv come from the template's Debian packages.
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 ADB=/usr/bin/adb
@@ -83,8 +81,7 @@ if [[ -d "$OUTPUT" ]]; then
 fi
 
 # ─── Dependency check ────────────────────────────────────────────────────────
-# adb and pv come from the template (apt-installed). Fail clearly if missing
-# -- this script no longer self-installs them from unsigned sources.
+# Fail clearly if the template lacks adb or pv.
 if [[ ! -x "$ADB" ]]; then
     echo "ERROR: $ADB not found. Run this inside A-usb-data-transfer (or any qube based on Z-usb-data-transfer)."
     exit 1
