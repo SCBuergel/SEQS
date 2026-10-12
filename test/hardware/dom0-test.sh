@@ -314,7 +314,7 @@ for origin in sorted(hosts):
         if sec and origin in sec.group(1):
             bad.append("%s: %s %s is installable although not allowlisted" % (origin, pkg, cand))
     checked.append("%s (%d of %d outside the allowlist)" % (origin, min(5, len(outside)), len(outside)))
-print("PIN-CHECKED " + "; ".join(checked))
+print("PIN-CHECKED " + ("; ".join(checked) or "none present"))
 for b in bad:
     print("PIN-FAIL " + b)
 sys.exit(1 if bad else 0)
@@ -355,7 +355,7 @@ checkTemplateApt() {
 			&& pass "${vm}: brave-keyring is held" || fail "${vm}: brave-keyring is not held"
 	fi
 	if out="$(qvm-run --pass-io --no-gui -u root "${vm}" 'python3 -' <<< "${PIN_CHECK}" 2>&1)"; then
-		pass "${vm}: third-party repositories are pinned: $(sed -n 's/^PIN-CHECKED //p' <<< "${out}")"
+		pass "${vm}: third-party repositories pinned: $(sed -n 's/^PIN-CHECKED //p' <<< "${out}")"
 	else
 		fail "${vm}: repository pinning: $(grep -E 'PIN-FAIL|Error' <<< "${out}" | head -n 3 | tr '\n' ' ')"
 	fi
