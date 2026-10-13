@@ -287,9 +287,10 @@ for vm in qubesadmin.Qubes().domains:
 {%   endfor %}
 {% endfor %}
 
-{# ── CPU pinning ('cpu_pinning' key): a per-qube libvirt file that Qubes
-     applies at every start. Values are interpolated into that file, so they
-     must be plain integers, and the cores must exist on this machine. ── #}
+{# ── vCPU count ('vcpus' key) and CPU pinning ('cpu_pinning' key, a
+     per-qube libvirt file that Qubes applies at every start). Values are
+     interpolated into states and that file, so they must be plain integers,
+     and pinned cores must exist on this machine. ── #}
 {% set libvirt_dir = '/etc/qubes/templates/libvirt/xen/by-name' %}
 {% set pin_marker = '{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}' %}
 {% set host_cpus = salt['cmd.shell']("xl info 2>/dev/null | awk '$1 == \"nr_cpus\" { print $3 }'") %}
@@ -314,9 +315,15 @@ for vm in qubesadmin.Qubes().domains:
 {%         do errors.append("qube '" ~ name ~ "': cpu_pinning weight must be an integer from 1 to 65535") %}
 {%       endif %}
 {%     endif %}
+{%     if q.get('vcpus') is not none %}
+{%       do errors.append("qube '" ~ name ~ "': set either 'vcpus' or 'cpu_pinning', which gives one vCPU per listed core") %}
+{%     endif %}
 {%     if salt['file.file_exists'](pin_file) and not salt['file.read'](pin_file).startswith(pin_marker) %}
 {%       do errors.append("'" ~ pin_file ~ "' exists and was not written by SEQS -- remove it, or remove cpu_pinning from '" ~ name ~ "'") %}
 {%     endif %}
+{%   endif %}
+{%   if q.get('vcpus') is not none and (q.vcpus is not integer or q.vcpus < 1) %}
+{%     do errors.append("qube '" ~ name ~ "': 'vcpus' must be a positive integer") %}
 {%   endif %}
 {% endfor %}
 
@@ -623,6 +630,8 @@ seqs-app-{{ name }}:
 {%   endif %}
 {%   if q.get('cpu_pinning') %}
       - vcpus: {{ q.cpu_pinning.cpus | length }}
+{%   elif q.get('vcpus') %}
+      - vcpus: {{ q.vcpus }}
 {%   endif %}
 {%   if (not app_tagged) or (not tpl_exists) %}
     - require:

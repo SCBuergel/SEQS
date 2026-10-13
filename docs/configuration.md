@@ -147,6 +147,10 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
   [`cleanup_dirs`](#cleanup_dirs). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
+- `'vcpus': 4` — the app qube's number of virtual CPUs (the Qubes default is
+  2); the shipped `gnosisvpn` entry uses 4. A running qube changes at its next
+  start, and removing the key keeps the count. It cannot be combined with
+  `cpu_pinning`, which sets the count itself.
 - `'cpu_pinning': {'cpus': [0, 2], 'weight': 512}` — gives the app qube one
   vCPU per listed CPU, pins them to those CPUs, and optionally
   raises its Xen scheduler weight (1-65535; the default is 256). dom0 writes

@@ -12,6 +12,8 @@ Run directly: `python3 test/test_render.py` (exits non-zero on failure).
 import os
 import sys
 import copy
+import subprocess
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import salt_render as sr  # noqa: E402
@@ -839,6 +841,27 @@ def test_qube_template():
           "template should install the boot/shutdown cleanup script")
 
 
+def test_qube_cleanup_gate():
+    case("qube.sls: the cleanup deletes only in qubes whose root is discarded, network providers included")
+    script = state_arg(render_state("qube", "Z-brave")[1], "seqs-cleanup-script", "file.managed", "contents")
+    with tempfile.TemporaryDirectory() as d:
+        for tool in ("rm", "find"):
+            with open(os.path.join(d, tool), "w") as f:
+                f.write('#!/bin/sh\necho "%s $*" >> "$LOG"\n' % tool)
+        with open(os.path.join(d, "qubesdb-read"), "w") as f:
+            f.write('#!/bin/sh\n[ "$1" = /qubes-vm-persistence ] && [ -n "$P" ] && echo "$P"\n')
+        for tool in ("rm", "find", "qubesdb-read"):
+            os.chmod(os.path.join(d, tool), 0o755)
+        for persistence, deletes in (("rw-only", True), ("none", True), ("full", False), ("", False)):
+            log = os.path.join(d, "log")
+            open(log, "w").close()
+            subprocess.run(["sh", "-c", script], env={"PATH": d + ":/usr/bin:/bin", "LOG": log, "P": persistence},
+                           check=True)
+            with open(log) as f:
+                ran = "rm -rf -- /home/user/QubesIncoming" in f.read()
+            check(ran == deletes, "persistence %r must %sdelete" % (persistence, "" if deletes else "not "))
+
+
 def test_qube_markers_track_content():
     case("qube.sls: a completion marker skips a component only while its staged content is unchanged")
     for minion, state_id, staged in [("Z-gnosisvpn", "seqs-install-gnosisvpn", "gnosisvpn"),
@@ -1164,6 +1187,35 @@ def test_dom0_cpu_pinning_removed():
     check(clear is not None and "grep -qF 'Managed by SEQS'" in state_arg(
         parsed, "seqs-cpu-pinning-clear-signal", "cmd.run", "onlyif"),
           "a leftover pinning file must be removed only if SEQS wrote it")
+
+def test_dom0_vcpus():
+    case("dom0.sls: the vcpus key sets the qube's vCPU count; GnosisVPN gets 4")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="gnosisvpn"))
+    check({"vcpus": 4} in state_arg(parsed, "seqs-app-gnosisvpn", "qvm.vm", "prefs"),
+          "A-gnosisvpn must get the 4 vCPUs its catalogue entry sets")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    for value in (0, -1, "4", "4\n      - netvm: none", True, 2.5):
+        pillar["catalogue"]["signal"]["vcpus"] = value
+        errors = _errors(render_state("dom0", "dom0", Scenario(selection="signal"), pillar_seqs=pillar)[1])
+        check("'vcpus' must be a positive integer" in errors, "vcpus %r must be refused" % (value,))
+    pillar["catalogue"]["signal"]["vcpus"] = 2
+    pillar["catalogue"]["signal"]["cpu_pinning"] = {"cpus": [0]}
+    check("set either 'vcpus' or 'cpu_pinning'" in _errors(
+        render_state("dom0", "dom0", Scenario(selection="signal"), pillar_seqs=pillar)[1]),
+          "vcpus together with cpu_pinning must be refused")
+
+
+def test_gnosisvpn_receive_buffer():
+    case("gnosisvpn: the template raises the default UDP receive buffer to 4 MiB")
+    component_dir = os.path.join(sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn")
+    with open(os.path.join(component_dir, "99-seqs-gnosisvpn-rmem.conf"), encoding="utf-8") as f:
+        conf = f.read()
+    with open(os.path.join(component_dir, "template-vm.sh"), encoding="utf-8") as f:
+        installer = f.read()
+    check("\nnet.core.rmem_default = 4194304\n" in conf, "the sysctl file must set 4 MiB")
+    check('"${ASSET_DIR}/99-seqs-gnosisvpn-rmem.conf" /etc/sysctl.d/99-seqs-gnosisvpn-rmem.conf' in installer,
+          "the template installer must install it into /etc/sysctl.d")
+
 
 BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
                      "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]

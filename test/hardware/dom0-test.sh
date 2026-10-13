@@ -591,6 +591,12 @@ checkGnosisvpn() {
 	else
 		pass "$1: DNS translation only while the tunnel interface is up and routes the resolvers"
 	fi
+	out="$(qvm-run --pass-io --no-gui "$1" 'cat /proc/sys/net/core/rmem_default; nproc' </dev/null 2>&1 | tr '\n' ' ')"
+	if [[ "${out}" == "4194304 4 " ]]; then
+		pass "$1: 4 vCPUs and a 4 MiB default socket receive buffer"
+	else
+		fail "$1: expected rmem_default 4194304 and 4 vCPUs, got: ${out}"
+	fi
 	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
 }
 

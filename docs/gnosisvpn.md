@@ -15,6 +15,10 @@ After fetching, reviewing, and staging this revision (see
 
 This creates `Z-gnosisvpn` and `A-gnosisvpn`, enables
 `provides_network=True`, and enables the Qubes firewall service.
+`A-gnosisvpn` gets 4 vCPUs instead of the Qubes default of 2 (the `vcpus`
+catalogue key, see [configuration](configuration.md)): on a four-core test
+machine, 2 vCPUs reached about 7.4 Mbit/s, and 4 about 8.4, with no gain
+beyond 4.
 After a newer revision is fetched and staged, rerunning the same command
 upgrades an existing instance in place: when the
 pinned release or any other part of the component changed, its installers run
@@ -44,6 +48,9 @@ The template contains:
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
 - GnosisVPN `0.95.2` for `amd64`, configured with
   `GNOSISVPN_NETWORK=jura-prod`.
+- `/etc/sysctl.d/99-seqs-gnosisvpn-rmem.conf`, which raises the default
+  socket receive buffer from 208 KiB to 4 MiB; with the default, the
+  GnosisVPN node drops incoming mixnet packets at full speed.
 
 Do not install `openresolv` or GnosisVPN manually.
 

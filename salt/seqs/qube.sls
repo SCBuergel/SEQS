@@ -197,8 +197,10 @@ seqs-browser-handler:
 
 {% if cleanup_dirs and not spec.get('preserve_incoming') %}
 # ── Boot/shutdown cleanup of transient directories.
-# Fails CLOSED: only deletes when the VM is explicitly an AppVM/DispVM, so a
-# qubesdb-read failure inside the template never wipes template state.
+# Fails CLOSED: only deletes in a qube whose root volume is discarded at
+# shutdown (persistence rw-only: an AppVM, including a network provider whose
+# /qubes-vm-type reads ProxyVM; none: a disposable), so a template, a
+# standalone, or a qubesdb-read failure never wipes anything.
 # Paths were validated above (absolute, under /home/user/, no '..', safe
 # charset), so quoting them below is sufficient.
 seqs-cleanup-script:
@@ -211,9 +213,9 @@ seqs-cleanup-script:
         #!/bin/sh
         # SEQS: delete transient directories on app-qube boot and shutdown.
         # Managed by salt state seqs.qube -- edit the SEQS repo, not this copy.
-        vmtype="$(qubesdb-read /qubes-vm-type 2>/dev/null)" || exit 0
-        case "$vmtype" in
-          AppVM|DispVM) ;;
+        persistence="$(qubesdb-read /qubes-vm-persistence 2>/dev/null)" || exit 0
+        case "$persistence" in
+          rw-only|none) ;;
           *) exit 0 ;;
         esac
         {%- for e in cleanup_dirs if e.get('mode') == 'folder' %}

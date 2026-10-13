@@ -106,6 +106,7 @@ MUTATIONS = [
     ("dom0-handoff-unselected", S, "{%     do handoff_tags.update({vm: {'want': recipe in", "{%     do {}.update({vm: {'want': recipe in"),
     ("dom0-pin-unmarked", S, "and not salt['file.read'](pin_file).startswith(pin_marker) %}", "and false %}"),
     ("dom0-pin-core-range", S, "or c >= host_cpus | int %}", "%}"),
+    ("dom0-vcpus-integer", S, "(q.vcpus is not integer or q.vcpus < 1) %}", "false %}"),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "has invalid firewall entry", "x\") %}{% if false %}{% do errors.append(\"y"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),
@@ -131,6 +132,7 @@ MUTATIONS = [
     ("gpg-sha256", G, "| sha256sum --check --strict --quiet \\\n", "| true \\\n"),
     ("gpg-apt-pin", G, "Pin-Priority: -1\\n\\nPackage", "Pin-Priority: 1\\n\\nPackage"),
     ("gpg-signed-by", G, "signed-by=${keyring}]", "]"),
+    ("qube-cleanup-template", Q, "          rw-only|none) ;;", "          rw-only|none|full) ;;"),
     ("qube-install-brave", Q, "install_brave; install_brave_extension", "install_brave_extension"),
 ]
 

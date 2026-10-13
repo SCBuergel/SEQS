@@ -57,6 +57,7 @@ sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-prepare-app" /usr/sbin/seqs-gn
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.service" /etc/systemd/system/seqs-gnosisvpn-dns.service
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.path" /etc/systemd/system/seqs-gnosisvpn-dns.path
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.timer" /etc/systemd/system/seqs-gnosisvpn-dns.timer
+sudo install -m 0644 "${ASSET_DIR}/99-seqs-gnosisvpn-rmem.conf" /etc/sysctl.d/99-seqs-gnosisvpn-rmem.conf
 sudo systemctl daemon-reload
 sudo systemctl enable seqs-gnosisvpn-dns.path
 sudo systemctl enable seqs-gnosisvpn-dns.timer

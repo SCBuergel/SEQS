@@ -65,13 +65,19 @@ numbers and dom0 shows nothing else:
 
 ## CPU pinning for `A-gnosisvpn`
 
-The mixnet is CPU-intensive. Pin the qube to two performance cores with the
-`cpu_pinning` catalogue key (see [configuration](configuration.md)), for
-example on the i7-1265U, whose Xen CPUs 0 and 2 lie on two performance cores:
+The mixnet is CPU-intensive. On a CPU with both performance and efficiency
+cores, pin the qube to performance cores with the `cpu_pinning` catalogue key
+(see [configuration](configuration.md)). Pinning gives the qube one vCPU per
+listed core and replaces the entry's `'vcpus': 4`, so remove that key. For
+example on the i7-1265U, whose Xen CPUs 0 and 2 lie on its two performance
+cores:
 
 ```python
 {'name': 'gnosisvpn', ..., 'cpu_pinning': {'cpus': [0, 2], 'weight': 512}},
 ```
+
+That leaves the qube 2 vCPUs, which on a four-core test machine without
+pinning was about 12% slower than 4; measure both before keeping the pinning.
 
 Commit the edit and rebuild as in [upgrading](upgrading.md); the build leaves
 the qube shut down. Start it, then check in a dom0 terminal:
