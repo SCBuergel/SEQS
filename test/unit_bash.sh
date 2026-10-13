@@ -540,7 +540,7 @@ eq "traffic is shown" "$(mon '1073741824 2048 1048576 0' A-gnosisvpn)" " ↑ 2.0
 eq "markup is refused" "$(mon '<span>1</span> 2 3 4' A-gnosisvpn)" " VPN: n/a"
 eq "a fifth number is refused" "$(mon '1 2 3 4 5' A-gnosisvpn)" " VPN: n/a"
 eq "no output (tunnel down) shows n/a" "$(mon '' A-gnosisvpn)" " VPN: n/a"
-grep -q -- "--no-autostart --pass-io -u root -- A-gnosisvpn seqs-gnosisvpn-rates" "${vb}/args" && ok \
+grep -q -- "--no-autostart --pass-io -- A-gnosisvpn seqs-gnosisvpn-rates" "${vb}/args" && ok \
 	|| bad "the monitor must not start the qube: $(head -n 1 "${vb}/args")"
 : > "${vb}/args"
 eq "an unsafe qube name is refused" "$(mon '1 2 3 4' '-x')" " VPN: n/a"

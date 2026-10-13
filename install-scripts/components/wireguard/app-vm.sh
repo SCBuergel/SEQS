@@ -7,9 +7,14 @@ sudo install -d -m 0700 /rw/config/seqs-wireguard
 sudo install -m 0755 "${ASSET_DIR}/wireguard-boot.sh" /rw/config/seqs-wireguard/boot.sh
 sudo install -m 0755 "${ASSET_DIR}/wireguard-firewall.sh" /rw/config/seqs-wireguard/firewall.sh
 sudo install -m 0755 "${ASSET_DIR}/wireguard-dns.sh" /rw/config/seqs-wireguard/dns.sh
-# Qubes runs both hooks directly, so a new one needs its interpreter line.
+# Qubes runs both hooks directly, and qubes-firewall fails at every start if it
+# cannot: each needs an interpreter line. Qubes creates them with one, but a
+# build before ee9ba52 left one without it if it was missing or empty; repair that.
 for hook in /rw/config/rc.local /rw/config/qubes-firewall-user-script; do
-	sudo test -s "${hook}" || printf '#!/bin/sh\n' | sudo tee "${hook}" >/dev/null
+	if [ "$(sudo head -c 2 "${hook}" 2>/dev/null)" != '#!' ]; then
+		{ printf '#!/bin/sh\n'; sudo cat -- "${hook}" 2>/dev/null || true; } | sudo tee "${hook}.new" >/dev/null
+		sudo mv -f -- "${hook}.new" "${hook}"
+	fi
 	sudo chmod 0755 "${hook}"
 done
 

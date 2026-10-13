@@ -86,8 +86,8 @@ for vm in qubesadmin.Qubes().domains:
 {%   endif %}
 {% endfor %}
 {# Recipes whose qubes may hand no link, open-in-VM request or disposable call
-   to another qube: offline, no_handoff, and firewalled ones. They are tagged seqs-no-handoff below, and qube.sls
-   sets no browser handoff in them. #}
+   to another qube: offline, no_handoff, and firewalled ones. They are tagged
+   seqs-no-handoff below, and qube.sls sets no browser handoff in them. #}
 {% set no_handoff = [] %}
 {% for recipe, q in qcatalog.items() if q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
 {%   do no_handoff.append(recipe) %}
@@ -229,7 +229,7 @@ for vm in qubesadmin.Qubes().domains:
 {%       endif %}
 {%     endfor %}
 {%     if q.get('main_app') is not none and (q.main_app is not string
-          or q.main_app | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$') is none) %}
+          or q.main_app | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop\\Z') is none) %}
 {%       do errors.append("qube '" ~ name ~ "': 'main_app' must be a desktop file name such as 'signal-desktop.desktop'") %}
 {%     endif %}
 {#     Optional outbound allowlist ('firewall' key): validate before any
@@ -814,8 +814,9 @@ seqs-create-disposable-{{ name }}:
       - file: seqs-intent-disposable-{{ name }}
 {%     endif %}
 
-# Clear the NetVM (every named_disposable derives from an offline dispvm
-# template) and suppress the dispvm-launcher menu entries so this disposable
+# Clear the NetVM and the default disposable of every named disposable,
+# whatever its entry's flags (the shipped one derives from an offline dispvm
+# template), and suppress the dispvm-launcher menu entries so this disposable
 # shows normal app launchers, not "start a disposable from me".
 seqs-disposable-prefs-{{ name }}:
   cmd.run:

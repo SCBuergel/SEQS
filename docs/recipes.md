@@ -10,7 +10,6 @@ Apply the ones you want by hand.
 - [Firewall between app VMs](#firewall-between-app-vms)
 - [Get rid of lags in LibreOffice](#get-rid-of-lags-in-libreoffice)
 - [Reliably copy large files from/to an Android phone](#reliably-copy-large-files-fromto-an-android-phone)
-- [vim mappings](#vim-mappings)
 - [Mount a USB drive](#mount-a-usb-drive)
 - [Minimal templates](#minimal-templates)
 
@@ -119,17 +118,6 @@ mode you'll be prompted for the IP:port and pairing code on first connect; the
 IP:port is then saved for next time. Note the SHA-256 check catches transport
 corruption only — both hashes flow through the same ADB channel, so it doesn't
 certify peer authenticity; prefer USB-attached ADB on untrusted networks.
-
-## vim mappings
-
-Move screen lines in vim instead of wrapped physical lines — put this in
-`~/.vimrc`:
-```
-noremap <up> gk
-noremap <down> gj
-inoremap <up> <C-o>gk
-inoremap <down> <C-o>gj
-```
 
 ## Mount a USB drive
 

@@ -195,6 +195,28 @@ seqs-browser-handler:
         Categories=Network;WebBrowser;
         MimeType=x-scheme-handler/http;x-scheme-handler/https;
 
+# ── vim settings for every qube: the template's root volume is shared by
+# its app qubes and disposables. Debian's /etc/vim/vimrc sources this file
+# for every user, before the user's own ~/.vimrc. Wrapped lines break at
+# word boundaries, and the arrow keys move by screen line, not by line.
+seqs-vimrc:
+  file.managed:
+    - name: /etc/vim/vimrc.local
+    - user: root
+    - group: root
+    - mode: '0644'
+    - makedirs: True
+    - contents: |
+        " Managed by SEQS (salt state seqs.qube) -- edit the SEQS repo, not this copy.
+        set wrap
+        set linebreak
+        nnoremap <Down> gj
+        nnoremap <Up> gk
+        vnoremap <Down> gj
+        vnoremap <Up> gk
+        inoremap <Down> <C-o>gj
+        inoremap <Up> <C-o>gk
+
 {% if cleanup_dirs and not spec.get('preserve_incoming') %}
 # ── Boot/shutdown cleanup of transient directories.
 # Fails CLOSED: only deletes in a qube whose root volume is discarded at

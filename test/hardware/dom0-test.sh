@@ -383,6 +383,22 @@ checkMenu() {
 	done
 }
 
+# checkVim VM -- vim in VM wraps at word boundaries and moves by screen line
+# with the arrow keys, from its template's /etc/vim/vimrc.local. vim runs in
+# normal mode: silent Ex mode (-es) would skip every vimrc.
+checkVim() {
+	local out
+	out="$(qvm-run --pass-io --no-gui "$1" 'f=$(mktemp); vim -N --not-a-term "+redir! > $f" "+set wrap? linebreak?" \
+		"+nmap <Down>" "+vmap <Up>" "+imap <Down>" "+redir END" "+qa!" </dev/null >/dev/null 2>&1; cat "$f"; rm -f "$f"' \
+		</dev/null 2>&1 | tr '\n' ' ')"
+	if [[ "${out}" != *nowrap* && "${out}" == *wrap* && "${out}" != *nolinebreak* && "${out}" == *linebreak* \
+		&& "${out}" == *"<Down>"*gj*"<Up>"*gk*"<C-O>gj"* ]]; then
+		pass "$1: vim wraps at word boundaries and moves by screen line"
+	else
+		fail "$1: vim settings missing: ${out}"
+	fi
+}
+
 # checkLauncher VM -- VM's panel launcher is on the panel and holds a copy of
 # each menu entry its seqs-launcher-items feature names, in order; each one,
 # started as the panel starts it, opens a new window of VM.
@@ -602,6 +618,7 @@ checkWireguard() {
 		note "$1 already holds a WireGuard configuration; skipping its checks"
 		return
 	fi
+	checkFirewallHook "$1"
 	failsClosed "$1" "no configuration"
 	out="$(qvm-run --pass-io --no-gui "$1" "${WG_IMPORT}" </dev/null 2>&1)"
 	if grep -q '^WG-' <<< "${out}"; then
@@ -633,10 +650,30 @@ nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-KEPT-BY-TIMER
 systemctl is-active --quiet seqs-gnosisvpn-dns.timer || echo GV-TIMER-INACTIVE
 true'
 
+# checkFirewallHook VM -- fail-closed forwarding comes from the qube's firewall
+# hook: the hook has an interpreter line, the qubes-firewall daemon that runs
+# it is active, and the drop rule it adds is in place for IPv4 and IPv6.
+checkFirewallHook() {
+	local out
+	# shellcheck disable=SC2016 # runs inside the qube
+	out="$(qvm-run --pass-io --no-gui -u root "$1" 'h=/rw/config/qubes-firewall-user-script
+		[ "$(head -c 2 "$h")" = "#!" ] || echo HOOK-NO-INTERPRETER
+		systemctl is-active --quiet qubes-firewall || echo FIREWALL-DAEMON-INACTIVE
+		for f in ip ip6; do nft list chain "$f" qubes custom-forward 2>/dev/null \
+			| grep -q "oifname \"eth0\" counter packets [0-9]* bytes [0-9]* drop" || echo "NO-${f}-DROP"; done' \
+		</dev/null 2>&1)"
+	if [ -z "${out}" ]; then
+		pass "$1: the firewall hook runs (interpreter line, qubes-firewall active) and drops forwarding to eth0"
+	else
+		fail "$1: firewall hook: $(tr '\n' ' ' <<< "${out}")"
+	fi
+}
+
 # checkGnosisvpn VM -- fail-closed forwarding, the DNS reconciler, and its
 # panel monitor, which shows n/a while the tunnel is down.
 checkGnosisvpn() {
 	local out p
+	checkFirewallHook "$1"
 	failsClosed "$1" "not connected"
 	out="$(qvm-run --pass-io --no-gui -u root "$1" "${GV_DNS}" </dev/null 2>&1)"
 	if grep -q '^GV-SKIP' <<< "${out}"; then
@@ -772,6 +809,7 @@ check() {
 					checkMarkers "${name}" template "${recipe}"
 					checkSetup template "${name}" "${recipe}"
 					checkTemplateApt "${name}" "${recipe}"
+					checkVim "${name}"
 				fi
 				;;
 			app)
@@ -782,6 +820,7 @@ check() {
 				checkMarkers "${name}" app "${recipe}"
 				checkSetup app "${name}" "${recipe}"
 				checkMenu app "${name}" "${recipe}"
+				checkVim "${name}"
 				if [ "$(catField "${recipe}" dispvm_template)" = "True" ]; then
 					[ -z "$(qvm-features -- "${name}" seqs-launcher-items 2>/dev/null)" ] \
 						&& pass "${name}: no panel launcher for the disposable template" \
@@ -819,6 +858,7 @@ check() {
 					policyRefused "${name}"
 				fi
 				checkMenu disposable "${name}" "${recipe}"
+				checkVim "${name}"
 				checkLauncher "${name}"
 				;;
 		esac
@@ -999,7 +1039,12 @@ invalidate() {
 		case "${kind}" in template|app) ;; *) continue ;; esac
 		# shellcheck disable=SC2016 # runs inside the qube
 		if qvm-run --pass-io --no-gui -u root "${name}" \
-				'for f in /rw/config/seqs/*.done; do [ -f "$f" ] && : > "$f"; done; true' </dev/null; then
+				'for f in /rw/config/seqs/*.done; do [ -f "$f" ] && : > "$f"; done
+				# A hook SEQS added to, without its interpreter line: the
+				# installers must restore it.
+				for f in /rw/config/qubes-firewall-user-script /rw/config/rc.local; do
+					grep -q seqs "$f" 2>/dev/null && sed -i "1{/^#!/d}" "$f"
+				done; true' </dev/null; then
 			pass "${name}: completion markers emptied"
 		else
 			fail "could not empty the completion markers in ${name}"

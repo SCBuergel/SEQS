@@ -11,8 +11,13 @@ entry=/usr/sbin/seqs-gnosisvpn-firewall
 bind_dir_config=/rw/config/qubes-bind-dirs.d/50-seqs-gnosisvpn.conf
 persistent_dir=/rw/bind-dirs/var/lib/gnosisvpn
 
-# qubes-firewall runs the hook directly, so a new one needs its interpreter line.
-[[ -s "$hook" ]] || printf '#!/bin/sh\n' > "$hook"
+# qubes-firewall runs the hook directly and fails at every start if it cannot:
+# the hook needs an interpreter line. Qubes creates it with one, but a build
+# before ee9ba52 left it without one if it was missing or empty; repair that.
+if [[ "$(head -c 2 "$hook" 2>/dev/null)" != '#!' ]]; then
+	{ printf '#!/bin/sh\n'; cat -- "$hook" 2>/dev/null || true; } > "$hook.new"
+	mv -f -- "$hook.new" "$hook"
+fi
 chmod 0755 "$hook"
 if ! grep -Fqx "$entry" "$hook"; then
 	printf '%s\n' "$entry" >> "$hook"

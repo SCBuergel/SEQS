@@ -119,7 +119,9 @@ mix-and-match qubes (wallet, developer) list several. The `seqs.dom0` state
 clones the base template and creates the app qube; the `seqs.qube` state then
 runs each component's `template-vm.sh` (system-wide install) in the template,
 installs any `menu.desktop` it carries, runs each `app-vm.sh` (per-app-qube
-setup) in the app qube, and installs the link handler and, unless
-`preserve_incoming` is set, the cleanup service in the template; the `seqs.dom0` state writes the browser-link policy. See
+setup) in the app qube, and installs the link handler, the vim settings
+(`/etc/vim/vimrc.local`: wrapped lines break at word boundaries, arrow keys
+move by screen line) and, unless `preserve_incoming` is set, the cleanup
+service in the template; the `seqs.dom0` state writes the browser-link policy. See
 [configuration.md](configuration.md) for ordinary runtime selection and for
 advanced catalogue extension.

@@ -15,6 +15,8 @@ import copy
 import subprocess
 import tempfile
 
+import yaml
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import salt_render as sr  # noqa: E402
 from salt_render import Scenario, render_state, render_pillar  # noqa: E402
@@ -371,11 +373,14 @@ def test_dom0_launcher_items():
         check(("seqs-launcher-items '%s'" % items) in state_arg(parsed, "seqs-launcher-items-" + vm, "cmd.run", "name"),
               "%s must get the launcher items %r" % (vm, items))
     pillar = copy.deepcopy(render_pillar("dom0"))
-    for value in ("x.desktop'; id; '", "signal", "-x.desktop", "../x.desktop", ["a.desktop"]):
+    for value in ("x.desktop'; id; '", "x.desktop\n", "signal", "-x.desktop", "../x.desktop", ["a.desktop"]):
         pillar["catalogue"]["signal"]["main_app"] = value
-        check("'main_app' must be a desktop file name" in _errors(
-            render_state("dom0", "dom0", Scenario(selection="signal\nbrave"), pillar_seqs=pillar)[1]),
-              "main_app %r must be refused" % (value,))
+        # An unrefused value can break the rendered YAML: that counts as not refused.
+        try:
+            errors = _errors(render_state("dom0", "dom0", Scenario(selection="signal\nbrave"), pillar_seqs=pillar)[1])
+        except yaml.YAMLError:
+            errors = ""
+        check("'main_app' must be a desktop file name" in errors, "main_app %r must be refused" % (value,))
     check("seqs-menu-A-qr-display" not in parsed,
           "a disposable template gets no entry: it would run the component in the template itself")
     check(not unresolved_requisites(parsed), "menu states must require rendered states only")
@@ -880,6 +885,21 @@ def test_qube_cleanup_gate():
             with open(log) as f:
                 ran = "rm -rf -- /home/user/QubesIncoming" in f.read()
             check(ran == deletes, "persistence %r must %sdelete" % (persistence, "" if deletes else "not "))
+
+
+def test_qube_vimrc():
+    case("qube.sls: every template gets the SEQS vim settings; app qubes inherit them")
+    for vm in ("Z-brave", "Z-keepass", "Z-qr-staging", "Z-qr-display"):
+        _, parsed = render_state("qube", vm)
+        check("seqs-vimrc" in parsed and state_arg(parsed, "seqs-vimrc", "file.managed", "name") == "/etc/vim/vimrc.local",
+              "%s must get /etc/vim/vimrc.local" % vm)
+        body = state_arg(parsed, "seqs-vimrc", "file.managed", "contents") if "seqs-vimrc" in parsed else ""
+        check(all(line in body.splitlines() for line in (
+            "set wrap", "set linebreak", "nnoremap <Down> gj", "nnoremap <Up> gk", "vnoremap <Down> gj",
+            "vnoremap <Up> gk", "inoremap <Down> <C-o>gj", "inoremap <Up> <C-o>gk")),
+              "%s: the vim settings must wrap at words and move by screen line" % vm)
+    check("seqs-vimrc" not in render_state("qube", "A-brave")[1],
+          "an app qube reads the file from its template's root and needs no copy")
 
 
 def test_qube_markers_track_content():

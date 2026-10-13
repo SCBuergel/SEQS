@@ -145,9 +145,9 @@ units (KiB, MiB); it shows `VPN: n/a` while the qube is shut down or the
 tunnel is down. It never starts the qube.
 
 To fill it, dom0 runs `/usr/local/bin/seqs-vpn-monitor`, which runs
-`seqs-gnosisvpn-rates` in the qube as root. The panel would interpret markup
-in the text, so the dom0 script accepts only four numbers from the qube. A
-monitor removed from the panel (right-click, **Remove**) stays removed;
+`seqs-gnosisvpn-rates` in the qube as its normal user. The panel would
+interpret markup in the text, so the dom0 script accepts only four numbers
+from the qube. A monitor removed from the panel (right-click, **Remove**) stays removed;
 `~/d.sh gnosisvpn` removes it with the qube.
 If you set up the earlier manual version of this monitor (`~/vpn_monitor.sh`
 in dom0 and `~/wg.sh` in the qube), remove that monitor from the panel and
