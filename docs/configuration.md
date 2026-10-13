@@ -147,6 +147,10 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
   [`cleanup_dirs`](#cleanup_dirs). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
+- `'main_app': 'signal-desktop.desktop'` — the desktop file of the app the
+  qube is for, as the qube's template installs it under
+  `/usr/share/applications`. It is added to the qube's Qubes menu, and starts
+  first in the qube's [panel launcher](#panel-launchers).
 - `'vcpus': 4` — the app qube's number of virtual CPUs (the Qubes default is
   2); the shipped `gnosisvpn` entry uses 4. A running qube changes at its next
   start, and removing the key keeps the count. It cannot be combined with
@@ -166,6 +170,20 @@ Removing `offline`, `no_handoff`, `firewall`, `dispvm_template`, or
 (`qvm-prefs`) these flags set: a NetVM or default disposable set to none stays none, and
 `template_for_dispvms` or `provides_network` stays on (see
 [convergence](architecture.md#convergence)).
+
+## Panel launchers
+
+A build adds one launcher to the dom0 XFCE panel for each app qube and named
+disposable it builds, before the panel's first expanding separator. The
+launcher's button starts the qube's `main_app`; its arrow opens the qube's
+terminal and file manager. A disposable template gets none, because its
+entries would run in the template instead of in a disposable. The build
+needs to find a running XFCE panel of the user who runs it; otherwise it adds
+no launchers and says so.
+
+A rebuild refreshes the launcher's entries. A launcher removed from the panel
+(right-click, **Remove**) stays removed; deleting the qube with `~/d.sh`
+removes its launcher too.
 
 ## WireGuard NetVM
 

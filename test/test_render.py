@@ -355,7 +355,27 @@ def test_dom0_component_menu_entries():
             name = state_arg(parsed, sid, "cmd.run", "name")
             check(entry in name and ("qvm-features -- %s menu-items" % vm) in name,
                   "%s must add %s to its menu-items feature" % (vm, entry))
-    check("seqs-menu-A-brave" not in parsed, "brave ships no menu.desktop, so no menu state")
+    brave = state_arg(parsed, "seqs-menu-A-brave", "cmd.run", "name")
+    check(all(e in brave for e in ("brave-browser.desktop", "xfce4-terminal.desktop", "thunar.desktop")),
+          "a qube's main app, terminal and file manager must be in its menu")
+    check("seqs-menu-A-qr-display" not in parsed and "seqs-launcher-items-A-qr-display" not in parsed,
+          "a disposable template gets no menu entries and no launcher: they would run in it")
+
+
+def test_dom0_launcher_items():
+    case("dom0.sls: each app qube's launcher lists its main app, a terminal and a file manager")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="qr-display\nkeepass\nbrave\nqr-staging"))
+    for vm, items in (("A-brave", "brave-browser.desktop xfce4-terminal.desktop thunar.desktop"),
+                      ("D-qr-display", "qr-display.desktop xfce4-terminal.desktop thunar.desktop"),
+                      ("A-qr-staging", "xfce4-terminal.desktop thunar.desktop")):
+        check(("seqs-launcher-items '%s'" % items) in state_arg(parsed, "seqs-launcher-items-" + vm, "cmd.run", "name"),
+              "%s must get the launcher items %r" % (vm, items))
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    for value in ("x.desktop'; id; '", "signal", "-x.desktop", "../x.desktop", ["a.desktop"]):
+        pillar["catalogue"]["signal"]["main_app"] = value
+        check("'main_app' must be a desktop file name" in _errors(
+            render_state("dom0", "dom0", Scenario(selection="signal\nbrave"), pillar_seqs=pillar)[1]),
+              "main_app %r must be refused" % (value,))
     check("seqs-menu-A-qr-display" not in parsed,
           "a disposable template gets no entry: it would run the component in the template itself")
     check(not unresolved_requisites(parsed), "menu states must require rendered states only")
@@ -1203,6 +1223,26 @@ def test_dom0_vcpus():
     check("set either 'vcpus' or 'cpu_pinning'" in _errors(
         render_state("dom0", "dom0", Scenario(selection="signal"), pillar_seqs=pillar)[1]),
           "vcpus together with cpu_pinning must be refused")
+
+
+def test_gnosisvpn_panel_monitor():
+    case("dom0.sls + gnosisvpn: the VPN panel monitor is installed in dom0, its qube marked, its reporter in the template")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="gnosisvpn"))
+    check(state_arg(parsed, "seqs-vpn-monitor", "file.managed", "name") == "/usr/local/bin/seqs-vpn-monitor"
+          and state_arg(parsed, "seqs-vpn-monitor", "file.managed", "source") == "salt://seqs/files/seqs-vpn-monitor",
+          "dom0 must get the monitor script while the catalogue has a GnosisVPN qube")
+    check("qvm-features -- A-gnosisvpn seqs-vpn-monitor 1" in state_arg(parsed, "seqs-vpn-monitor-gnosisvpn", "cmd.run", "name"),
+          "A-gnosisvpn must be marked for a panel monitor")
+    check("seqs-vpn-monitor-brave" not in render_state("dom0", "dom0", Scenario(selection="brave"))[1],
+          "only GnosisVPN qubes get a monitor")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    del pillar["catalogue"]["gnosisvpn"]
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="brave"), pillar_seqs=pillar)
+    check("Managed by SEQS" in state_arg(parsed, "seqs-vpn-monitor", "cmd.run", "onlyif"),
+          "without GnosisVPN in the catalogue, dom0 removes only the monitor SEQS wrote")
+    with open(os.path.join(sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn", "template-vm.sh"), encoding="utf-8") as f:
+        check('"${ASSET_DIR}/seqs-gnosisvpn-rates" /usr/bin/seqs-gnosisvpn-rates' in f.read(),
+              "the template must install the traffic reporter the monitor calls")
 
 
 def test_gnosisvpn_receive_buffer():

@@ -134,6 +134,26 @@ fail closed while the VPN is unavailable. The GnosisVPN qube itself retains
 ordinary upstream access so the VPN software can discover and establish its
 tunnel.
 
+## Watch the tunnel's traffic
+
+![Panel showing the VPN's upload and download](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
+
+The build adds a monitor to the dom0 panel, next to the notification area,
+labelled with the qube's name. Every two seconds it shows the tunnel's total
+upload and download and, in parentheses, those of the last second, in binary
+units (KiB, MiB); it shows `VPN: n/a` while the qube is shut down or the
+tunnel is down. It never starts the qube.
+
+To fill it, dom0 runs `/usr/local/bin/seqs-vpn-monitor`, which runs
+`seqs-gnosisvpn-rates` in the qube as root. The panel would interpret markup
+in the text, so the dom0 script accepts only four numbers from the qube. A
+monitor removed from the panel (right-click, **Remove**) stays removed;
+`~/d.sh gnosisvpn` removes it with the qube.
+If you set up the earlier manual version of this monitor (`~/vpn_monitor.sh`
+in dom0 and `~/wg.sh` in the qube), remove that monitor from the panel and
+delete both scripts: it reads `wg show`, which GnosisVPN's tunnel does not
+support.
+
 ## Verify before attaching clients
 
 In a terminal of `A-gnosisvpn`, with GnosisVPN disconnected:

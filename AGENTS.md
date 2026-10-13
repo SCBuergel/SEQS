@@ -117,7 +117,11 @@ formatting or cleanup alongside a functional change.
   hardware.
 - New downloads and repositories require explicit provenance, pinning where
   possible, and an honest update to `TRUST.md` about residual risk.
-- Never put secrets, network access, or executable project code into dom0.
+- Never put secrets or network access into dom0. Executable project code in
+  dom0 is limited to `setup-qubes.sh`, `delete-vms.sh`, and the small helpers
+  the `seqs.dom0` state installs (the sequential QR script and the GnosisVPN
+  panel monitor). A helper never runs anything a qube supplies, and accepts
+  from a qube only narrowly validated data.
 
 ## Tests
 

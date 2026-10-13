@@ -30,6 +30,7 @@ S = "salt/seqs/dom0.sls"
 Q = "salt/seqs/qube.sls"
 G = "install-scripts/lib/verify-gpg.sh"
 QR = "salt/seqs/files/qr-sequential.sh"
+VM = "salt/seqs/files/seqs-vpn-monitor"
 
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
@@ -107,6 +108,8 @@ MUTATIONS = [
     ("dom0-pin-unmarked", S, "and not salt['file.read'](pin_file).startswith(pin_marker) %}", "and false %}"),
     ("dom0-pin-core-range", S, "or c >= host_cpus | int %}", "%}"),
     ("dom0-vcpus-integer", S, "(q.vcpus is not integer or q.vcpus < 1) %}", "false %}"),
+    ("dom0-main-app-name", S, "q.main_app | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$') is none) %}", "false) %}"),
+    ("vpn-monitor-four-numbers", VM, "^[0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}$ ]]", "^.*$ ]]"),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "has invalid firewall entry", "x\") %}{% if false %}{% do errors.append(\"y"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),

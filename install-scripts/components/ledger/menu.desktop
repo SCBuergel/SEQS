@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Ledger Live
+Comment=Manage a Ledger hardware wallet
+Exec=/usr/bin/LedgerLive.AppImage
+TryExec=/usr/bin/LedgerLive.AppImage
+Terminal=false
+Type=Application
+Categories=Utility;Finance;

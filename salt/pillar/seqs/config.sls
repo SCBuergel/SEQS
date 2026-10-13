@@ -31,23 +31,23 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {#- Catalogue of everything this reviewed tree is able to build. The runner's
     mandatory --qubes/--all argument selects entries for each invocation. #}
 {%- set qube_catalog = [
-  {'name': 'brave',             'label': 'red',    'components': ['brave']},
-  {'name': 'element',           'label': 'red',    'components': ['element']},
-  {'name': 'telegram',          'label': 'red',    'components': ['telegram']},
-  {'name': 'signal',            'label': 'green',  'components': ['signal']},
+  {'name': 'brave',             'label': 'red',    'components': ['brave'], 'main_app': 'brave-browser.desktop'},
+  {'name': 'element',           'label': 'red',    'components': ['element'], 'main_app': 'element-desktop.desktop'},
+  {'name': 'telegram',          'label': 'red',    'components': ['telegram'], 'main_app': 'telegram-desktop_telegram-desktop.desktop'},
+  {'name': 'signal',            'label': 'green',  'components': ['signal'], 'main_app': 'signal-desktop.desktop'},
   {'name': 'wireguard',         'label': 'purple', 'components': ['wireguard'], 'network_provider': True, 'no_handoff': True},
   {'name': 'gnosisvpn',         'label': 'purple', 'components': ['gnosisvpn'], 'network_provider': True, 'no_handoff': True, 'vcpus': 4},
-  {'name': 'openoffice',        'label': 'yellow', 'components': ['openoffice']},
-  {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp']},
+  {'name': 'openoffice',        'label': 'yellow', 'components': ['openoffice'], 'main_app': 'openoffice4-startcenter.desktop'},
+  {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp'], 'main_app': 'com.github.xournalpp.xournalpp.desktop'},
   {'name': 'usb-data-transfer', 'label': 'red',    'components': ['adb']},
-  {'name': 'keepass',           'label': 'black',  'components': ['keepass'], 'offline': True},
-  {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True, 'named_disposable': True},
+  {'name': 'keepass',           'label': 'black',  'components': ['keepass'], 'offline': True, 'main_app': 'keepass.desktop'},
+  {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True, 'named_disposable': True, 'main_app': 'qr-display.desktop'},
   {'name': 'qr-camera',         'label': 'red',    'components': ['qr-camera'], 'offline': True, 'dispvm_template': True},
   {'name': 'qr-staging',        'label': 'red',    'components': [], 'offline': True, 'preserve_incoming': True},
   {'name': 'claude-code',       'label': 'orange', 'components': ['claude-code']},
-  {'name': 'dev-full',          'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code']},
-  {'name': 'wallet-ledger',     'label': 'gray',   'components': ['ledger', 'brave-extension-rabby'], 'no_handoff': True},
-  {'name': 'wallet-trezor',     'label': 'gray',   'components': ['trezor', 'brave-extension-rabby'], 'no_handoff': True},
+  {'name': 'dev-full',          'label': 'orange', 'components': ['docker', 'python', 'node', 'vscode', 'claude-code'], 'main_app': 'com.microsoft.VSCode.desktop'},
+  {'name': 'wallet-ledger',     'label': 'gray',   'components': ['ledger', 'brave-extension-rabby'], 'no_handoff': True, 'main_app': 'ledger.desktop'},
+  {'name': 'wallet-trezor',     'label': 'gray',   'components': ['trezor', 'brave-extension-rabby'], 'no_handoff': True, 'main_app': 'brave-browser.desktop'},
 ] %}
 
 {#- Wallet extension IDs; see docs/configuration.md. #}

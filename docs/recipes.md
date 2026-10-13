@@ -6,7 +6,6 @@ Apply the ones you want by hand.
 ## Contents
 
 - [Sync clock in the base template](#sync-clock-in-the-base-template)
-- [WireGuard bandwidth monitor in the tray](#wireguard-bandwidth-monitor-in-the-tray)
 - [CPU pinning for `A-gnosisvpn`](#cpu-pinning-for-a-gnosisvpn)
 - [Firewall between app VMs](#firewall-between-app-vms)
 - [Get rid of lags in LibreOffice](#get-rid-of-lags-in-libreoffice)
@@ -23,45 +22,6 @@ it synchronised, install the following package in your base template (e.g.
 ```
 sudo apt install systemd-timesyncd
 ```
-
-## WireGuard bandwidth monitor in the tray
-
-![Qubes tray showing download and upload stats](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
-
-This shows the bandwidth consumed by a WireGuard interface (e.g. of a VPN qube)
-in the system tray. The tray plugin interprets markup in what it displays,
-including click actions that run commands in dom0, so the VPN qube only reports
-numbers and dom0 shows nothing else:
-
-1. In a terminal of the VPN qube (here `A-gnosisvpn`, interface
-   `wg0_gnosisvpn`), create `~/wg.sh`, which prints the total and last-second
-   received and sent bytes:
-   ```bash
-   #!/usr/bin/env bash
-   set -euo pipefail
-   IFACE="${1:-wg0_gnosisvpn}"
-   sudo wg show "$IFACE" >/dev/null   # no interface: print nothing, tray shows n/a
-   get_bytes() {
-     sudo wg show "$IFACE" transfer | awk '{rx+=$2; tx+=$3} END {print rx+0, tx+0}'
-   }
-   read -r rx1 tx1 < <(get_bytes)
-   sleep 1
-   read -r rx2 tx2 < <(get_bytes)
-   echo "$rx2 $tx2 $((rx2 - rx1)) $((tx2 - tx1))"
-   ```
-2. In a dom0 terminal, create `~/vpn_monitor.sh` and make it executable with
-   `chmod +x ~/vpn_monitor.sh`. It accepts only four numbers from the qube and
-   does not start the qube when it is shut down:
-   ```bash
-   #!/bin/bash
-   out="$(timeout 5 qvm-run --no-autostart --pass-io A-gnosisvpn 'bash ~/wg.sh' 2>/dev/null | head -c 100)"
-   [[ "$out" =~ ^[0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}$ ]] || { echo " VPN: n/a"; exit 0; }
-   read -r rx tx drx dtx <<< "$out"
-   h() { numfmt --to=iec --suffix=B --format='%.2f' "$1"; }
-   printf ' ↑ %s (+ %s), ↓ %s (+ %s)\n' "$(h "$tx")" "$(h "$dtx")" "$(h "$rx")" "$(h "$drx")"
-   ```
-3. Add a generic monitor to the tray which runs `~/vpn_monitor.sh`. Set the
-   interval to **2s and not 1s**, otherwise the window manager might freeze!
 
 ## CPU pinning for `A-gnosisvpn`
 

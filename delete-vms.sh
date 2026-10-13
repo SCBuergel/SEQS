@@ -206,3 +206,35 @@ for vm in "${found[@]}"; do
 	fi
 	sudo rm -f -- "${STATE_DIR}/firewall/${vm}" "${INTENTS_DIR}/${vm}"
 done
+
+# The panel launcher and VPN monitor setup-qubes.sh added for a removed qube
+# (marked with the qube's name in a seqs-qube or seqs-monitor property) would
+# show or start nothing.
+removePanelPlugins() {
+	local pid v prop p vm panel i ids removed=0
+	command -v xfconf-query >/dev/null 2>&1 || return 0
+	pid="$(pgrep -u "$(id -u)" -x xfce4-panel | head -n 1)" && [ -n "${pid}" ] || return 0
+	# This may run outside the graphical session: use the panel's display and bus.
+	while IFS= read -r -d '' v; do
+		case "${v}" in DISPLAY=* | DBUS_SESSION_BUS_ADDRESS=*) export "${v?}" ;; esac
+	done < "/proc/${pid}/environ"
+	for prop in $(xfconf-query -c xfce4-panel -l | grep -E '^/plugins/plugin-[0-9]+/seqs-(qube|monitor)$'); do
+		vm="$(xfconf-query -c xfce4-panel -p "${prop}")"
+		[[ " ${found[*]} " == *" ${vm} "* ]] || continue
+		p="${prop#/plugins/plugin-}"
+		p="${p%/seqs-*}"
+		for panel in $(xfconf-query -c xfce4-panel -p /panels | tail -n +3); do
+			ids=()
+			for i in $(xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" | tail -n +3); do
+				[ "${i}" = "${p}" ] || ids+=(-t int -s "${i}")
+			done
+			[ "${#ids[@]}" -eq 0 ] || xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" -n -a "${ids[@]}"
+		done
+		xfconf-query -c xfce4-panel -p "/plugins/plugin-${p}" -r -R
+		rm -rf -- "${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-${p}"
+		echo "removed a panel plugin of ${vm}"
+		removed=1
+	done
+	[ "${removed}" -eq 0 ] || xfce4-panel -r
+}
+removePanelPlugins || echo "WARNING: could not remove every panel plugin of the removed qubes" >&2

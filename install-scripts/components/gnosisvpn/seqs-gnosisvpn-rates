@@ -1,0 +1,13 @@
+#!/bin/sh
+# Prints the received and sent bytes of the GnosisVPN tunnel (or of interface
+# $1), in total and in the last second, for the dom0 panel monitor
+# (seqs-vpn-monitor); nothing while the tunnel is down. The kernel's interface
+# counters are read: `wg show` does not support GnosisVPN's tunnel.
+set -eu
+d="/sys/class/net/${1:-wg0_gnosisvpn}/statistics"
+read -r rx1 2>/dev/null < "$d/rx_bytes" || exit 0
+read -r tx1 < "$d/tx_bytes"
+sleep 1
+read -r rx2 2>/dev/null < "$d/rx_bytes" || exit 0
+read -r tx2 < "$d/tx_bytes"
+echo "$rx2 $tx2 $((rx2 - rx1)) $((tx2 - tx1))"

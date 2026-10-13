@@ -468,6 +468,94 @@ rm -f "${tmp}/pid"
 python3 test/lib/pty_run.py bash -c "trap '' HUP; echo \$\$ > ${tmp}/pid; exec sleep 60" >/dev/null & sleep 1; { kill -9 "$!"; wait "$!"; } 2>/dev/null
 gone && ok || bad "pty_run.py left its child running after it was killed"
 
+echo "== addPanelPlugins() adds one launcher per qube, and a VPN monitor, once =="
+# A panel with a launcher, an expanding separator, a notification area and a
+# clock; menu entries for A-x only. xfconf-query, qvm-features, pgrep and xfce4-panel are fakes.
+px="$(mktemp -d)"
+export SEQS_FAKE_XFCONF="${px}/xfconf.json"
+echo '{"/panels": ["1"], "/panels/panel-1/plugin-ids": ["1", "15", "6", "2"], "/plugins/plugin-1": "launcher",
+  "/plugins/plugin-15": "separator", "/plugins/plugin-15/expand": "true", "/plugins/plugin-6": "systray",
+  "/plugins/plugin-2": "clock"}' > "${SEQS_FAKE_XFCONF}"
+mkdir -p "${px}/data/applications"
+for app in signal-desktop xfce4-terminal thunar; do
+	printf '[Desktop Entry]\nX-Qubes-VmName=A-x\nX-Qubes-AppName=%s\n' "${app}" \
+		> "${px}/data/applications/org.qubes-os.vm._A_dx.${app}.desktop"
+done
+declare -A FEAT=([A-x seqs-launcher-items]="signal-desktop.desktop xfce4-terminal.desktop thunar.desktop"
+	[A-x seqs-vpn-monitor]=1 [A-y seqs-launcher-items]="bad;name.desktop")
+qvm-features() { shift; if [ "$#" -eq 3 ]; then FEAT["$1 $2"]="$3"; else [ -n "${FEAT["$1 $2"]:-}" ] && echo "${FEAT["$1 $2"]}"; fi; }
+xfconf-query() { python3 test/lib/fake_xfconf.py "$@"; }
+pgrep() { echo "$$"; }  # a process whose environment can be read
+xfce4-panel() { echo restarted >> "${px}/panel.log"; }
+qvm-appmenus() { true; }
+xf() { xfconf-query -c xfce4-panel -p "$1" | tr '\n' ' '; }
+# Run in this shell (not in $(...)), so the qube features it sets persist.
+XDG_DATA_HOME="${px}/data" XDG_CONFIG_HOME="${px}/config" addPanelPlugins A-x A-y A-z > "${px}/out" 2>&1
+out="$(cat "${px}/out")"
+eq "launcher before the expanding separator, monitor before the notification area" \
+	"$(xf /panels/panel-1/plugin-ids)" "Value is an array with 6 items:  1 16 15 17 6 2 "
+eq "the monitor runs seqs-vpn-monitor for its qube" "$(xf /plugins/plugin-17/command)" "/usr/local/bin/seqs-vpn-monitor A-x "
+eq "the monitor updates every two seconds" "$(xf /plugins/plugin-17/update-period)" "2000 "
+eq "the monitor is labelled with its qube" "$(xf /plugins/plugin-17/text)" "A-x "
+eq "launcher marked with its qube" "$(xf /plugins/plugin-16/seqs-qube)" "A-x "
+eq "main app first, then terminal and file manager" "$(xf /plugins/plugin-16/items)" \
+	"Value is an array with 3 items:  seqs-1.desktop seqs-2.desktop seqs-3.desktop "
+grep -qx "X-Qubes-AppName=signal-desktop" "${px}/config/xfce4/panel/launcher-16/seqs-1.desktop" && ok \
+	|| bad "the launcher's first item must be a copy of the main app's menu entry"
+grep -q "A-y: unexpected seqs-launcher-items" <<< "${out}" && ok || bad "an unexpected item list must be refused: ${out}"
+[ "$(xfconf-query -c xfce4-panel -l | grep -cE '/seqs-(qube|monitor)$')" -eq 2 ] && ok || bad "only A-x may get panel plugins"
+eq "the panel restarts to show it" "$(cat "${px}/panel.log")" "restarted"
+XDG_DATA_HOME="${px}/data" XDG_CONFIG_HOME="${px}/config" addPanelPlugins A-x >/dev/null 2>&1
+eq "a rerun adds no second launcher or monitor" "$(xf /panels/panel-1/plugin-ids)" "Value is an array with 6 items:  1 16 15 17 6 2 "
+# The user removes both from the panel: the next build leaves them removed.
+xfconf-query -c xfce4-panel -p /plugins/plugin-16 -r -R
+xfconf-query -c xfce4-panel -p /plugins/plugin-17 -r -R
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids -n -a -t int -s 1 -t int -s 15 -t int -s 6 -t int -s 2
+XDG_DATA_HOME="${px}/data" XDG_CONFIG_HOME="${px}/config" addPanelPlugins A-x >/dev/null 2>&1
+eq "plugins the user removed are not added again" "$(xf /panels/panel-1/plugin-ids)" "Value is an array with 4 items:  1 15 6 2 "
+# A menu entry that does not exist is left out, with a warning.
+unset 'FEAT[A-x seqs-launcher-added]'
+rm "${px}/data/applications/org.qubes-os.vm._A_dx.signal-desktop.desktop"
+out="$(XDG_DATA_HOME="${px}/data" XDG_CONFIG_HOME="${px}/config" addPanelPlugins A-x 2>&1)"
+grep -q "A-x has no menu entry signal-desktop.desktop" <<< "${out}" && ok || bad "a missing menu entry must be named: ${out}"
+eq "the remaining items stay" "$(xf /plugins/plugin-16/items)" "Value is an array with 2 items:  seqs-1.desktop seqs-2.desktop "
+# Without a running panel nothing is touched.
+pgrep() { false; }
+cp "${SEQS_FAKE_XFCONF}" "${px}/before.json"
+out="$(addPanelPlugins A-x 2>&1)"
+cmp -s "${SEQS_FAKE_XFCONF}" "${px}/before.json" && grep -q "No XFCE panel" <<< "${out}" && ok \
+	|| bad "without a panel, the build must change no panel setting"
+unset -f qvm-features xfconf-query pgrep xfce4-panel qvm-appmenus xf
+unset FEAT SEQS_FAKE_XFCONF
+rm -rf "${px}"
+
+echo "== seqs-vpn-monitor shows only four numbers from the VPN qube =="
+# The panel interprets markup in what the monitor prints: anything but four
+# numbers from the qube must show n/a. qvm-run is a fake that prints $OUT.
+vb="$(mktemp -d)"
+printf '#!/bin/sh\necho "$*" >> "%s/args"; printf "%%s" "$OUT"\n' "${vb}" > "${vb}/qvm-run"
+chmod +x "${vb}/qvm-run"
+mon() { OUT="$1" PATH="${vb}:${PATH}" bash salt/seqs/files/seqs-vpn-monitor "$2"; }
+eq "traffic is shown" "$(mon '1073741824 2048 1048576 0' A-gnosisvpn)" " ↑ 2.00KiB (+ 0.00B), ↓ 1.00GiB (+ 1.00MiB)"
+eq "markup is refused" "$(mon '<span>1</span> 2 3 4' A-gnosisvpn)" " VPN: n/a"
+eq "a fifth number is refused" "$(mon '1 2 3 4 5' A-gnosisvpn)" " VPN: n/a"
+eq "no output (tunnel down) shows n/a" "$(mon '' A-gnosisvpn)" " VPN: n/a"
+grep -q -- "--no-autostart --pass-io -u root -- A-gnosisvpn seqs-gnosisvpn-rates" "${vb}/args" && ok \
+	|| bad "the monitor must not start the qube: $(head -n 1 "${vb}/args")"
+: > "${vb}/args"
+eq "an unsafe qube name is refused" "$(mon '1 2 3 4' '-x')" " VPN: n/a"
+[ ! -s "${vb}/args" ] && ok || bad "an unsafe qube name must not reach qvm-run"
+
+echo "== seqs-gnosisvpn-rates reports totals and the last second's traffic =="
+# Against the loopback interface: four numbers, totals first.
+R=install-scripts/components/gnosisvpn/seqs-gnosisvpn-rates
+before="$(cat /sys/class/net/lo/statistics/rx_bytes)"
+out="$(sh "${R}" lo)"
+if [[ "${out}" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] && [ "${out%% *}" -ge "${before}" ]; then ok
+else bad "the rates of lo must be four numbers, total received first: ${out}"; fi
+eq "no tunnel: no output" "$(sh "${R}" seqs-no-such-interface)" ""
+rm -rf "${vb}"
+
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

@@ -467,6 +467,27 @@ grep -qF "rm -f -- /var/lib/seqs/firewall/A-keepass " "${SBX}/sudo.log" && ok \
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
+# The removed qube's panel launcher and monitor go; another qube's, and the
+# user's own launchers, stay.
+mkdir -p "${SBX}/xbin" "${SBX}/config/xfce4/panel/launcher-16"
+printf '#!/bin/sh\nexec python3 %s "$@"\n' "${REPO}/test/lib/fake_xfconf.py" > "${SBX}/xbin/xfconf-query"
+printf '#!/bin/sh\necho $PPID\n' > "${SBX}/xbin/pgrep"
+printf '#!/bin/sh\necho restarted >> %s\n' "${SBX}/panel.log" > "${SBX}/xbin/xfce4-panel"
+chmod +x "${SBX}/xbin/"*
+echo '{"/panels": ["1"], "/panels/panel-1/plugin-ids": ["1", "16", "17", "18"], "/plugins/plugin-1": "launcher",
+  "/plugins/plugin-18": "genmon", "/plugins/plugin-18/seqs-monitor": "A-keepass", "/plugins/plugin-18/command": "x",
+  "/plugins/plugin-16": "launcher", "/plugins/plugin-16/seqs-qube": "A-keepass", "/plugins/plugin-16/items": ["seqs-1.desktop"],
+  "/plugins/plugin-17": "launcher", "/plugins/plugin-17/seqs-qube": "A-brave"}' > "${SBX}/xfconf.json"
+printf '%s\n' "A-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
+PATH="${SBX}/xbin:${PATH}" SEQS_FAKE_XFCONF="${SBX}/xfconf.json" XDG_CONFIG_HOME="${SBX}/config" \
+	bash "${REPO}/delete-vms.sh" keepass >/dev/null 2>&1
+python3 -c 'import json, sys; s = json.load(open(sys.argv[1]))
+sys.exit(s["/panels/panel-1/plugin-ids"] != ["1", "17"]
+         or any(k.startswith(("/plugins/plugin-16", "/plugins/plugin-18")) for k in s)
+         or s.get("/plugins/plugin-17/seqs-qube") != "A-brave")' "${SBX}/xfconf.json" && ok \
+	|| bad "only the removed qube's panel launcher and monitor may go: $(cat "${SBX}/xfconf.json")"
+[ ! -e "${SBX}/config/xfce4/panel/launcher-16" ] && [ -s "${SBX}/panel.log" ] && ok \
+	|| bad "the removed launcher's files must go and the panel restart"
 # A qube built on a target blocks the deletion before anything changes.
 printf '%s\n' "A-qr-camera halted" "Z-qr-camera halted" "sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
 echo "sys-usb-webcam template A-qr-camera" > "${SBX}/prefs"

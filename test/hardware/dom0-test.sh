@@ -383,6 +383,60 @@ checkMenu() {
 	done
 }
 
+# checkLauncher VM -- VM's panel launcher is on the panel and holds a copy of
+# each menu entry its seqs-launcher-items feature names, in order; each one,
+# started as the panel starts it, opens a new window of VM.
+checkLauncher() {
+	local vm="$1" items item p f n=0 i new before class w name
+	export DISPLAY="${DISPLAY:-:0}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
+	items="$(qvm-features -- "${vm}" seqs-launcher-items 2>/dev/null)" || { fail "${vm}: no seqs-launcher-items feature"; return; }
+	for p in $(xfconf-query -c xfce4-panel -l | sed -n 's|^/plugins/plugin-\([0-9]*\)/seqs-qube$|\1|p'); do
+		[ "$(xfconf-query -c xfce4-panel -p "/plugins/plugin-${p}/seqs-qube")" = "${vm}" ] && break
+		p=""
+	done
+	if [ -z "${p}" ]; then
+		fail "${vm}: no panel launcher"
+		return
+	fi
+	xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | tail -n +3 | grep -qx "${p}" \
+		&& pass "${vm}: panel launcher ${p} is on the panel" || fail "${vm}: launcher ${p} is not on the panel"
+	# Background windows of a starting qube must not count as an item's window.
+	qvm-start --skip-if-running -- "${vm}" </dev/null >/dev/null 2>&1
+	sleep 15
+	for item in ${items}; do
+		n=$((n + 1))
+		f="${HOME}/.config/xfce4/panel/launcher-${p}/seqs-${n}.desktop"
+		if ! grep -qx "X-Qubes-VmName=${vm}" "${f}" 2>/dev/null || ! grep -qx "X-Qubes-AppName=${item%.desktop}" "${f}"; then
+			fail "${vm}: launcher item ${n} is not ${item}"
+			continue
+		fi
+		# The terminal and file manager must open their own window; any new
+		# window counts for the main app, whose class is not known here.
+		case "${item}" in
+			xfce4-terminal.desktop | thunar.desktop) class="^${vm}:${item%.desktop}$" ;;
+			*) class="^${vm}:" ;;
+		esac
+		before="$(xdotool search --class "${class}" 2>/dev/null | sort)"
+		gio launch "${f}" </dev/null >/dev/null 2>&1 &
+		new=""
+		for i in $(seq 45); do
+			# Helper windows (portal, keyring prompt, polkit, settings) do not count.
+			for w in $(comm -13 <(echo "${before}") <(xdotool search --class "${class}" 2>/dev/null | sort)); do
+				name="$(xprop -id "${w}" WM_CLASS 2>/dev/null | sed 's/.*= "\([^"]*\)".*/\1/')"
+				[[ "${name}" =~ :(xdg-desktop-portal|gcr-prompter|polkit|xfsettingsd) ]] || { new="${name}"; break; }
+			done
+			[ -n "${new}" ] && break
+			sleep 2
+		done
+		if [ -n "${new}" ]; then
+			pass "${vm}: launcher item ${n} (${item}) opened ${new}"
+		else
+			fail "${vm}: launcher item ${n} (${item}) opened no window within 90 s"
+		fi
+	done
+	qvm-shutdown --wait --timeout 60 -- "${vm}" </dev/null >/dev/null 2>&1 || qvm-kill -- "${vm}" </dev/null >/dev/null 2>&1
+}
+
 # checkMarkers VM ROLE RECIPE -- every component left its .done marker.
 checkMarkers() {
 	local vm="$1" role="$2" comps comp have missing=""
@@ -579,9 +633,10 @@ nft list table ip "$t" >/dev/null 2>&1 && echo GV-TABLE-KEPT-BY-TIMER
 systemctl is-active --quiet seqs-gnosisvpn-dns.timer || echo GV-TIMER-INACTIVE
 true'
 
-# checkGnosisvpn VM -- fail-closed forwarding, and the DNS reconciler.
+# checkGnosisvpn VM -- fail-closed forwarding, the DNS reconciler, and its
+# panel monitor, which shows n/a while the tunnel is down.
 checkGnosisvpn() {
-	local out
+	local out p
 	failsClosed "$1" "not connected"
 	out="$(qvm-run --pass-io --no-gui -u root "$1" "${GV_DNS}" </dev/null 2>&1)"
 	if grep -q '^GV-SKIP' <<< "${out}"; then
@@ -590,6 +645,19 @@ checkGnosisvpn() {
 		fail "$1: DNS reconciler: $(grep '^GV-' <<< "${out}" | tr '\n' ' ')"
 	else
 		pass "$1: DNS translation only while the tunnel interface is up and routes the resolvers"
+	fi
+	export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
+	for p in $(xfconf-query -c xfce4-panel -l | sed -n 's|^/plugins/plugin-\([0-9]*\)/seqs-monitor$|\1|p'); do
+		[ "$(xfconf-query -c xfce4-panel -p "/plugins/plugin-${p}/seqs-monitor")" = "$1" ] && break
+		p=""
+	done
+	if [ -n "${p}" ] && [ "$(xfconf-query -c xfce4-panel -p "/plugins/plugin-${p}/command")" = "/usr/local/bin/seqs-vpn-monitor $1" ] \
+		&& xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | tail -n +3 | grep -qx "${p}"; then
+		out="$(/usr/local/bin/seqs-vpn-monitor "$1" </dev/null)"
+		[ "${out}" = " VPN: n/a" ] && pass "$1: panel monitor ${p} shows n/a while the tunnel is down" \
+			|| fail "$1: panel monitor shows '${out}' with the tunnel down"
+	else
+		fail "$1: no panel monitor running seqs-vpn-monitor"
 	fi
 	out="$(qvm-run --pass-io --no-gui "$1" 'cat /proc/sys/net/core/rmem_default; nproc' </dev/null 2>&1 | tr '\n' ' ')"
 	if [[ "${out}" == "4194304 4 " ]]; then
@@ -714,6 +782,13 @@ check() {
 				checkMarkers "${name}" app "${recipe}"
 				checkSetup app "${name}" "${recipe}"
 				checkMenu app "${name}" "${recipe}"
+				if [ "$(catField "${recipe}" dispvm_template)" = "True" ]; then
+					[ -z "$(qvm-features -- "${name}" seqs-launcher-items 2>/dev/null)" ] \
+						&& pass "${name}: no panel launcher for the disposable template" \
+						|| fail "${name}: disposable template has panel launcher items"
+				else
+					checkLauncher "${name}"
+				fi
 				smoke "${name}" "${recipe}"
 				# An offline, no_handoff, or firewalled qube can hand nothing to
 				# the browser qube and start no disposable through any service
@@ -744,6 +819,7 @@ check() {
 					policyRefused "${name}"
 				fi
 				checkMenu disposable "${name}" "${recipe}"
+				checkLauncher "${name}"
 				;;
 		esac
 		if [[ " ${flags} " == *" offline "* ]]; then

@@ -228,6 +228,10 @@ for vm in qubesadmin.Qubes().domains:
 {%         do errors.append("qube '" ~ name ~ "' references unknown component '" ~ comp ~ "' (no /srv/salt/seqs/files/components/" ~ comp ~ "/)") %}
 {%       endif %}
 {%     endfor %}
+{%     if q.get('main_app') is not none and (q.main_app is not string
+          or q.main_app | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$') is none) %}
+{%       do errors.append("qube '" ~ name ~ "': 'main_app' must be a desktop file name such as 'signal-desktop.desktop'") %}
+{%     endif %}
 {#     Optional outbound allowlist ('firewall' key): validate before any
        entry is interpolated into a qvm-firewall command below. #}
 {%     set fw = q.get('firewall') %}
@@ -846,19 +850,42 @@ seqs-recipe-disposable-{{ name }}:
 {%     endif %}
 {%   endif %}
 
-{#   A component's own menu entry ships as menu.desktop and is installed in
-     the template as <component>.desktop; list it in the menus of the qubes
-     that run it. A disposable template gets none: its entry would run the
-     component in the template itself, whose files persist, instead of in the
-     named disposable. The state only adds entries, so it also re-adds one the
-     operator removed and leaves one behind when a component leaves the
-     recipe. qvm-appmenus regenerates menus in the dom0 user's home, so the
-     runner, not this root state, refreshes them. #}
-{%   set menu_entries = [] %}
-{%   for comp in q.get('components', []) if salt['file.file_exists']('/srv/salt/seqs/files/components/' ~ comp ~ '/menu.desktop') %}
+{#   List in the menus of the qubes that run them: the main app, a terminal,
+     a file manager, and each component's own entry (shipped as menu.desktop
+     and installed in the template as <component>.desktop). A disposable
+     template gets none: its entry would run the app in the template itself,
+     whose files persist, instead of in the named disposable. The state only
+     adds entries, so it also re-adds one the operator removed and leaves one
+     behind when it leaves the recipe. qvm-appmenus regenerates menus in the
+     dom0 user's home, so the runner, not this root state, refreshes them.
+     The runner also builds a panel launcher from the seqs-launcher-items
+     feature: the main app first, as the launcher's button. #}
+{%   set launcher_items = ([q.main_app] if q.get('main_app') else []) + ['xfce4-terminal.desktop', 'thunar.desktop'] %}
+{%   set menu_entries = launcher_items[:] %}
+{%   for comp in q.get('components', []) if salt['file.file_exists']('/srv/salt/seqs/files/components/' ~ comp ~ '/menu.desktop') and (comp ~ '.desktop') not in menu_entries %}
 {%     do menu_entries.append(comp ~ '.desktop') %}
 {%   endfor %}
-{%   for vm in (([] if q.get('dispvm_template') else [app]) + ([dvm] if q.get('named_disposable') else [])) if menu_entries %}
+{%   if 'gnosisvpn' in q.get('components', []) and not q.get('dispvm_template') %}
+# The runner adds a panel monitor of the VPN's traffic for this qube.
+seqs-vpn-monitor-{{ name }}:
+  cmd.run:
+    - name: qvm-features -- {{ app }} seqs-vpn-monitor 1
+    - unless: test "$(qvm-features -- {{ app }} seqs-vpn-monitor 2>/dev/null)" = 1
+    - require:
+      - cmd: seqs-recipe-app-{{ name }}
+{%   endif %}
+{%   for vm in (([] if q.get('dispvm_template') else [app]) + ([dvm] if q.get('named_disposable') else [])) %}
+seqs-launcher-items-{{ vm }}:
+  cmd.run:
+    - name: qvm-features -- {{ vm }} seqs-launcher-items '{{ launcher_items | join(' ') }}'
+    - unless: test "$(qvm-features -- {{ vm }} seqs-launcher-items 2>/dev/null)" = '{{ launcher_items | join(' ') }}'
+    - require:
+{%     if vm == app %}
+      - cmd: seqs-recipe-app-{{ name }}
+{%     else %}
+      - cmd: seqs-recipe-disposable-{{ name }}
+{%     endif %}
+
 seqs-menu-{{ vm }}:
   cmd.run:
     - name: |
@@ -985,6 +1012,28 @@ seqs-qr-scanner:
     - require:
       - qvm: seqs-app-qr-camera
 {% endif %}
+{% endif %}
+
+{# The panel monitor of GnosisVPN qubes (setup-qubes.sh adds it to the panel)
+   runs this every two seconds. It stays while the catalogue has such qubes,
+   built or not. #}
+{% set vpn = namespace(any=false) %}
+{% for recipe, spec in qcatalog.items() if 'gnosisvpn' in spec.get('components', []) %}
+{%   set vpn.any = true %}
+{% endfor %}
+{% if vpn.any %}
+seqs-vpn-monitor:
+  file.managed:
+    - name: /usr/local/bin/seqs-vpn-monitor
+    - source: salt://seqs/files/seqs-vpn-monitor
+    - user: root
+    - group: root
+    - mode: '0755'
+{% else %}
+seqs-vpn-monitor:
+  cmd.run:
+    - name: rm -f /usr/local/bin/seqs-vpn-monitor
+    - onlyif: head -n 2 /usr/local/bin/seqs-vpn-monitor | grep -q 'Managed by SEQS'
 {% endif %}
 
 {% if webcam_mode == 'sequential' %}

@@ -527,6 +527,138 @@ shutdownAll() {
 	done
 }
 
+# ---- Panel launchers and monitors -------------------------------------------
+# Each app qube and named disposable that the seqs.dom0 state gave the
+# seqs-launcher-items feature (its main app, a terminal, a file manager) gets
+# one launcher in the dom0 XFCE panel: the button starts the first item, its
+# arrow lists the others. A qube with the seqs-vpn-monitor feature also gets
+# a monitor that shows its VPN traffic. Each plugin names its qube in a
+# seqs-qube or seqs-monitor property, so a rerun finds it and delete-vms.sh
+# removes it with the qube. The seqs-launcher-added and seqs-monitor-added
+# features record that a plugin was added: one the user removed from the
+# panel is not added again.
+
+xfpanel() { xfconf-query -c xfce4-panel "$@"; }
+# xfArray PROPERTY -- the values of an xfconf array, one per line.
+xfArray() { xfpanel -p "$1" | tail -n +3; }
+
+# panelReady -- this user's XFCE panel runs and can be configured. The runner
+# may run outside the graphical session, so it takes the session's display
+# and bus from the panel's environment.
+panelReady() {
+	local pid v
+	command -v xfconf-query >/dev/null 2>&1 || return 1
+	pid="$(pgrep -u "$(id -u)" -x xfce4-panel | head -n 1)"
+	[ -n "${pid}" ] || return 1
+	while IFS= read -r -d '' v; do
+		case "${v}" in DISPLAY=* | DBUS_SESSION_BUS_ADDRESS=*) export "${v?}" ;; esac
+	done < "/proc/${pid}/environ"
+	xfpanel -p /panels >/dev/null 2>&1
+}
+
+# panelPluginOf MARK VM -- the number of the plugin whose MARK property is VM.
+panelPluginOf() {
+	local p
+	for p in $(xfpanel -l | sed -n "s|^/plugins/plugin-\([0-9]*\)/$1\$|\1|p"); do
+		[ "$(xfpanel -p "/plugins/plugin-${p}/$1")" = "$2" ] && { echo "${p}"; return 0; }
+	done
+	return 1
+}
+
+# newPanelPlugin TYPE MARK VM BEFORE -- add a TYPE plugin whose MARK property
+# is VM to the first panel, before its first BEFORE plugin (for a separator,
+# an expanding one) or at its end, and print its number.
+newPanelPlugin() {
+	local panel id p args=() placed=0
+	panel="$(xfArray /panels | head -n 1)"
+	id="$(xfpanel -l | sed -n 's|^/plugins/plugin-\([0-9]*\)$|\1|p' | sort -n | tail -n 1)"
+	[[ "${panel}" =~ ^[0-9]+$ && "${id}" =~ ^[0-9]+$ ]] || return 1
+	id=$((id + 1))
+	for p in $(xfArray "/panels/panel-${panel}/plugin-ids"); do
+		if [ "${placed}" -eq 0 ] && [ "$(xfpanel -p "/plugins/plugin-${p}" 2>/dev/null)" = "$4" ] \
+			&& { [ "$4" != separator ] || [ "$(xfpanel -p "/plugins/plugin-${p}/expand" 2>/dev/null)" = true ]; }; then
+			args+=(-t int -s "${id}")
+			placed=1
+		fi
+		args+=(-t int -s "${p}")
+	done
+	[ "${placed}" -eq 1 ] || args+=(-t int -s "${id}")
+	xfpanel -p "/plugins/plugin-${id}" -n -t string -s "$1" \
+		&& xfpanel -p "/plugins/plugin-${id}/$2" -n -t string -s "$3" \
+		&& xfpanel -p "/panels/panel-${panel}/plugin-ids" -n -a "${args[@]}" \
+		&& echo "${id}"
+}
+
+# appmenuFile VM ITEM -- dom0's menu entry that starts ITEM (a desktop file
+# name) in VM, as qvm-appmenus generated it.
+appmenuFile() {
+	local f
+	for f in "${XDG_DATA_HOME:-${HOME}/.local/share}"/applications/org.qubes-os.vm.*.desktop; do
+		grep -qx "X-Qubes-VmName=$1" "${f}" 2>/dev/null && grep -qx "X-Qubes-AppName=${2%.desktop}" "${f}" \
+			&& { echo "${f}"; return 0; }
+	done
+	return 1
+}
+
+# panelLauncher VM -- add or refresh VM's launcher; fails if it has none.
+panelLauncher() {
+	local vm="$1" items item id file dir n=0 args=()
+	local name_re='[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop'
+	items="$(qvm-features -- "${vm}" seqs-launcher-items 2>/dev/null)" || return 1
+	[[ "${items}" =~ ^${name_re}( ${name_re})*$ ]] \
+		|| { echo "WARNING: ${vm}: unexpected seqs-launcher-items; no panel launcher" >&2; return 1; }
+	if ! id="$(panelPluginOf seqs-qube "${vm}")"; then
+		[ -z "$(qvm-features -- "${vm}" seqs-launcher-added 2>/dev/null)" ] || return 1
+		id="$(newPanelPlugin launcher seqs-qube "${vm}" separator)" \
+			|| { echo "WARNING: could not add a panel launcher for ${vm}" >&2; return 1; }
+		qvm-features -- "${vm}" seqs-launcher-added 1
+	fi
+	# Menus of a qube whose menu items just changed may not exist yet.
+	for item in ${items}; do
+		appmenuFile "${vm}" "${item}" >/dev/null || { qvm-appmenus --update -- "${vm}" >/dev/null 2>&1; break; }
+	done
+	dir="${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-${id}"
+	mkdir -p -- "${dir}" && rm -f -- "${dir}"/seqs-*.desktop
+	for item in ${items}; do
+		if file="$(appmenuFile "${vm}" "${item}")"; then
+			n=$((n + 1))
+			cp -- "${file}" "${dir}/seqs-${n}.desktop" && args+=(-t string -s "seqs-${n}.desktop")
+		else
+			echo "WARNING: ${vm} has no menu entry ${item}; left out of its panel launcher" >&2
+		fi
+	done
+	[ "${#args[@]}" -eq 0 ] || xfpanel -p "/plugins/plugin-${id}/items" -n -a "${args[@]}"
+}
+
+# panelMonitor VM -- add VM's VPN traffic monitor, next to the notification
+# area, unless it has one or had one; fails if nothing was added.
+panelMonitor() {
+	local vm="$1" id
+	[ "$(qvm-features -- "${vm}" seqs-vpn-monitor 2>/dev/null)" = 1 ] || return 1
+	! panelPluginOf seqs-monitor "${vm}" >/dev/null || return 1
+	[ -z "$(qvm-features -- "${vm}" seqs-monitor-added 2>/dev/null)" ] || return 1
+	id="$(newPanelPlugin genmon seqs-monitor "${vm}" systray)" \
+		|| { echo "WARNING: could not add a panel monitor for ${vm}" >&2; return 1; }
+	# Two seconds: a monitor updated every second can make the panel hang.
+	xfpanel -p "/plugins/plugin-${id}/command" -n -t string -s "/usr/local/bin/seqs-vpn-monitor ${vm}" \
+		&& xfpanel -p "/plugins/plugin-${id}/update-period" -n -t int -s 2000 \
+		&& xfpanel -p "/plugins/plugin-${id}/use-label" -n -t bool -s true \
+		&& xfpanel -p "/plugins/plugin-${id}/text" -n -t string -s "${vm}" \
+		&& qvm-features -- "${vm}" seqs-monitor-added 1
+}
+
+addPanelPlugins() {
+	local vm changed=0
+	panelReady || { echo "    No XFCE panel in this session: no panel launchers added."; return 0; }
+	for vm in "$@"; do
+		panelLauncher "${vm}" && changed=1
+		panelMonitor "${vm}" && changed=1
+	done
+	# The panel reads new plugins only when it starts.
+	[ "${changed}" -eq 0 ] || xfce4-panel -r >/dev/null 2>&1 \
+		|| echo "WARNING: could not restart the panel; the launchers appear at the next login" >&2
+}
+
 prepareGnosisPrerequisites() {
 	[ "${#GNOSIS_TEMPLATE_TARGETS[@]}" -gt 0 ] || return 0
 	local template
@@ -773,6 +905,7 @@ buildQubes() {
 	fi
 
 	shutdownAll "${APP_TARGETS[@]}"
+	addPanelPlugins "${APP_TARGETS[@]}" "${DISPOSABLE_TARGETS[@]}"
 
 	echo ""
 	if [ "${FAILED}" -eq 0 ]; then
