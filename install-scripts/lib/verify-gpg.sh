@@ -140,8 +140,8 @@ import_pinned_key() {
 # fetch_signed FPR URL SIG_SUFFIX DIR SHA256 < KEY_BLOCK
 # Import the key block on stdin (import_pinned_key, GNUPGHOME=DIR/gnupg),
 # download URL and URL+SIG_SUFFIX into DIR through the update proxy, and
-# abort unless the detached signature chains to FPR and the file's SHA-256 is
-# SHA256. The signature proves who released the file; the hash pins which
+# abort unless the file's SHA-256 is SHA256 and the detached signature chains
+# to FPR. The signature proves who released the file; the hash pins which
 # release, so that a mirror cannot serve an older one signed by the same key.
 # The verified file is DIR/<last path element of URL>. DIR must be a mktemp
 # directory of the calling user (who has passwordless sudo), so nothing less
@@ -153,10 +153,11 @@ fetch_signed() {
 	# -f makes curl fail on an HTTP error instead of saving the error page.
 	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}" "${url}"
 	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${dir}/${file}${sig}" "${url}${sig}"
-	verify_detached_sig "${dir}/${file}${sig}" "${dir}/${file}" "${fpr}" "${file}"
+	# The hash first: gpg then never reads file bytes the pin rejects.
 	printf '%s  %s\n' "${sha}" "${dir}/${file}" | sha256sum --check --strict --quiet \
 		|| { echo "ERROR: ${file} does not have the pinned SHA-256 ${sha} -- not installing." >&2; exit 1; }
 	echo "sha256 OK -- ${file}"
+	verify_detached_sig "${dir}/${file}${sig}" "${dir}/${file}" "${fpr}" "${file}"
 }
 
 # add_pinned_apt_repo NAME KEYRING FPR ARCH REPO ORIGIN ALLOWED < KEY_BLOCK

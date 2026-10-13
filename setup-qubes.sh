@@ -221,10 +221,14 @@ writeRunManifest() {
 # printed as one number, would shift part of the name into the time field.
 # A 7th field means whitespace in the name: reject (no SEQS file has one).
 validateTarListing() {
-	local perms f_owner f_size f_date f_time path extra
+	local perms f_owner f_size f_date f_time path extra total=0
 	while read -r perms f_owner f_size f_date f_time path extra; do
-		[[ "${f_owner} ${f_size} ${f_date} ${f_time}" =~ ^[0-9]+/[0-9]+\ [0-9]+\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]] \
+		[[ "${f_owner} ${f_size} ${f_date} ${f_time}" =~ ^[0-9]+/[0-9]+\ [0-9]{1,9}\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]] \
 			|| die "refusing tar entry with an unexpected listing: ${perms} ${f_owner} ${f_size} ${f_date} ${f_time} ${path}"
+		# A sparse entry lists its full size but takes almost no archive space.
+		total=$((total + 10#${f_size}))
+		[ "${total}" -lt "${MAX_ARCHIVE}" ] \
+			|| die "refusing archive: its files add up to ${MAX_ARCHIVE} bytes or more"
 		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
 		case "${perms:0:1}" in
 			d|-) ;;
@@ -279,13 +283,15 @@ fetchSaltTree() {
 	echo "    resolved commit object rather than its live working tree):"
 	printf '    '; sha256sum "${tarball}"
 
-	tar -tf "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
+	# tar reads the archive from stdin, where it refuses compressed data;
+	# given a file name, it would decompress it, past the size limit above.
+	tar -tf - < "${tarball}" > /dev/null 2>&1 || die "fetched data is not a valid tar archive"
 
-	validateTarListing < <(tar --numeric-owner -tvf "${tarball}" 2>/dev/null)
+	validateTarListing < <(tar --numeric-owner -tvf - < "${tarball}" 2>/dev/null)
 
 	# tar's warnings can quote archive bytes, such as an unknown pax header
 	# keyword, so its stderr must not reach the dom0 terminal either.
-	tar -xf "${tarball}" -C "${stage}" --no-same-owner --no-same-permissions 2>/dev/null \
+	tar -xf - -C "${stage}" --no-same-owner --no-same-permissions < "${tarball}" 2>/dev/null \
 		|| die "tar extraction failed"
 
 	# Sanity: the tree must carry the pieces the apply phases rely on.
@@ -309,11 +315,15 @@ fetchSaltTree() {
 		"${newsalt}/files/" || die "staging of component payload failed"
 	touch "${newsalt}/.seqs-managed" "${newpillar}/.seqs-managed"
 
-	# Refuse to replace a fetched area not owned by SEQS.
+	# Refuse to replace a fetched area not owned by SEQS. Inspected with sudo,
+	# as in stageSaltTree: unprivileged, an unreadable path looks absent.
 	local d
 	for d in "${FETCH_SALT_TREE}" "${FETCH_PILLAR_TREE}"; do
-		if [ -e "${d}" ] && [ ! -e "${d}/.seqs-managed" ]; then
-			die "${d} exists but is not managed by SEQS -- refusing to replace it"
+		if sudo test -e "${d}"; then
+			sudo test -e "${d}/.seqs-managed" \
+				|| die "${d} exists but is not managed by SEQS -- refusing to replace it"
+		elif ! sudo test ! -e "${d}"; then
+			die "could not inspect ${d}"
 		fi
 	done
 
@@ -741,8 +751,10 @@ buildQubes() {
 
 	# An app qube of a failed template would be provisioned on a partial install.
 	apps=()
+	local tpl
 	for vm in "${APP_TARGETS[@]}"; do
-		if [[ " ${FAILED_TEMPLATES[*]} " == *" $(qvm-prefs -- "${vm}" template) "* ]]; then
+		tpl="$(qvm-prefs -- "${vm}" template)" && [ -n "${tpl}" ] || die "could not read the template of ${vm}"
+		if [[ " ${FAILED_TEMPLATES[*]} " == *" ${tpl} "* ]]; then
 			echo "WARNING: skipping ${vm}: its template failed" >&2
 			FAILED=1
 		else

@@ -130,6 +130,10 @@ reject 'drwxr-xr-x 0/0 0 2020-01-01 00:00 salt/pillar/seqs/.seqs-managed/' "name
 # prints as one number, and an owner name may contain a space.
 reject '-rw-r--r-- 0/0 1 1000000000000000000 /abs salt/y' "unexpected listing"
 reject '-rw-r--r-- a b/0 1 1969-12-31 19:00 salt/ok' "unexpected listing"
+# A sparse entry lists its full size but takes almost no archive space, so
+# the listed sizes are capped as well as the transfer.
+reject '-rw-r--r-- 0/0 1000000000 2020-01-01 00:00 salt/huge' "unexpected listing"
+reject "$(printf -- '-rw-r--r-- 0/0 9000000 2020-01-01 00:00 salt/%s\n' a b)" "add up to"
 
 echo "== SAFE_NAME accepts plain names only =="
 for n in keepass A-brave sys-usb_2 a.b; do
@@ -332,15 +336,20 @@ if grep -q FAIL "${tmp}/dom0test.out"; then
 else ok; fi
 
 echo "== seqs-wireguard-import accepts a provider export, refuses hooks =="
-# A stub sudo records what the import would install instead of doing it.
+# A stub sudo records what the import would install instead of doing it. The
+# test runs a copy that calls the stub by absolute path: a missing stub fails,
+# and never falls through to this machine's own sudo.
 wg="${tmp}/wg"; mkdir -p "${wg}/bin"
 printf '#!/bin/sh\necho "$*" >> "%s/sudo.log"\n' "${wg}" > "${wg}/bin/sudo"; chmod +x "${wg}/bin/sudo"
+sed -E "s#(^|[^-/A-Za-z_])sudo #\\1${wg}/bin/sudo #g" install-scripts/components/wireguard/seqs-wireguard > "${wg}/import"
+grep -vE '^[[:space:]]*#' "${wg}/import" | grep -qE '(^|[^-/A-Za-z_])sudo ' \
+	&& bad "the WireGuard import copy still calls sudo through PATH" || ok
 wg_conf() {  # EXTRA-LINE... -- a complete full-tunnel config plus the given lines
 	printf '%s\n' '[Interface]' '# provider comment' 'PrivateKey = AAAA' 'Address = 10.2.0.2/32' \
 		'DNS = 10.2.0.1' '[Peer]' 'PublicKey = BBBB' 'Endpoint = 198.51.100.1:51820' \
 		'AllowedIPs = 0.0.0.0/0, ::/0' 'PersistentKeepalive = 25' "$@" > "${wg}/t.conf"
 }
-wg_import() { PATH="${wg}/bin:${PATH}" bash install-scripts/components/wireguard/seqs-wireguard "${wg}/t.conf" 2>&1; }
+wg_import() { bash "${wg}/import" "${wg}/t.conf" 2>&1; }
 wg_conf; rm -f "${wg}/sudo.log"
 out="$(wg_import)" && grep -q "seqs-wireguard/wg0.conf" "${wg}/sudo.log" && ok || bad "a provider export was refused: ${out}"
 wg_conf; sed -i 's|^AllowedIPs = .*|AllowedIPs = 0.0.0.0/0 # all traffic|' "${wg}/t.conf"; rm -f "${wg}/sudo.log"
@@ -361,10 +370,8 @@ out="$(wg_import)" && bad "the import accepted a split tunnel"
 grep -q "not a complete full-tunnel" <<< "${out}" && ok || bad "split tunnel: wrong message [${out}]"
 
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
-printf '#!/bin/sh\nexec "$@"\n' > "${stub}/sudo"
-printf '#!/bin/sh\nprintf "%%b\\n" "$QOUT"\n' > "${stub}/qubesctl"
-chmod +x "${stub}/sudo" "${stub}/qubesctl"
-qctl() { ( export PATH="${stub}:${PATH}" QOUT="$1"; runQubesctl state.apply ) >/dev/null 2>&1; }
+# Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
+qctl() { ( sudo() { "$@"; }; qubesctl() { printf '%b\n' "$1"; }; runQubesctl "$1" ) >/dev/null 2>&1; }
 qctl '    Result: True\nSucceeded: 3\nFailed:    0' && ok || bad "runQubesctl failed a clean run"
 qctl '    Result: False\nSucceeded: 3' && bad "runQubesctl passed a 'Result: False' state" || ok
 qctl $'    Result: \e[0;31mFalse' && bad "runQubesctl passed a colored 'Result: False'" || ok
@@ -418,6 +425,8 @@ if command -v gpg >/dev/null 2>&1; then
 	# A file with a good signature but another hash is another release.
 	out="$(fetch "$(printf '%064d' 0)")" && bad "fetch_signed accepted a file with another SHA-256"
 	grep -q "f.bin does not have the pinned SHA-256" <<< "${out}" && ok || bad "other hash: wrong message [${out}]"
+	# The hash is checked first, so gpg never parses bytes the pin rejects.
+	! grep -q "signature OK" <<< "${out}" && ok || bad "fetch_signed ran gpg on a file with another SHA-256"
 	# A file signed by another key names the cause.
 	GNUPGHOME="${g}/home" gpg --batch --yes --quiet --local-user "${fprs[1]}" --armor --detach-sign -o "${g}/src/f.bin.asc" "${g}/src/f.bin"
 	out="$(fetch "${sha}")" && bad "fetch_signed accepted a signature by another key"
@@ -425,7 +434,7 @@ if command -v gpg >/dev/null 2>&1; then
 	echo tampered > "${g}/src/f.bin"
 	GNUPGHOME="${g}/home" gpg --batch --yes --quiet --local-user "${fprs[0]}" --armor --detach-sign -o "${g}/src/f.bin.asc" "${g}/src/f.bin"
 	echo tampered again > "${g}/src/f.bin"
-	out="$(fetch "${sha}")" && bad "fetch_signed accepted a tampered file"
+	out="$(fetch "$(sha256sum "${g}/src/f.bin" | cut -d' ' -f1)")" && bad "fetch_signed accepted a tampered file"
 	grep -q "rejected: gpg emitted BADSIG" <<< "${out}" && ok || bad "tampered file: wrong message [${out}]"
 	# gpg's exit code counts even when its status lines look good.
 	out="$( ( set -Eeuo pipefail; . install-scripts/lib/verify-gpg.sh
@@ -446,6 +455,18 @@ if command -v gpg >/dev/null 2>&1; then
 else
 	printf '  skip: gpg not available\n'
 fi
+
+echo "== test/lib/pty_run.py leaves no process behind =="
+# A process left running after its test could act on this machine after the
+# test's sandbox, and the mocks in it, are gone.
+gone() { sleep 1; [ -s "${tmp}/pid" ] && ! kill -0 "$(cat "${tmp}/pid")" 2>/dev/null; }
+rm -f "${tmp}/pid"
+PTY_RUN_IDLE_TIMEOUT=1 python3 test/lib/pty_run.py bash -c "sleep 60 & echo \$! > ${tmp}/pid; wait" >/dev/null
+[ "$?" -eq 143 ] && gone && ok || bad "pty_run.py left a process running after its idle timeout"
+rm -f "${tmp}/pid"
+# The child ignores the hangup of its terminal, as the QR script's trap does.
+python3 test/lib/pty_run.py bash -c "trap '' HUP; echo \$\$ > ${tmp}/pid; exec sleep 60" >/dev/null & sleep 1; { kill -9 "$!"; wait "$!"; } 2>/dev/null
+gone && ok || bad "pty_run.py left its child running after it was killed"
 
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"

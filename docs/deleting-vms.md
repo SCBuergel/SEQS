@@ -65,9 +65,10 @@ For each supplied base name, the helper:
    skipped and reported, unless an interrupted SEQS build left a creation
    marker for it.
 3. Stops, before changing anything for any name, if another qube uses a match
-   as its template or default disposable, such as `sys-usb-webcam` on
-   `A-qr-camera`, or a match is a global default such as the UpdateVM; it names
-   the reference, which you then remove or change first.
+   as its template, default or management disposable, or audio or GUI qube,
+   such as `sys-usb-webcam` on `A-qr-camera`, or a match is a global default
+   such as the UpdateVM; it names the reference, which you then remove or
+   change first.
 4. Finds qubes whose `netvm` property points to a match and sets that property
    to `none`. This preserves the dependent qubes and their data while
    disconnecting their network; Qubes otherwise refuses to remove a NetVM that

@@ -117,7 +117,8 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   `qubes.OpenURL`, `qubes.OpenInVM`, and the services that start a program in
   another qube or a disposable. Every build updates the tag on all SEQS app qubes and named
   disposables, selected or not, and disposables started from a tagged qube
-  inherit it.
+  inherit it. A build that selects the qube also sets its default disposable
+  to none, so a lost tag does not reopen that networked route.
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Every disposable template
@@ -132,12 +133,17 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   `qubes-firewall` service on the app qube, allowing other qubes to select it
   as their NetVM. It cannot be combined with `offline` or `dispvm_template`.
 - `'firewall': [...]` — an outbound allowlist for the app qube: each entry is a
-  hostname or IPv4 address, `host:port` for one TCP port, `'dns'`, or `'icmp'`,
-  and all other traffic is dropped. Hostname entries also need `'dns'`. A build
+  hostname or IPv4 address, `host:port` for one TCP port (1-65535), `'dns'`, or
+  `'icmp'`, and all other traffic is dropped; the pre-flight refuses other
+  ports and IPv4 octets above 255. Hostname entries also need `'dns'`, which
+  allows lookups of any name, so DNS remains a channel out. Qubes enforces the
+  rules in the qube's NetVM, which must run the `qubes-firewall` service
+  (`sys-firewall` does); SEQS neither sets nor checks that NetVM. A build
   that selects the qube restores the list if its rules were changed by hand;
   removing the key and rebuilding restores the Qubes default (allow all). It
   cannot be combined with `offline`. Because the allowlist does not restrict
-  qrexec, it implies `no_handoff`, which closes link handoff and disposables.
+  qrexec, it implies `no_handoff`, which closes link handoff and disposables
+  and clears the qube's default disposable.
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
   [`cleanup_dirs`](#cleanup_dirs). The shipped
   `qr-staging` entry uses it to hold a received file while the computer is off.
@@ -150,6 +156,12 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   as `xl info` in dom0 shows; for a selected qube the pre-flight refuses
   others, and refuses to overwrite such a file that SEQS did not write. Removing the key deletes the
   file; the vCPU count stays.
+
+Removing `offline`, `no_handoff`, `firewall`, `dispvm_template`, or
+`network_provider` from a built qube does not revert the qube preferences
+(`qvm-prefs`) these flags set: a NetVM or default disposable set to none stays none, and
+`template_for_dispvms` or `provides_network` stays on (see
+[convergence](architecture.md#convergence)).
 
 ## WireGuard NetVM
 

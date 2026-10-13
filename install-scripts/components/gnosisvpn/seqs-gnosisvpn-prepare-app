@@ -11,7 +11,8 @@ entry=/usr/sbin/seqs-gnosisvpn-firewall
 bind_dir_config=/rw/config/qubes-bind-dirs.d/50-seqs-gnosisvpn.conf
 persistent_dir=/rw/bind-dirs/var/lib/gnosisvpn
 
-touch "$hook"
+# qubes-firewall runs the hook directly, so a new one needs its interpreter line.
+[[ -s "$hook" ]] || printf '#!/bin/sh\n' > "$hook"
 chmod 0755 "$hook"
 if ! grep -Fqx "$entry" "$hook"; then
 	printf '%s\n' "$entry" >> "$hook"

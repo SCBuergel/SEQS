@@ -69,8 +69,9 @@ mkdir -p "${RESULTS}"
 ln -sfn "${RESULTS##*/}" test/hardware/results/latest
 
 # `git stash create` records the working tree as a commit without changing
-# anything; with no local changes it prints nothing and HEAD is tested.
-REV="$(git stash create)"
+# anything; with no local changes it prints nothing and HEAD is tested. If it
+# fails (an intent-to-add file does that), stop rather than test HEAD.
+REV="$(git stash create)" || { echo "git stash create failed; refusing to test HEAD instead" >&2; exit 2; }
 REV="${REV:-$(git rev-parse HEAD)}"
 UNTRACKED="$(git ls-files --others --exclude-standard -- salt install-scripts setup-qubes.sh delete-vms.sh test/hardware test/lib)"
 

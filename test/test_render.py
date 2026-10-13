@@ -794,6 +794,18 @@ def test_dom0_firewall_states():
           "the marker must record the rules Qubes reports after applying them")
     check("reset" not in name and name.index("add --before 0 drop") < name.index("accept"),
           "egress must be closed before the rules are replaced, never reset to allow-all")
+    check("qvm-prefs -- A-wallet default_dispvm none"
+          in state_arg(parsed, "seqs-no-dispvm-wallet", "cmd.run", "name"),
+          "a firewalled qube must not keep a networked default disposable")
+    # Qubes would refuse these only at apply time, after egress is closed.
+    for bad in ["h:0", "h:65536", "999.1.1.1", "256.1.1.1", "010.1.1.1", "1.2.3", "1.2.3.4.5"]:
+        check(_rejected("invalid firewall entry '%s'" % bad, _bad_pillar(catalogue={
+            "wallet": {"label": "gray", "components": ["brave"], "firewall": [bad]}})),
+            "firewall entry %r must be refused in the pre-flight" % bad)
+    for good in ["h:1", "h:65535", "255.255.255.255", "0.0.0.0", "10.0.0.1:443", "a-1.example", "1example.com"]:
+        check(not _rejected("invalid firewall entry", _bad_pillar(catalogue={
+            "wallet": {"label": "gray", "components": ["brave"], "firewall": [good]}})),
+            "firewall entry %r must be accepted" % good)
 
 
 def test_dom0_network_provider():
@@ -807,6 +819,9 @@ def test_dom0_network_provider():
           "network-provider qvm prefs should expose networking")
     check("seqs-network-provider-wireguard" in parsed,
           "network provider should enable the Qubes firewall service")
+    check("qvm-prefs -- A-wireguard default_dispvm none"
+          in state_arg(parsed, "seqs-no-dispvm-wireguard", "cmd.run", "name"),
+          "a no_handoff qube must not keep a networked default disposable")
 
 
 # ---------------------------------------------------------------------------

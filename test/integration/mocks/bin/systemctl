@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Tripwire, not a mock: no test may reach the host's systemctl (a poweroff
+# there powers off the machine running the tests). Record the call; fail.
+echo "systemctl $*" >> "${SEQS_TRIPWIRE_LOG:-/dev/null}"
+exit 1

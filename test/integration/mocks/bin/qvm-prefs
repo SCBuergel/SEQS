@@ -74,7 +74,7 @@ if [ "${property}" = "default_dispvm" ] && [ "${#args[@]}" -lt 3 ]; then
 	exit 0
 fi
 
-if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ]; then
+if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ] && [ "${property}" = netvm ]; then
 	if [ "${#args[@]}" -ge 3 ]; then
 		tmp="${SEQS_MOCK_NETVM_STATE}.tmp"
 		awk -v vm="${vm}" -v value="${value}" '

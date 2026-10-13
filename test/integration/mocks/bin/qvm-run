@@ -4,20 +4,26 @@
 #   qvm-run -p REPO_VM "git ... cat-file ... && git ... archive ..."
 # Emit the requested result. SEQS_MOCK_TAR overrides the archive payload so a
 # scenario can feed a hostile archive; SEQS_MOCK_ENDLESS=commit|archive makes
-# that answer an endless stream.
+# that answer a 20 MB stream, more than either limit, and the mock appends
+# "commit" or "archive" to SEQS_MOCK_ENDLESS_LOG only if the reader took it
+# all. An endless stream would fill memory when a limit is missing.
+endless() {
+  yes | head -c 20000000 && echo "${SEQS_MOCK_ENDLESS}" >> "${SEQS_MOCK_ENDLESS_LOG:-/dev/null}"
+  exit 0
+}
 case "$*" in
   *"Z-gnosisvpn"*"apt-get update"*"openresolv"*)
     exit 0
     ;;
   *"rev-parse --verify HEAD^{commit}"*)
-    [ "${SEQS_MOCK_ENDLESS:-}" != commit ] || exec yes
+    [ "${SEQS_MOCK_ENDLESS:-}" != commit ] || endless
     printf '%s\n' "${SEQS_MOCK_RESOLVED_COMMIT:-${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}}"
     exit 0
     ;;
   *"cat-file -e ${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}^{commit}"*"archive --format=tar ${SEQS_EXPECTED_COMMIT} -- salt install-scripts"*) ;;
   *) exit 64 ;;
 esac
-[ "${SEQS_MOCK_ENDLESS:-}" != archive ] || exec yes
+[ "${SEQS_MOCK_ENDLESS:-}" != archive ] || endless
 if [ -n "${SEQS_MOCK_TAR:-}" ]; then
   cat "${SEQS_MOCK_TAR}"
 else

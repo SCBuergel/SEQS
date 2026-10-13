@@ -48,19 +48,23 @@ The template contains:
 Do not install `openresolv` or GnosisVPN manually.
 
 Before provisioning `Z-gnosisvpn`, the runner installs Debian dependencies
-through the ordinary configured UpdateVM. It then creates a temporary AppVM
-named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and applies
-a default-deny firewall allowing only DNS and TCP 443 to
+through the template's normal update route (the qube that the
+`qubes.UpdatesProxy` qrexec policy names for it). It then creates a temporary
+AppVM named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and
+applies a default-deny firewall allowing only DNS and TCP 443 to
 `download.vpn.gnosis.eth.limo`. A temporary exact-source qrexec rule directs only
-`Z-gnosisvpn` to that proxy. If the configured UpdateVM is a DispVM, the
-runner follows its validated DispVM-to-AppVM template chain to the underlying
-TemplateVM used to create the temporary AppVM. The temporary AppVM uses the
-UpdateVM as its NetVM when the UpdateVM provides network itself, such as
-`sys-firewall`, and otherwise the UpdateVM's NetVM. With a Whonix gateway as
-UpdateVM (updates over Tor) the runner refuses to build GnosisVPN: behind the
-gateway the temporary AppVM's firewall is not enforced, and the download
-fails. To build it anyway, set `sys-firewall` as UpdateVM for that run; the
-download then leaves without Tor.
+`Z-gnosisvpn` to that proxy. The temporary AppVM is based on the TemplateVM
+of dom0's UpdateVM (`qubes-prefs updatevm`, the qube dom0 itself updates
+through), found through a validated DispVM-to-AppVM template chain if the
+UpdateVM is a DispVM. It uses the UpdateVM as its NetVM when the UpdateVM
+provides network itself, such as `sys-firewall`, and otherwise the UpdateVM's
+NetVM. If dom0's UpdateVM is a Whonix gateway (updates over Tor) the runner
+refuses to build GnosisVPN: behind the gateway the temporary AppVM's firewall
+is not enforced, and the download fails. To build it anyway, set
+`sys-firewall` as UpdateVM for that run; the download then leaves without Tor.
+The runner checks only dom0's UpdateVM: if the `qubes.UpdatesProxy` policy
+sends template updates over Tor but dom0's UpdateVM is not a Whonix gateway,
+the GnosisVPN download still leaves without Tor.
 
 Upstream currently recommends piping
 `https://download.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable
@@ -74,13 +78,12 @@ superseded packages from that repository, so an old pin stops downloading
 
 The template downloads the pinned `.deb` and detached signature through
 `127.0.0.1:8082`, checks the embedded signing-key fingerprint
-`9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, verifies the detached signature,
-and checks SHA-256
-`87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`
-before installation. After template provisioning—even on failure—the runner
+`9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, checks SHA-256
+`87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`, and
+verifies the detached signature before installation. After template provisioning—even on failure—the runner
 removes the temporary policy and marked proxy qube; a run killed before that
-leaves them until the next build, which removes them first. Qubes' default
-UpdateVM policy then applies again.
+leaves them until the next build, which removes them first. The template's
+normal `qubes.UpdatesProxy` policy then applies again.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
 test below. For a second GnosisVPN qube, use `--postfix` as shown above rather
@@ -195,7 +198,7 @@ upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
   both so that only the `gnosisvpn` package can come from them, checks that
   the repository keyring holds exactly the pinned key, and locks that keyring.
   Once the temporary policy is removed, later `gnosisvpn` updates use the
-  normal Qubes UpdateVM, are not restricted by the temporary domain-only
+  template's normal `qubes.UpdatesProxy` route, are not restricted by the temporary domain-only
   proxy, and can move past the version SEQS pinned.
 - The DNS helper expects the interface to be named `wg0_gnosisvpn`. A future
   GnosisVPN release that renames it requires a reviewed component update.

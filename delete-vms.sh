@@ -35,8 +35,8 @@ any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
 the seqs-managed feature, or the creation marker of an interrupted run);
 same-named qubes without either are skipped. Qubes using a match as their
 NetVM are preserved but disconnected (netvm set to none). If another qube uses
-a match as its template or default disposable, or a match is a global default,
-nothing is changed.
+a match in any other setting (template, default or management disposable,
+audio or GUI qube), or a match is a global default, nothing is changed.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -84,13 +84,15 @@ waitForShutdown() {
 
 # findUsers TARGET [TARGET ...] -- print "consumer property target" for each
 # reference that stops Qubes from removing a target: any qube's netvm, a
-# non-target's template or default_dispvm, and a global default (consumer
-# dom0). netvm users are disconnected; the others block the deletion.
+# non-target's template, default_dispvm, management_dispvm, audiovm or guivm,
+# and a global default (consumer dom0). netvm users are disconnected; the
+# others block the deletion.
 findUsers() {
-	qvm-ls --raw-data --fields name,netvm,template,default_dispvm | awk -F'|' -v t=" $* " '
+	qvm-ls --raw-data --fields name,netvm,template,default_dispvm,management_dispvm,audiovm,guivm \
+			| awk -F'|' -v t=" $* " '
 		{
-			split("netvm template default_dispvm", prop, " ")
-			for (i = 2; i <= 4; i++)
+			split("netvm template default_dispvm management_dispvm audiovm guivm", prop, " ")
+			for (i = 2; i <= 7; i++)
 				if ($i != "-" && $i != "" && $i != $1 && index(t, " " $i " ") \
 						&& (i == 2 || !index(t, " " $1 " ")))
 					print $1, prop[i - 1], $i

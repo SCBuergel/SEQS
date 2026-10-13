@@ -85,8 +85,8 @@ for vm in qubesadmin.Qubes().domains:
 {%     do recipes.update({fields[-1]: fields[0]}) %}
 {%   endif %}
 {% endfor %}
-{# Recipes whose qubes may hand nothing to another qube: offline, no_handoff,
-   and firewalled ones. They are tagged seqs-no-handoff below, and qube.sls
+{# Recipes whose qubes may hand no link, open-in-VM request or disposable call
+   to another qube: offline, no_handoff, and firewalled ones. They are tagged seqs-no-handoff below, and qube.sls
    sets no browser handoff in them. #}
 {% set no_handoff = [] %}
 {% for recipe, q in qcatalog.items() if q.get('offline') or q.get('no_handoff') or q.get('firewall') is not none %}
@@ -254,8 +254,17 @@ for vm in qubesadmin.Qubes().domains:
 {%           do errors.append("qube '" ~ name ~ "' sets both 'offline' and 'firewall' -- contradictory: offline removes the netvm entirely, there is no egress to filter") %}
 {%         endif %}
 {%         for e in fw %}
-{%           if e not in ['dns', 'icmp'] and (e | string | regex_match('^[A-Za-z0-9._-]+(:[0-9]{1,5})?$')) is none %}
-{%             do errors.append("qube '" ~ name ~ "' has invalid firewall entry '" ~ e ~ "' (expected hostname/IPv4 with optional :port, or the tokens 'dns' / 'icmp')") %}
+{%           set es = e | string %}
+{%           set port = es.split(':')[1] if ':' in es else '1' %}
+{%           set host = es.split(':')[0] %}
+{%           set octet = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])' %}
+{#           Qubes rejects a port outside 1-65535 or a malformed dotted-quad
+             host only after egress is already closed. #}
+{%           if e not in ['dns', 'icmp'] and ((es | regex_match('^[A-Za-z0-9._-]+(:[0-9]{1,5})?$')) is none
+                or (port | int) < 1 or (port | int) > 65535
+                or ((host | regex_match('^[0-9.]+$')) is not none
+                    and (host | regex_match('^' ~ octet ~ '([.]' ~ octet ~ '){3}$')) is none)) %}
+{%             do errors.append("qube '" ~ name ~ "' has invalid firewall entry '" ~ e ~ "' (expected hostname/IPv4 with optional :port 1-65535, or the tokens 'dns' / 'icmp')") %}
 {%           endif %}
 {%         endfor %}
 {%       endif %}
@@ -635,6 +644,16 @@ seqs-offline-{{ name }}:
         qvm-prefs -- {{ app }} netvm none
         qvm-prefs -- {{ app }} default_dispvm none
     - unless: qvm-prefs -- {{ app }} | {{ explicitly_offline }}
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   elif q.get('no_handoff') or q.get('firewall') is not none %}
+# The policy denies this qube every disposable by its seqs-no-handoff tag.
+# The default disposable, which has network access, is cleared as well, so
+# that a lost tag does not reopen that route.
+seqs-no-dispvm-{{ name }}:
+  cmd.run:
+    - name: qvm-prefs -- {{ app }} default_dispvm none
+    - unless: qvm-prefs -- {{ app }} | awk '$1 == "default_dispvm" && $2 == "-" && $3 == "None" { f = 1 } END { exit !f }'
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}

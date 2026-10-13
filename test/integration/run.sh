@@ -17,6 +17,11 @@ PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$*"; }
 
+# mocks/bin/systemctl records any call that reached systemctl through PATH;
+# without it, such a call could power off the machine running the tests.
+export SEQS_TRIPWIRE_LOG
+SEQS_TRIPWIRE_LOG="$(mktemp)"
+
 # A fresh sandbox + environment for one run of setup-qubes.sh.
 new_sandbox() {
 	SBX="$(mktemp -d)"
@@ -123,6 +128,13 @@ export SEQS_MOCK_FAIL_RC=0 SEQS_MOCK_FAIL_OUTPUT='          Result: False\nZ-sig
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
 	|| bad "a forged ERROR line must not narrow an unattributed failure"
+# An app qube whose template cannot be read might be based on the failed one.
+unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT; export SEQS_MOCK_FAIL_RC=20
+echo "A-signal template " > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "could not read the template of A-signal" <<<"$out" \
+	&& ! grep -q -- "--targets=.*A-signal" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "an unreadable template must stop the run before app qubes are provisioned"
 unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
 rm -rf "${SBX}"
 
@@ -263,17 +275,39 @@ i.pax_headers = {"EVIL\x1b]0;PWNED\x07": "1"}
 t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
 out="$(run_setup --all 2>&1)"
 ! grep -q $'\x1b' <<<"$out" && ok || bad "an escape byte from the archive reached the terminal"
+# A compressed archive could expand past the size limit: tar must refuse it
+# instead of decompressing it.
+SEQS_MOCK_TAR="${SBX}/tree.tar.gz"
+tar -C "${REPO}" -czf "${SEQS_MOCK_TAR}" salt install-scripts
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "not a valid tar archive" <<<"$out" && ok \
+	|| bad "a compressed archive must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 # An endless answer from the repository qube is cut off, not stored whole.
 unset SEQS_MOCK_TAR
+export SEQS_MOCK_ENDLESS_LOG="${SBX}/endless.log"
 out="$(SEQS_MOCK_ENDLESS=archive run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "reached the 16000000-byte limit" <<<"$out" && ok \
 	|| bad "an endless archive must be refused at the size limit: rc=$rc $(tail -n 2 <<<"$out")"
 out="$(SEQS_MOCK_ENDLESS=commit run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -qE "could not resolve repository HEAD|invalid full commit ID" <<<"$out" && ok \
 	|| bad "an endless commit ID must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+[ ! -e "${SEQS_MOCK_ENDLESS_LOG}" ] && ok \
+	|| bad "the runner read a whole oversized answer instead of stopping at its limit: $(cat "${SEQS_MOCK_ENDLESS_LOG}")"
+unset SEQS_MOCK_ENDLESS_LOG
 [ -z "$(ls -A "${SBX}/tmp")" ] && ok \
 	|| bad "a refused fetch must leave no temporary files"
 rm -rf "${SBX}" "${evil}"
+
+# ── Scenario 3b: fetch never replaces a fetched area SEQS does not own ──────
+echo "== scenario: fetch refuses to replace an unmarked fetched area =="
+new_sandbox
+out="$(run_setup --fetch-only 2>&1)" && ok || bad "a clean fetch failed: $(tail -n 2 <<<"$out")"
+rm -f "${SEQS_FETCH_ROOT}/salt/.seqs-managed"; touch "${SEQS_FETCH_ROOT}/salt/user-file"
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "salt exists but is not managed by SEQS" <<<"$out" \
+	&& [ -e "${SEQS_FETCH_ROOT}/salt/user-file" ] && ok \
+	|| bad "fetch must refuse to replace an unmarked fetched area: $(tail -n 1 <<<"$out")"
+rm -rf "${SBX}"
 
 # ── Scenario 4: air-gap verification fails closed ──────────────────────────
 echo "== scenario: a live netvm on an offline qube halts provisioning =="
@@ -441,6 +475,15 @@ out="$(SEQS_MOCK_PREFS="${SBX}/prefs" bash "${REPO}/delete-vms.sh" qr-camera 2>&
 grep -q "sys-usb-webcam has template A-qr-camera" <<<"$out" && ok || bad "the blocking qube must be named"
 [ "$(wc -l < "${SEQS_MOCK_STATE}")" -eq 3 ] && grep -qxF "A-qr-camera halted" "${SEQS_MOCK_STATE}" && ok \
 	|| bad "a blocked deletion must change nothing"
+# Qubes refuses to remove a qube that is still another qube's management
+# disposable, audio or GUI qube too: it blocks the deletion like a template.
+for prop in management_dispvm audiovm guivm; do
+	echo "sys-usb-webcam ${prop} A-qr-camera" > "${SBX}/prefs"
+	out="$(SEQS_MOCK_PREFS="${SBX}/prefs" bash "${REPO}/delete-vms.sh" qr-camera 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -q "sys-usb-webcam has ${prop} A-qr-camera" <<<"$out" \
+		&& grep -qxF "A-qr-camera halted" "${SEQS_MOCK_STATE}" && ok \
+		|| bad "a qube using the match as ${prop} must block the deletion: $(tail -n 1 <<<"$out")"
+done
 # A refusal for one name leaves the other names untouched too.
 printf '%s\n' "A-keepass halted" "Z-keepass halted" "A-qr-camera halted" "Z-qr-camera halted" \
 	"sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
@@ -590,14 +633,20 @@ rm -rf "${SBX}"
 
 # ── Scenario 10: the sequential QR script refuses before the camera phase ───
 # Every check before "Type START" must stop the script without powering off.
-# The test runs a copy that reads its configuration from the sandbox and
-# skips the root check; mocks local to this scenario stand in for Qubes.
+# The test runs a copy that reads its configuration from the sandbox, skips
+# the root check, and calls the mocks local to this scenario by absolute path:
+# a missing mock fails, and never falls through to the host's own command.
 echo "== scenario: sequential QR script refuses an unsafe state before START =="
 SBX="$(mktemp -d)"
 mkdir -p "${SBX}/bin"
-sed -e "s#^CONF=.*#CONF=${SBX}/conf#" -e 's/^\[ "\${EUID}" -eq 0 \].*$/:/' \
+QR_MOCKED='qvm-(check|prefs|run|usb|kill|shutdown|start)|systemctl|sleep|sync'
+sed -E -e "s#^CONF=.*#CONF=${SBX}/conf#" -e 's/^\[ "\$\{EUID\}" -eq 0 \].*$/:/' \
+	-e "s#(^|[^-/A-Za-z_])(${QR_MOCKED})\\b#\\1${SBX}/bin/\\2#g" \
 	"${REPO}/salt/seqs/files/qr-sequential.sh" > "${SBX}/qr.sh"
+grep -vE '^[[:space:]]*#' "${SBX}/qr.sh" | grep -E '(^|[^-/A-Za-z_])systemctl\b|(^|[;&|({]|then|do|else)[[:space:]]*(poweroff|reboot|halt|shutdown)\b' \
+	&& bad "the QR script copy still calls a power command through PATH" || ok
 write_mock() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "${SBX}/bin/$1"; chmod +x "${SBX}/bin/$1"; }
+write_mock sync ':'
 write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
 write_mock qvm-prefs 'awk -v k="$2 $3" '"'"'$1" "$2 == k { print $3; f=1 } END { exit !f }'"'"' "'"${SBX}"'/prefs"'
 write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; cat "'"${SBX}"'/staged"'
@@ -685,6 +734,10 @@ write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"; [ "$*" != powerof
 qr_camera "refused power-off" START "scan/copy failed" yes
 grep -qx -- "poweroff --force --force" "${SBX}/systemctl.log" && ok || bad "a refused power-off must be forced"
 rm -rf "${SBX}"
+
+[ ! -s "${SEQS_TRIPWIRE_LOG}" ] && ok \
+	|| bad "a test reached systemctl through PATH: $(head -n 3 "${SEQS_TRIPWIRE_LOG}")"
+rm -f "${SEQS_TRIPWIRE_LOG}"
 
 echo
 echo "integration tests: ${PASS} passed, ${FAIL} failed"

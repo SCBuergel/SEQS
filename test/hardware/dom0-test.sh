@@ -218,7 +218,7 @@ noHandoff() {
 # checkSetup KIND VM RECIPE -- the qube settings SEQS declares, as qvm-prefs
 # reports them, and the template menu entries.
 checkSetup() {
-	local kind="$1" vm="$2" recipe="$3" want got comp
+	local kind="$1" vm="$2" recipe="$3" want got dvm comp
 	case "${kind}" in
 		template)
 			isNone "$(qvm-prefs -- "${vm}" netvm 2>/dev/null)" \
@@ -243,10 +243,13 @@ checkSetup() {
 					&& pass "${vm}: provides network" || fail "${vm}: provides_network is not set"
 			fi
 			# Link handoff: set in qubes that hand links to the browser qube,
-			# absent where offline or no_handoff closes that path.
+			# absent where offline, no_handoff or firewall closes that path.
 			got="$(qvm-run --pass-io --no-gui "${vm}" 'xdg-settings get default-web-browser' 2>/dev/null </dev/null)"
-			if [ "$(catField "${recipe}" offline)" = "True" ] || [ "$(catField "${recipe}" no_handoff)" = "True" ] \
-					|| [ "${vm}" = "${BROWSER_VM}" ]; then
+			if noHandoff "${recipe}"; then
+				dvm="$(qvm-prefs -- "${vm}" default_dispvm 2>/dev/null)" && isNone "${dvm}" \
+					&& pass "${vm}: no default disposable" || fail "${vm}: default disposable is '${dvm}'"
+			fi
+			if noHandoff "${recipe}" || [ "${vm}" = "${BROWSER_VM}" ]; then
 				[ "${got}" != "${BROWSER_DESKTOP}" ] && pass "${vm}: links are not handed to ${BROWSER_VM}" \
 					|| fail "${vm}: hands links to ${BROWSER_VM} although it must not"
 			else
