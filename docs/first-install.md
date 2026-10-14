@@ -59,8 +59,8 @@ creates. HTTPS and a commit ID are not a security audit.
 
 Before copying anything into dom0:
 
-1. Follow [VERIFY-HUMAN.md](../VERIFY-HUMAN.md), especially “Read what you'll
-   run.” It supplies a convenient review order for the runner, pillar, Salt
+1. Follow [VERIFY-HUMAN.md](../VERIFY-HUMAN.md), especially "Read what you'll
+   run." It supplies a convenient review order for the runner, pillar, Salt
    states, verification libraries, and selected component installers. Do not
    trust that guide blindly either; check its claims against the code.
 2. Read [TRUST.md](../TRUST.md). Items marked ⚠️ or ❌ require an explicit

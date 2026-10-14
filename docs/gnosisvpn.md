@@ -136,8 +136,6 @@ tunnel.
 
 ## Watch the tunnel's traffic
 
-![Panel showing the VPN's upload and download](https://github.com/SCBuergel/SEQS/blob/main/tray.png?raw=true)
-
 The build adds a monitor to the dom0 panel, next to the notification area,
 labelled with the qube's name. Every two seconds it shows the tunnel's total
 upload and download and, in parentheses, those of the last second, in binary
@@ -169,14 +167,16 @@ does not exist.
 Connect GnosisVPN, then verify:
 
 ```bash
-sudo wg show wg0_gnosisvpn
+seqs-gnosisvpn-rates
 sudo resolvconf -l
 cat /etc/resolv.conf
 getent hosts example.com
 sudo nft list table ip seqs_gnosisvpn_dns
 ```
 
-The WireGuard interface should have a recent handshake. `resolvconf -l` may
+`seqs-gnosisvpn-rates` should print four numbers, the tunnel's received and
+sent bytes in total and in the last second; it prints nothing while the
+tunnel is down. `resolvconf -l` may
 show one or two IPv4 resolvers for `wg0_gnosisvpn`; if it does not, the nft
 table should target `1.1.1.1` and `8.8.8.8`. `/etc/resolv.conf` should still
 contain Qubes' synthetic addresses, name resolution should succeed, and the

@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
+# Mock qvm-firewall: SEQS_MOCK_FIREWALL_LOG records each call's arguments.
+[ -z "${SEQS_MOCK_FIREWALL_LOG:-}" ] || echo "$*" >> "${SEQS_MOCK_FIREWALL_LOG}"
 exit 0

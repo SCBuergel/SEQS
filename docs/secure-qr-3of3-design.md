@@ -60,8 +60,8 @@ Qubes volumes, snapshots, copy-on-write storage, swap, backups, or SSD media.
 The implementation should be rejected if it weakens the current QR containment
 to obtain better ergonomics. In particular, it must not enable camera-originated
 input, broaden file-copy policy, skip the strict PCI reset where no power removal
-replaces it, or put secrets or
-executable helper code in dom0.
+replaces it, or put secrets in dom0, or dom0 code that runs anything a qube
+supplies.
 
 ## System architecture
 

@@ -16,6 +16,7 @@ REPO="$(cd "${HERE}/../.." && pwd)"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$*"; }
+eq()  { [ "$2" = "$3" ] && ok || bad "$1: expected [$3], got [$2]"; }
 
 # mocks/bin/systemctl records any call that reached systemctl through PATH;
 # without it, such a call could power off the machine running the tests.
@@ -41,6 +42,7 @@ new_sandbox() {
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG SEQS_MOCK_APPMENUS_LOG
+	unset SEQS_MOCK_FIREWALL_LOG SEQS_MOCK_POLICY_COPY
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
@@ -63,6 +65,7 @@ run_setup() {  # supplies the explicit repository qube to workflows with FETCH
 echo "== scenario: fresh full workflow (fetch + stage + build) =="
 new_sandbox
 export SEQS_MOCK_APPMENUS_LOG="${SBX}/qvm-appmenus.log"
+export SEQS_MOCK_FIREWALL_LOG="${SBX}/qvm-firewall.log" SEQS_MOCK_POLICY_COPY="${SBX}/gnosis.policy"
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "fresh install exited non-zero ($rc)"
 grep -q "Transfer SHA256" <<<"$out" && ok || bad "expected the transfer hash to be shown"
@@ -75,6 +78,14 @@ grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out"
 	&& ok || bad "expected the scoped GnosisVPN proxy lifecycle"
 [ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" ] && ok \
 	|| bad "temporary GnosisVPN update policy should be removed after provisioning"
+# The download proxy may reach only DNS and the GnosisVPN host, and only the
+# GnosisVPN template may use it, for its updates proxy service alone.
+p=seqs-gnosisvpn-update-proxy
+eq "the proxy's firewall" "$(cat "${SEQS_MOCK_FIREWALL_LOG}")" "$(printf '%s\n' "-- $p reset" "-- $p del --rule-no 0" \
+	"-- $p add accept specialtarget=dns" "-- $p add accept dsthost=download.vpn.gnosis.eth.limo proto=tcp dstports=443" \
+	"-- $p add drop")"
+eq "the temporary policy" "$(cat "${SEQS_MOCK_POLICY_COPY}")" "$(printf '%s\n' "# Managed by SEQS" \
+	"qubes.UpdatesProxy * Z-gnosisvpn @default allow target=$p" "qubes.UpdatesProxy * Z-gnosisvpn @anyvm deny")"
 # The tree really landed in the sandbox /srv, root markers and all.
 [ -f "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "dom0.sls not installed into sandbox /srv"
 [ -f "${SEQS_SALT_TREE}/.seqs-managed" ] && ok || bad "missing .seqs-managed marker"

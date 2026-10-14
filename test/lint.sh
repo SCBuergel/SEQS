@@ -3,9 +3,9 @@
 # (shell syntax errors, obviously-broken constructs) before anything heavier
 # runs.
 #
-#   * bash -n on every *.sh                 -- parse-only syntax check
-#   * shellcheck on every *.sh (if present) -- deeper shell linting; skipped
-#                                              with a note when not installed
+#   * bash -n on every shell script         -- parse-only syntax check
+#   * shellcheck on every shell script      -- deeper shell linting; skipped
+#     (if present)                             with a note when not installed
 #   * every Salt state/pillar renders + parses as YAML (delegated to the
 #     Python render layer, which is the real check)
 #   * embedded signing keys: warn within 180 days of expiry, fail within 30
@@ -23,6 +23,18 @@ cd "$(dirname "$0")/.." || exit 2
 fail=0
 note() { printf '  %s\n' "$*"; }
 
+# Every *.sh file, and every other file that starts with a shell's #! line,
+# such as the helpers installed into dom0 and the qubes without a suffix.
+shellScripts() {
+	find . -type f -not -path './.git/*' -not -path './test/hardware/results/*' | sort \
+		| while IFS= read -r f; do
+			case "$f" in
+				*.sh) echo "$f" ;;
+				*) head -n 1 "$f" | grep -qE '^#!.*[/ ](ba|da)?sh$' && echo "$f" ;;
+			esac
+		done
+}
+
 echo "== bash -n (syntax) =="
 while IFS= read -r f; do
 	if err="$(bash -n "$f" 2>&1)"; then
@@ -30,7 +42,7 @@ while IFS= read -r f; do
 	else
 		note "FAIL $f"; printf '%s\n' "$err" | sed 's/^/       /'; fail=1
 	fi
-done < <(find . -name '*.sh' -not -path './.git/*' | sort)
+done < <(shellScripts)
 
 echo
 echo "== shellcheck =="
@@ -45,7 +57,7 @@ if command -v shellcheck >/dev/null 2>&1; then
 		else
 			fail=1
 		fi
-	done < <(find . -name '*.sh' -not -path './.git/*' | sort)
+	done < <(shellScripts)
 else
 	note "SKIP: shellcheck not installed (apt-get install shellcheck for deeper checks)"
 fi

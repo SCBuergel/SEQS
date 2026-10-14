@@ -79,9 +79,11 @@ For each supplied base name, the helper:
    template — permanently removing the qube and its volumes. A removal failure
    stops the script.
 7. Deletes the dom0 files SEQS wrote for each removed qube: its CPU pinning
-   (`/etc/qubes/templates/libvirt/xen/by-name/<qube>.xml`, which would
-   otherwise apply to a later qube of the same name) and its recorded firewall
-   rules under `/var/lib/seqs/firewall/`.
+   (`/etc/qubes/templates/libvirt/xen/by-name/<qube>.xml`) and its creation
+   marker, both of which would otherwise apply to a later qube of the same
+   name, and its recorded firewall rules under `/var/lib/seqs/firewall/`.
+8. Removes the removed qubes' launchers and VPN monitor from the dom0 panel,
+   then restarts the panel.
 
 The helper changes no policy file: the dom0 handoff rules match the qubes'
 tags, which disappear with them. Deleting the browser qube (`brave`) leaves

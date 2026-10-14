@@ -141,8 +141,10 @@ The runner:
    same-named VMs;
 3. verifies every selected offline app qube and named disposable has no NetVM
    and no default disposable;
-4. provisions templates and shuts them down to commit their root volumes; and
-5. provisions app qubes and shuts them down.
+4. provisions templates and shuts them down to commit their root volumes;
+5. provisions app qubes and shuts them down; and
+6. adds or refreshes the dom0 panel launcher of each app qube and named
+   disposable it built ([panel launchers](configuration.md#panel-launchers)).
 
 If a state fails, fix the reported cause and rerun the same `--build-only`
 command with the same selection. Completed work is normally skipped.

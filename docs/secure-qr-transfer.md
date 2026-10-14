@@ -631,12 +631,14 @@ dedicated-controller path. Add the other role's qubes too if the computer will
 send in both directions.
 
 Selecting `qr-staging` creates `A-qr-staging` (a persistent offline qube
-that keeps the encrypted file while the computer is off). On the sequential
-path, the build also installs the dom0 script
-`/usr/local/sbin/seqs-qr-sequential` that runs the scan. On the sequential path, the build stops with `Configured controller is
-not attached to sys-usb` if the configured BDF is not a controller that the
-running `sys-usb` holds; recheck the BDF, and that `sys-usb` is running. Every
-later SEQS run on this computer repeats that check, whichever qubes it builds.
+that keeps the encrypted file while the computer is off).
+
+On the sequential path, every build also installs the dom0 script
+`/usr/local/sbin/seqs-qr-sequential` that runs the scan, and stops with
+`Configured controller is not attached to sys-usb` if the configured BDF is
+not a controller that the running `sys-usb` holds; recheck the BDF, and that
+`sys-usb` is running. Every later SEQS run on this computer repeats that
+check, whichever qubes it builds.
 
 The build assigns the controller without resetting it. If `sys-usb-webcam`
 later fails to start because the controller cannot be reset, the reset check
@@ -708,16 +710,24 @@ qvm-pci list --assignments
 ```
 
 The controller can appear on two lines: one with the qubes that hold it right
-now, if any, and one with the assigned qubes, marked with `*`. On the
-dedicated-controller path, your controller must be assigned only to
-`sys-usb-webcam`, and no other controller may be assigned to `sys-usb-webcam`:
-a build with a different BDF leaves that controller assigned to it, so give it
-back to `sys-usb` with steps 3 and 4 of the recovery under
+now, if any, and one with the assigned qubes, marked with `*`. On both paths,
+no other controller may be assigned to `sys-usb-webcam`: a build with a
+different BDF leaves that controller assigned to it.
+
+On the dedicated-controller path, your controller must be assigned only to
+`sys-usb-webcam`. Give a wrongly assigned controller back to `sys-usb` with
+steps 3 and 4 of the recovery under
 [Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
+
 On the sequential path, the controller is assigned to both `sys-usb` and
 `sys-usb-webcam`. Qubes refuses to start a qube whose controller another
 running qube holds, and the script stops `sys-usb` before starting
-`sys-usb-webcam`.
+`sys-usb-webcam`. A wrongly assigned controller keeps its `sys-usb`
+assignment, so only remove it from `sys-usb-webcam`, with `<BDF>` replaced:
+
+```bash
+qvm-pci unassign sys-usb-webcam dom0:<BDF>
+```
 
 ### Receiving computer: check the qrexec policies
 

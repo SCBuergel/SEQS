@@ -37,10 +37,12 @@ Receiving computer, one of:
       sequential path: run the dom0 script, check that it lists nothing in
       `sys-usb` except your USB keyboard and mouse and internal devices you
       found on another controller, unplug the keyboard and mouse within 10
-      seconds of `START`, plug the webcam into the socket you chose for it,
-      remove all power after the power-off, check that only `key.asc`
-      arrived in `A-qr-staging`, copy it (accept only that one dialog),
-      delete the staging copy, and shut `A-qr-staging` down.
+      seconds of `START`, plug in only the webcam, into the socket you chose
+      for it, once the script shows `NORMAL USB BACKEND STOPPED`, unplug the
+      webcam when the script reports a completed copy or an error, remove
+      all power after the power-off, check that only `key.asc` arrived in
+      `A-qr-staging`, copy it (accept only that one dialog), delete the
+      staging copy, and shut `A-qr-staging` down.
 
 Both computers:
 

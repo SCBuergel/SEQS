@@ -278,7 +278,7 @@ the results, changes the code, and runs the test again.
 | install | dom0 | Runs the SEQS runner from the commit under test for the selected qubes, answering each `[y/N]` prompt with `y`. |
 | check | dom0 | Verifies what was built: see below. |
 | lifecycle | dom0 | Restarts the app qubes and checks that the cleanup service has not failed, that the boot and shutdown cleanup ran (and did not, with `preserve_incoming`) and that state kept through bind-dirs survived. |
-| invalidate | dom0 | Only with `--force-rerun`: empties every completion marker. |
+| invalidate | dom0 | Only with `--force-rerun`: empties every completion marker, and removes the interpreter line from the firewall hooks SEQS added to, which the installers must restore. |
 | rerun-install, rerun-check | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
 | update, update-check | dom0 | Only with `--update`: updates the templates as a user would, then checks again. |
 | reboot, reboot-check | laptop, dom0 | Only with `--reboot`: reboots the test machine, waits until it answers again, then checks again. |
@@ -297,8 +297,14 @@ The check phase verifies, for every qube the runner was asked to build, that:
   of the files installed for it);
 - templates are shut down after the install, and each app qube is based on
   its own SEQS template;
+- templates can still update, their locked keyrings are locked, and each
+  third-party repository can ship only its allowlisted packages;
+- each component passes a short smoke test, its menu entries exist, and vim
+  uses the SEQS settings;
+- each panel launcher item opens a window of its qube;
 - each app qube and named disposable carries exactly the handoff tag its
-  catalogue entry calls for;
+  catalogue entry calls for, and dom0's policy refuses every way out of a
+  qube whose entry forbids handoff;
 - offline qubes have no network qube and no default disposable, and an
   offline app qube really cannot open a connection to the internet;
 - networked app qubes have a network qube;
@@ -307,7 +313,11 @@ The check phase verifies, for every qube the runner was asked to build, that:
   same client reaches it through the default network qube. For WireGuard, the
   importer must refuse a `PostUp` hook, and a tunnel whose peer never answers
   must still block the client. For GnosisVPN, a stand-in tunnel interface
-  must get the DNS translation only while it is up and routes the resolvers.
+  must get the DNS translation only while it is up and routes the resolvers,
+  the qube must have 4 vCPUs and the larger receive buffer, and the panel
+  monitor must show `VPN: n/a`. In both, the firewall hook must start with an
+  interpreter line, `qubes-firewall` must be active, and the hook's drop rules
+  must be in place.
 
 It also checks that the runner recorded success, that every SEQS policy file
 in dom0 carries the SEQS marker, and that no temporary qube, policy, file, or

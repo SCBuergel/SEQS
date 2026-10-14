@@ -53,6 +53,11 @@ data flow and controls. For the per-component trust analysis see
    temporary download proxy qube and policy for its package
    ([GnosisVPN](gnosisvpn.md)).
 
+   Last, it adds a dom0 panel launcher for each app qube and named disposable
+   it built and, for a GnosisVPN qube, a traffic monitor, which runs a command
+   in that qube every two seconds and accepts only four numbers from it
+   ([TRUST.md](../TRUST.md#panel-launchers-main_app-catalogue-key-and-the-gnosisvpn-traffic-monitor-)).
+
 ## Why fetched data and `/srv` are separate
 
 These locations represent different trust and execution states:

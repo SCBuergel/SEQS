@@ -44,10 +44,11 @@ layers) and `bash`; `prove` and `mutate` also need `git`. `shellcheck` and
 ## The layers
 
 ### Layer 0 — lint (`test/lint.sh`)
-`bash -n` on every `*.sh`, `shellcheck -x -S error` if available (errors only —
-the repo deliberately carries some info/warning-level patterns, and a gate that
-fails on style gets bypassed), a smoke render of every Salt template, and
-`test/doc_coherence.py`, which fails when the docs do not name a catalogue
+`bash -n` on every shell script (every `*.sh`, and every other file that
+starts with a shell's `#!` line), `shellcheck -x -S error` if available
+(errors only — the repo deliberately carries some info/warning-level patterns,
+and a gate that fails on style gets bypassed), a smoke render of every Salt
+template, and `test/doc_coherence.py`, which fails when the docs do not name a catalogue
 flag, setting, component, option, pinned fingerprint, or guarded policy file
 that the code defines, a `--qubes` example names no catalogue entry, or a
 relative Markdown link does not resolve.

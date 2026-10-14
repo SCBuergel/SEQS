@@ -182,8 +182,8 @@ needs to find a running XFCE panel of the user who runs it; otherwise it adds
 no launchers and says so.
 
 A rebuild refreshes the launcher's entries. A launcher removed from the panel
-(right-click, **Remove**) stays removed; deleting the qube with `~/d.sh`
-removes its launcher too.
+(right-click, **Remove**) stays removed; deleting the qube with
+[`delete-vms.sh`](deleting-vms.md) removes its launcher too.
 
 ## WireGuard NetVM
 

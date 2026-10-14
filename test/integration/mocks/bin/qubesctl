@@ -50,6 +50,10 @@ PY
     echo "dom0: Succeeded: 12  Failed: 0" ;;
   *"state.apply seqs.qube"*)
     [ -z "${SEQS_MOCK_QUBESCTL_LOG:-}" ] || echo "$args" >> "$SEQS_MOCK_QUBESCTL_LOG"
+    # SEQS_MOCK_POLICY_COPY keeps the temporary GnosisVPN policy as the
+    # template provisioning saw it; the runner removes it afterwards.
+    [ -z "${SEQS_MOCK_POLICY_COPY:-}" ] \
+      || cp "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" "${SEQS_MOCK_POLICY_COPY}" 2>/dev/null || true
     # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it.
     fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
     if [ -n "$fail" ] && [[ "$args" == *"$fail"* ]]; then
