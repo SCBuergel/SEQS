@@ -43,6 +43,9 @@ TMP_DIR="${SEQS_TMP_DIR:-/tmp}"
 SEQS_POLICIES=(00-seqs-qr-input-deny 01-seqs-qr-filecopy 20-seqs-gnosisvpn-updates
 	28-browser-suppress 29-browser 30-user-input)
 MARKER="Managed by SEQS"
+# isMarked FILE -- SEQS wrote FILE: its first line starts with the marker, as
+# setup-qubes.sh requires.
+isMarked() { sudo head -n 1 -- "$1" 2>/dev/null | grep -q "^# ${MARKER}"; }
 
 SETUP="${SEQS_TEST_SETUP:-${HERE}/setup-qubes.sh}"
 DELETE_VMS="${SEQS_TEST_DELETE_VMS:-${HERE}/delete-vms.sh}"
@@ -122,7 +125,7 @@ reset() {
 	for p in "${SEQS_POLICIES[@]}"; do
 		f="${POLICY_DIR}/${p}.policy"
 		sudo test -e "${f}" || continue
-		if sudo grep -qF "${MARKER}" "${f}"; then
+		if isMarked "${f}"; then
 			sudo rm -f -- "${f}"
 		else
 			fail "${f} is not marked as SEQS-managed; left in place"
@@ -873,13 +876,15 @@ check() {
 				&& pass "${name}: netvm and default_dispvm are explicitly none" \
 				|| fail "${name}: netvm or default_dispvm is only inherited as none"
 			if [ "${kind}" = "app" ]; then
+				# A qube that does not run must not count as offline.
 				# shellcheck disable=SC2016 # runs inside the qube
-				if qvm-run --pass-io --no-gui "${name}" \
-						'timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443"' >/dev/null 2>&1 </dev/null; then
-					fail "${name} is offline but reached 1.1.1.1:443"
-				else
-					pass "${name}: cannot reach the internet"
-				fi
+				case "$(qvm-run --pass-io --no-gui "${name}" \
+						'timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null && echo REACHED || echo BLOCKED' \
+						2>/dev/null </dev/null)" in
+					BLOCKED) pass "${name}: cannot reach the internet" ;;
+					REACHED) fail "${name} is offline but reached 1.1.1.1:443" ;;
+					*) fail "${name}: could not run the internet check in it" ;;
+				esac
 			fi
 		elif [ "${kind}" = "app" ] && isNone "${nv}"; then
 			fail "${name} should have network access but has no netvm"
@@ -894,7 +899,7 @@ check() {
 
 	for name in "${SEQS_POLICIES[@]}"; do
 		name="${POLICY_DIR}/${name}.policy"
-		if sudo test -e "${name}" && ! sudo grep -qF "${MARKER}" "${name}"; then
+		if sudo test -e "${name}" && ! isMarked "${name}"; then
 			fail "${name} exists without the SEQS marker"
 		fi
 	done

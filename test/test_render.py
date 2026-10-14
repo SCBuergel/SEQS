@@ -198,13 +198,13 @@ def test_dom0_runtime_selection():
           "targets must exclude unselected catalogue entries")
 
     _, bad = render_state("dom0", "dom0", Scenario(selection="not-in-catalogue"))
-    check("seqs-validation-failed" in bad,
+    check("runtime selection names unknown catalogue entry 'not-in-catalogue'" in _errors(bad),
           "unknown runtime selections must fail pre-flight")
 
     _, postfixed = render_state(
         "dom0", "dom0",
         Scenario(selection="brave alpha\nsignal signal-alpha"))
-    check("seqs-validation-failed" in postfixed,
+    check("runtime instance 'alpha' is not derived from recipe 'brave'" in _errors(postfixed),
           "a malformed recipe/instance mapping must fail pre-flight")
 
     _, postfixed = render_state(
@@ -295,7 +295,7 @@ def test_dom0_refuses_unmanaged_qube():
     _, parsed = render_state(
         "dom0", "dom0",
         Scenario(existing_qubes=["A-brave"]))  # exists, untagged, no intent
-    check("seqs-validation-failed" in parsed,
+    check("qube 'A-brave' already exists but is not marked seqs-managed" in _errors(parsed),
           "an existing untagged A-brave must trip the no-clobber guard")
 
 
@@ -575,7 +575,7 @@ def test_dom0_dedicated_qr_rejects_weak_reset():
     })
     _, parsed = render_state(
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
-    check("seqs-validation-failed" in parsed,
+    check("dedicated webcam mode forbids webcam_usb_no_strict_reset" in _errors(parsed),
           "dedicated + no-strict-reset must fail pre-flight")
 
 
@@ -663,7 +663,7 @@ def test_dom0_named_disposable():
     _, refused = render_state("dom0", "dom0", Scenario(
         selection="qr-display", existing_qubes=["A-brave", "D-qr-display"],
         tagged_qubes=["A-brave"]))
-    check("seqs-validation-failed" in refused,
+    check("qube 'D-qr-display' already exists but is not marked seqs-managed" in _errors(refused),
           "an untagged pre-existing D- qube must trip the no-clobber guard")
     _, adopted = render_state("dom0", "dom0", Scenario(
         selection="qr-display", existing_qubes=["A-brave", "D-qr-display"],
@@ -1115,15 +1115,24 @@ def test_qube_stray_minion_is_noop():
 
 
 def test_qube_validation_catches_bad_component():
-    case("qube.sls: in-qube validation rejects an unsafe component name")
-    bad = {"role": "template", "browser_vm": "A-brave",
-           "browser_desktop": "open-links-in-browser-qube.desktop",
-           "component_timeout": 900,
-           "spec": {"components": ["../etc/passwd"]},
-           "brave_extensions": {}, "cleanup_dirs": []}
-    _, parsed = render_state("qube", "Z-brave", pillar_seqs=bad)
-    check("seqs-qube-validation-failed" in parsed,
-          "an unsafe component name must fail in-qube validation")
+    case("qube.sls: in-qube validation rejects unsafe pillar values")
+    good = {"role": "template", "browser_vm": "A-brave",
+            "browser_desktop": "open-links-in-browser-qube.desktop",
+            "component_timeout": 900, "spec": {"components": ["brave"]},
+            "brave_extensions": {}, "cleanup_dirs": []}
+    _, parsed = render_state("qube", "Z-brave", pillar_seqs=good)
+    check("seqs-qube-validation-failed" not in parsed, "a safe pillar must pass in-qube validation")
+    for key, value, expected in [
+            ("spec", {"components": ["../etc/passwd"]}, "unsafe component name '../etc/passwd'"),
+            ("spec", {"components": ["brave-extension-x"]}, "missing or invalid extension ID for 'brave-extension-x'"),
+            ("browser_vm", "A-brave;id", "unsafe browser_vm 'A-brave;id'"),
+            ("browser_desktop", "x;id.desktop", "unsafe browser_desktop 'x;id.desktop'"),
+            ("component_timeout", "900\n    - shell: /bin/x", "component_timeout must be a number")]:
+        bad = dict(good, **{key: value})
+        _, parsed = render_state("qube", "Z-brave", pillar_seqs=bad)
+        comment = (state_arg(parsed, "seqs-qube-validation-failed", "test.fail_without_changes", "comment")
+                   if "seqs-qube-validation-failed" in parsed else "")
+        check(expected in comment, "in-qube validation must report %r, got %r" % (expected, comment))
 
 
 
@@ -1287,11 +1296,15 @@ def test_cleanup_paths_never_name_home():
         pillar = copy.deepcopy(render_pillar("dom0"))
         pillar["cleanup_dirs"] = [{"mode": "folder", "path": path}]
         _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
-        check("seqs-validation-failed" in parsed, "dom0 must reject cleanup path %r" % path)
+        check("cleanup_dirs path '%s' must be strictly under /home/user/" % path in _errors(parsed),
+              "dom0 must reject cleanup path %r" % path)
         qube = copy.deepcopy(render_pillar("Z-brave"))
         qube["cleanup_dirs"] = [{"mode": "folder", "path": path}]
         _, parsed = render_state("qube", "Z-brave", pillar_seqs=qube)
-        check("seqs-qube-validation-failed" in parsed, "the qube must reject cleanup path %r" % path)
+        check("seqs-qube-validation-failed" in parsed
+              and "unsafe cleanup_dirs entry" in state_arg(parsed, "seqs-qube-validation-failed",
+                                                          "test.fail_without_changes", "comment"),
+              "the qube must reject cleanup path %r" % path)
     for path in ("/home/user/Downloads", "/home/user/.cache/x"):
         pillar = copy.deepcopy(render_pillar("dom0"))
         pillar["cleanup_dirs"] = [{"mode": "contents", "path": path}]

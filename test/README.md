@@ -15,7 +15,8 @@ under a minute, on any Linux box (or CI), with **no Qubes at all**.
 
 ```
 ./test/run-tests.sh            # run every Qubes-free layer, summarised
-./test/run-tests.sh render     # or one layer: lint | render | unit | integration | fast
+./test/run-tests.sh render     # or one layer: lint | render | unit | integration
+./test/run-tests.sh fast       # lint plus render
 ./test/run-tests.sh prove      # do the new tests fail against the committed code?
 ./test/run-tests.sh mutate     # does every security check have a test?
 ```
@@ -119,8 +120,11 @@ fetch → validate → stage → build → verify control flow as one piece.
 Nothing above proves that software actually installs *inside* a qube — that
 needs a real Salt run. Two options, in ascending fidelity:
 
-1. **Render/compile on a Qubes dom0 without provisioning.** Fetch the tree
-   (`./setup-qubes.sh --repo-vm <VM> --fetch-only`, then `--stage-only`) and dry-run the states:
+1. **Render/compile on a Qubes dom0 without provisioning.** On a machine where
+   a build has already run once (it enables the SEQS pillar and records the
+   selection that `seqs.dom0` reads), fetch the tree
+   (`./setup-qubes.sh --repo-vm <VM> --fetch-only`, then `--stage-only`) and
+   dry-run the states:
    ```
    sudo qubesctl --skip-dom0 --targets=Z-brave state.show seqs.qube   # render only
    sudo qubesctl state.apply seqs.dom0 test=True                      # no changes

@@ -32,7 +32,8 @@ Receiving computer, one of:
 - [ ] [Step 4a](secure-qr-transfer.md#step-4a-scan-on-the-dedicated-controller-path-receiving-computer),
       dedicated-controller path: the webcam appears only under
       `sys-usb-webcam`, as a single device; accept exactly one copy dialog;
-      afterwards unplug the webcam and confirm the camera qubes have stopped.
+      afterwards unplug the webcam, shut down `seqs-qr-scanner` and
+      `sys-usb-webcam`, and confirm both have stopped.
 - [ ] [Step 4b](secure-qr-transfer.md#step-4b-scan-on-the-sequential-path-receiving-computer),
       sequential path: run the dom0 script, check that it lists nothing in
       `sys-usb` except your USB keyboard and mouse and internal devices you
@@ -40,7 +41,8 @@ Receiving computer, one of:
       seconds of `START`, plug in only the webcam, into the socket you chose
       for it, once the script shows `NORMAL USB BACKEND STOPPED`, unplug the
       webcam when the script reports a completed copy or an error, remove
-      all power after the power-off, check that only `key.asc` arrived in
+      all power after the power-off, start the target key qube, check that
+      only `key.asc` arrived in
       `A-qr-staging`, copy it (accept only that one dialog), delete the
       staging copy, and shut `A-qr-staging` down.
 

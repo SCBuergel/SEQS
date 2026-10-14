@@ -6,8 +6,9 @@ weaker version. For every entry, a temporary git worktree gets the working
 tree's files plus that one change, committed (the integration layer fetches
 the committed tree), and the Qubes-free layers run cheapest first until one
 fails twice in a row. A mutation that every layer accepts SURVIVES: no test
-guards that check. One that fails a layer only once is FLAKY. The tests must
-pass without a mutation first.
+guards that check. One that fails a layer only once is FLAKY. One that breaks
+the syntax of its file is BROKEN: lint would catch it, not a test of the
+check. The tests must pass without a mutation first.
 
     python3 test/mutate.py            run every mutation
     python3 test/mutate.py tar gpg    run the mutations whose name contains one
@@ -43,6 +44,10 @@ MUTATIONS = [
     ("takeover-usb-failsafe", R, 'vms="$(qvm-ls --raw-list 2>/dev/null)" && !', '{ vms="$(qvm-ls --raw-list 2>/dev/null)" || true; } && !'),
     ("qubesctl-result-false", R, "Result:([[:space:]]|\\[[0-9;]*m)*False|", ""),
     ("qubesctl-unattributed", R, '[ "${UNATTRIBUTED_FAILURE}" -eq 0 ] \\', 'true \\'),
+    ("gnosis-policy-unmarked", R, '\t\t&& ! isManaged "${GNOSIS_UPDATE_POLICY}"; then\n\t\tdie', '\t\t&& false; then\n\t\tdie'),
+    ("gnosis-proxy-unmarked", R, 'seqs-gnosisvpn-temporary-proxy 2>/dev/null)" != "1" ]; then', 'seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "never" ]; then'),
+    ("arg-repo-vm-name", R, '|| die "unsafe repo qube name', '|| true "unsafe repo qube name'),
+    ("arg-qubes-name", R, '|| die "unsafe or empty qube base name in --qubes', '|| true "unsafe or empty qube base name in --qubes'),
     ("gnosis-stale-cleanup", R, '\t# A temporary GnosisVPN proxy or policy that a killed run left behind.\n\tcleanupGnosisUpdateProxy\n', ''),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
@@ -51,7 +56,7 @@ MUTATIONS = [
     ("tar-symlink", R, "d|-) ;;", "d|-|l) ;;"),
     ("tar-dotdot", R, '[[ "${path}" == *..* ]] && die', '[[ "${path}" == *..* ]] && true'),
     ("tar-top-dir", R, "^(salt|install-scripts)(/", "^([a-z-]+)(/"),
-    ("tar-fixed-fields", R, "[0-9]+/[0-9]+\\ [0-9]{1,9}\\ [0-9]{4}", "[^ ]+\\ [0-9]{1,9}\\ [0-9]{4}"),
+    ("tar-fixed-fields", R, "[0-9]+/[0-9]+\\ [0-9]{1,9}\\ [0-9]{4}", "[^[:space:]]+\\ [0-9]{1,9}\\ [0-9]{4}"),
     ("tar-numeric-owner", R, "< <(tar --numeric-owner -tvf", "< <(tar -tvf"),
     ("tar-marker-name", R, '[[ "${path%/}" == */.seqs-* ]] && die', '[[ "${path%/}" == */.seqs-* ]] && true'),
     ("fetch-size-limit", R, '[ "$(stat -c %s -- "${tarball}")" -lt "${MAX_ARCHIVE}" ]', '[ 0 -ge 0 ]'),
@@ -100,7 +105,7 @@ MUTATIONS = [
     ("dom0-dvm-netvm", S, "        qvm-prefs -- {{ dvm }} netvm none\n", ""),
     ("dom0-dispvm-tpl-offline", S, "{%     if q.get('dispvm_template') and not q.get('offline') %}", "{%     if false %}"),
     ("dom0-offline-firewall", S, "{%         if q.get('offline') %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'", "{%         if false %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'"),
-    ("dom0-adopt", S, "already exists but is not marked seqs-managed -- refusing to adopt it (remove", "x\") %}{% if false %}{% do errors.append(\"(remove"),
+    ("dom0-adopt", S, "{%     if not inventory[vmname].managed and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}", "{%     if false %}"),
     ("dom0-repurpose", S, "{%       do errors.append(\"qube '\" ~ vmname ~ \"' is managed for recipe", "{%       do [].append(\"qube '\" ~ vmname ~ \"' is managed for recipe"),
     ("dom0-special-adopt", S, "and not inventory.get(special, {}).get('managed') %}", "and false %}"),
     ("dom0-escape-vmshell", S, "'qubes.VMShell', 'qubes.VMExec'", "'qubes.VMExec'"),
@@ -119,7 +124,7 @@ MUTATIONS = [
     ("vpn-monitor-four-numbers", VM, "^[0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}$ ]]", "^.*$ ]]"),
     ("dom0-main-app-anchor", S, "[.]desktop\\\\Z') is none) %}", "[.]desktop$') is none) %}"),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
-    ("dom0-firewall-entry", S, "has invalid firewall entry", "x\") %}{% if false %}{% do errors.append(\"y"),
+    ("dom0-firewall-entry", S, "{%           if e not in ['dns', 'icmp'] and ((es", "{%           if false and ((es"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),
     ("dom0-sequential-staging-offline", S, "(not qcatalog.get('qr-staging', {}).get('offline') or ", "("),
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
@@ -130,7 +135,11 @@ MUTATIONS = [
     ("qr-one-device", QR, '[ "${#devices[@]}" -eq 1 ] ||', '[ "${#devices[@]}" -ge 1 ] ||'),
     ("qr-device-id", QR, '=~ ^[0-9]+-[0-9]+(\\.[0-9]+)*$ ]]', '=~ ^[0-9]+-.*$ ]]'),
     ("qr-poweroff", QR, "		systemctl poweroff || systemctl poweroff --force --force\n", ""),
-    ("qr-offline-pref", QR, "			''|None|none) ;;", "			*) ;;"),
+    ("qr-offline-explicit", QR, '&& $2 == "-" && $3 == "None" { n++ } END { exit n != 2 }\' || {', '&& $3 == "None" { n++ } END { exit n != 2 }\' || {'),
+    ("qr-offline-pref", QR, '&& $2 == "-" && $3 == "None" { n++ } END { exit n != 2 }\' || {', '{ n++ } END { exit n != 2 }\' || {'),
+    ("qr-conf-names", QR, '[[ "$value" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || {', 'true || {'),
+    ("qr-conf-bdf", QR, '[[ "$CONTROLLER" =~ ^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$ ]] || {', 'true || {'),
+    ("qr-scanner-running", QR, 'qvm-check --running -q -- "$SCANNER_QUBE" && {', 'false && {'),
     ("qr-old-key", QR, "	ABSENT) ;;", "	ABSENT|PRESENT) ;;"),
     ("wg-allowlist", "install-scripts/components/wireguard/seqs-wireguard", "PersistentKeepalive)[[:space:]]*=.*)?", "PersistentKeepalive|[A-Za-z]+)[[:space:]]*=.*)?"),
     ("wg-full-tunnel", "install-scripts/components/wireguard/seqs-wireguard", "=([^#]*,)?[[:space:]]*0\\.0\\.0\\.0/0[[:space:]]*([,#].*)?$'", "=.*0\\.0\\.0\\.0/0'"),
@@ -143,6 +152,12 @@ MUTATIONS = [
     ("gpg-sha256", G, "| sha256sum --check --strict --quiet \\\n", "| true \\\n"),
     ("gpg-apt-pin", G, "Pin-Priority: -1\\n\\nPackage", "Pin-Priority: 1\\n\\nPackage"),
     ("gpg-signed-by", G, "signed-by=${keyring}]", "]"),
+    ("qube-component-name", Q, "{%   if comp | regex_match(name_re) is none %}", "{%   if false %}"),
+    ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}$') is none %}", "{%     if false %}"),
+    ("qube-browser-vm", Q, "{% if browser_vm | regex_match(name_re) is none %}", "{% if false %}"),
+    ("qube-browser-desktop", Q, "{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\\\.desktop$') is none %}", "{% if false %}"),
+    ("qube-timeout-number", Q, "{% if timeout is not number %}", "{% if false %}"),
+    ("qube-cleanup-path", Q, "          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none\n", "\n"),
     ("qube-cleanup-template", Q, "          rw-only|none) ;;", "          rw-only|none|full) ;;"),
     ("qube-install-brave", Q, "install_brave; install_brave_extension", "install_brave_extension"),
 ]
@@ -170,6 +185,19 @@ def make_worktree(parent):
     return tree
 
 
+def syntax_error(path):
+    """True if the Jinja of a .sls file, or a shell script, does not parse."""
+    if path.endswith(".sls"):
+        from jinja2 import Environment, TemplateSyntaxError
+        try:
+            with open(path) as f:
+                Environment(extensions=["jinja2.ext.do"]).parse(f.read())
+        except TemplateSyntaxError:
+            return True
+        return False
+    return run(["bash", "-n", path], os.path.dirname(path)).returncode != 0
+
+
 def check_one(tree, mutation):
     name, path, old, new = mutation
     target = os.path.join(tree, path)
@@ -179,6 +207,9 @@ def check_one(tree, mutation):
         return name, "ERROR", "original text found %d times in %s" % (text.count(old), path)
     with open(target, "w") as f:
         f.write(text.replace(old, new))
+    if syntax_error(target):
+        run(["git", "checkout", "-q", "--", path], tree)
+        return name, "BROKEN", "the mutated %s does not parse" % path
     run(["git", "-c", "user.name=mutate", "-c", "user.email=mutate@invalid",
          "commit", "-q", "-am", name], tree)
     try:
@@ -195,6 +226,9 @@ def check_one(tree, mutation):
 
 def main():
     wanted = [m for m in MUTATIONS if len(sys.argv) < 2 or any(a in m[0] for a in sys.argv[1:])]
+    if not wanted:
+        print("ERROR: no mutation name contains %s" % " or ".join(sys.argv[1:]))
+        return 2
     workers = min(len(wanted), os.cpu_count() or 1) or 1
     parent = tempfile.mkdtemp()
     trees = []

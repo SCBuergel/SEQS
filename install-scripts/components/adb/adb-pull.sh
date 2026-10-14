@@ -293,13 +293,16 @@ if [[ -f "$OUTPUT" ]]; then
     if [[ "$HAVE" -eq "$SIZE" ]]; then
         echo "File already fully transferred ($HAVE bytes). Skipping to verification."
         START_CHUNK=$TOTAL_CHUNKS
-    elif [[ "$START_CHUNK" -gt 0 ]]; then
+    elif [[ "$HAVE" -gt "$SIZE" ]]; then
+        echo "ERROR: $OUTPUT is larger than the remote file, so it is not a partial download of it; not changing it."
+        exit 1
+    else
         TRUNCATE_TO=$(( START_CHUNK * CHUNK_BYTES ))
         echo "Found partial download: $HAVE bytes on disk."
         echo "Truncating to last clean chunk boundary: $TRUNCATE_TO bytes."
         truncate -s "$TRUNCATE_TO" "$OUTPUT"
         sync "$OUTPUT"
-        echo "Resuming from chunk $START_CHUNK / $TOTAL_CHUNKS"
+        echo "Resuming from chunk $((START_CHUNK + 1)) / $TOTAL_CHUNKS"
     fi
 else
     echo "Starting fresh download."

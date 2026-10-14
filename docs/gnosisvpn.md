@@ -38,9 +38,7 @@ AppVM has independent private VPN state: `/var/lib/gnosisvpn` is mapped into
 its private volume at `/rw/bind-dirs/var/lib/gnosisvpn` through Qubes
 bind-dirs, so that directory survives AppVM restarts and template updates.
 SEQS creates and seeds the private-volume directory during AppVM provisioning;
-the bind becomes active on the next boot. The temporary update-proxy policy is
-generated with exact source rules for every selected GnosisVPN instance and is
-removed after template provisioning.
+the bind becomes active on the next boot.
 
 The template contains:
 
@@ -60,7 +58,7 @@ through the template's normal update route (the qube that the
 AppVM named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and
 applies a default-deny firewall allowing only DNS and TCP 443 to
 `download.vpn.gnosis.eth.limo`. A temporary exact-source qrexec rule directs only
-`Z-gnosisvpn` to that proxy. The temporary AppVM is based on the TemplateVM
+the selected GnosisVPN templates (such as `Z-gnosisvpn`) to that proxy. The temporary AppVM is based on the TemplateVM
 of dom0's UpdateVM (`qubes-prefs updatevm`, the qube dom0 itself updates
 through), found through a validated DispVM-to-AppVM template chain if the
 UpdateVM is a DispVM. It uses the UpdateVM as its NetVM when the UpdateVM

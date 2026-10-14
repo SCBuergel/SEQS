@@ -229,11 +229,12 @@ validateTarListing() {
 		total=$((total + 10#${f_size}))
 		[ "${total}" -lt "${MAX_ARCHIVE}" ] \
 			|| die "refusing archive: its files add up to ${MAX_ARCHIVE} bytes or more"
-		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
+		# Before the whitespace check, which a link's "NAME -> TARGET" also fails.
 		case "${perms:0:1}" in
 			d|-) ;;
 			*) die "refusing non-regular tar entry (type '${perms:0:1}'): ${path}" ;;
 		esac
+		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
 		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
 		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
 			|| die "refusing unsafe tar path: ${path}"

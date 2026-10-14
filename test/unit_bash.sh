@@ -102,6 +102,37 @@ grep -q "Device serial captured: SER0x1$" <<< "${out}" && ok \
 	|| bad "the device serial must lose its control characters: $(grep serial <<< "${out}")"
 rm -rf "${tmpd}"
 
+echo "== adb-pull resumes only a partial download of the remote file =="
+tmpd="$(mktemp -d)"
+printf 'remote file\n' > "${tmpd}/remote"
+cat > "${tmpd}/adb" <<'MOCK'
+#!/usr/bin/env bash
+r="$(dirname "$0")/remote"
+case "$*" in
+	devices) printf 'List of devices attached\nphone\tdevice\n' ;;
+	*getprop*) echo SER ;;
+	*stat*) stat -c%s "${r}" ;;
+	*sha256sum*) sha256sum "${r}" ;;
+	*dd\ *) [[ "$*" =~ skip=([0-9]+)\ count=([0-9]+) ]] \
+		&& dd if="${r}" bs=1M skip="${BASH_REMATCH[1]}" count="${BASH_REMATCH[2]}" 2>/dev/null ;;
+esac
+MOCK
+chmod +x "${tmpd}/adb"
+sed "s#^ADB=/usr/bin/adb#ADB=${tmpd}/adb#" install-scripts/components/adb/adb-pull.sh > "${tmpd}/adb-pull"
+# A partial file shorter than one chunk restarts from its first byte.
+printf 'rem' > "${tmpd}/out"
+HOME="${tmpd}" bash "${tmpd}/adb-pull" /sdcard/f "${tmpd}/out" >/dev/null 2>&1 </dev/null \
+	&& cmp -s "${tmpd}/remote" "${tmpd}/out" && ok \
+	|| bad "adb-pull must restart a partial file shorter than one chunk"
+# A larger file is not a partial download of it: refuse and keep it.
+printf 'a longer local file\n' > "${tmpd}/out"
+out="$(HOME="${tmpd}" bash "${tmpd}/adb-pull" /sdcard/f "${tmpd}/out" 2>&1 </dev/null)" \
+	&& bad "adb-pull must refuse a local file larger than the remote one"
+grep -q "is larger than the remote file" <<< "${out}" \
+	&& [ "$(cat "${tmpd}/out")" = "a longer local file" ] && ok \
+	|| bad "adb-pull must leave a larger local file unchanged: ${out}"
+rm -rf "${tmpd}"
+
 echo "== joinCsv() =="
 eq "joinCsv" "$(joinCsv a b c)" "a,b,c"
 eq "joinCsv one" "$(joinCsv solo)" "solo"
@@ -130,6 +161,7 @@ reject 'drwxr-xr-x 0/0 0 2020-01-01 00:00 salt/pillar/seqs/.seqs-managed/' "name
 # prints as one number, and an owner name may contain a space.
 reject '-rw-r--r-- 0/0 1 1000000000000000000 /abs salt/y' "unexpected listing"
 reject '-rw-r--r-- a b/0 1 1969-12-31 19:00 salt/ok' "unexpected listing"
+reject '-rw-r--r-- root/root 1 2020-01-01 00:00 salt/ok' "unexpected listing"
 # A sparse entry lists its full size but takes almost no archive space, so
 # the listed sizes are capped as well as the transfer.
 reject '-rw-r--r-- 0/0 1000000000 2020-01-01 00:00 salt/huge' "unexpected listing"
@@ -155,7 +187,7 @@ app A-brave brave
 app A-keepass keepass offline
 disposable D-qr-display qr-display offline
 EOF
-if readTargets 2>/dev/null; then
+if readTargets; then
 	eq "templates count" "${#TEMPLATE_TARGETS[@]}" "2"
 	eq "apps count" "${#APP_TARGETS[@]}" "2"
 	# The named disposable is verified but not provisioned: it lands in its own
@@ -253,7 +285,11 @@ echo "== test machine setup: input validation and generated qube scripts =="
 	grep -q 'dport 2222 dnat to 10.137.0.42:22' "${tmp}/net.sh" || echo "FAIL sys-net DNAT rule missing"
 	grep -q 'ip saddr 192.168.1.0/24 tcp dport 22 accept' "${tmp}/ctl.sh" || echo "FAIL test-ctl input rule missing"
 	if grep -q 'dnat to' "${tmp}/netrm.sh"; then echo "FAIL remove still installs the DNAT rule"; fi
+	echo CHECKS-DONE
 ) > "${tmp}/testmachine.out" 2>&1
+# A subshell that stops early, such as on a failed source, checked nothing.
+grep -qx CHECKS-DONE "${tmp}/testmachine.out" \
+	|| bad "the test machine setup checks stopped early: $(tail -n 3 "${tmp}/testmachine.out")"
 if grep -q FAIL "${tmp}/testmachine.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/testmachine.out")
 else ok; fi
@@ -330,7 +366,11 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(probe REACHED '')" == *"CHECK-FAIL: A-vpn: could not run"* ]] || echo "FAIL failsClosed accepted a client that did not run"
 	[[ "$(probe BLOCKED BLOCKED)" == *"CHECK-FAIL: seqs-test-client could not reach"* ]] || echo "FAIL failsClosed ran without a baseline"
 	[[ "$(probe '' BLOCKED)" == *"did not run"* ]] || echo "FAIL failsClosed accepted a baseline that did not run"
+	echo CHECKS-DONE
 ) > "${tmp}/dom0test.out" 2>&1
+# A subshell that stops early, such as on a failed source, checked nothing.
+grep -qx CHECKS-DONE "${tmp}/dom0test.out" \
+	|| bad "the hardware check helpers stopped early: $(tail -n 3 "${tmp}/dom0test.out")"
 if grep -q FAIL "${tmp}/dom0test.out"; then
 	while IFS= read -r line; do bad "${line#FAIL }"; done < <(grep FAIL "${tmp}/dom0test.out")
 else ok; fi

@@ -208,6 +208,27 @@ SEQS_MOCK_NETVM=sys-firewall SEQS_MOCK_FEATURES="${SBX}/features" run_setup --qu
 unset SEQS_MOCK_STATE
 rm -rf "${SBX}"
 
+# ── Scenario 1b3: a GnosisVPN proxy policy or qube SEQS did not make is kept ─
+echo "== scenario: a GnosisVPN build refuses an unmarked proxy policy or proxy qube =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+mkdir -p "${SEQS_POLICY_DIR}"
+echo "qubes.UpdatesProxy * @anyvm @default allow target=sys-firewall" > "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy"
+echo "debian-13-xfce halted" > "${SEQS_MOCK_STATE}"
+out="$(run_setup --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "20-seqs-gnosisvpn-updates.policy exists but is not managed by SEQS" <<<"$out" \
+	&& grep -qF "target=sys-firewall" "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" \
+	&& ! grep -q "^seqs-gnosisvpn-update-proxy " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "an unmarked GnosisVPN proxy policy must stop the build and stay: $(tail -n 1 <<<"$out")"
+rm -f "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy"
+printf '%s\n' "debian-13-xfce halted" "seqs-gnosisvpn-update-proxy halted" > "${SEQS_MOCK_STATE}"
+out="$(run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "seqs-gnosisvpn-update-proxy exists but is not marked as the SEQS temporary proxy" <<<"$out" \
+	&& grep -q "^seqs-gnosisvpn-update-proxy " "${SEQS_MOCK_STATE}" && ok \
+	|| bad "an unmarked qube named like the GnosisVPN proxy must stop the build and stay: $(tail -n 1 <<<"$out")"
+unset SEQS_MOCK_STATE
+rm -rf "${SBX}"
+
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───
 # Hash-based completion markers make a rerun reinstall a changed component,
 # so an existing GnosisVPN instance converges in place like every other qube.
@@ -250,6 +271,15 @@ out="$(SEQS_REPO_PATH='/home/user/SEQS;touch_unsafe' \
 	--repo-vm test-repo --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "unsafe repository path" <<<"$out" && ok \
 	|| bad "a shell-active repository path should be refused"
+# Unsafe qube names on the command line stop the run before anything else.
+out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--repo-vm -x --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "unsafe repo qube name: '-x'" <<<"$out" && ok \
+	|| bad "an option-like --repo-vm should be refused: $(tail -n 1 <<<"$out")"
+out="$(python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/setup-qubes.sh" \
+	--build-only --qubes 'brave,-x' 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "unsafe or empty qube base name in --qubes: '-x'" <<<"$out" && ok \
+	|| bad "an option-like --qubes name should be refused: $(tail -n 1 <<<"$out")"
 rm -rf "${SBX}"
 
 # ── Scenario 2: later stages refuse when prerequisites are absent ──────────
@@ -273,7 +303,8 @@ export SEQS_MOCK_TAR="${SBX}/evil.tar"
 tar -C "${evil}" -cf "${SEQS_MOCK_TAR}" salt
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "hostile archive should abort the run"
-grep -qi "refusing" <<<"$out" && ok || bad "expected a 'refusing ... tar entry' message"
+grep -qF "refusing non-regular tar entry (type 'l'): salt/steal" <<<"$out" && ok \
+	|| bad "expected the symlink's 'refusing non-regular tar entry' message"
 [ -z "$(ls -A "${SBX}/tmp")" ] && ok \
 	|| bad "a refused archive must leave no temporary files"
 [ ! -d "${SEQS_SALT_TREE}" ] && ok || bad "nothing should have been installed from a hostile archive"
@@ -655,10 +686,13 @@ for d in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_E
 done
 [ -e "${SEQS_POLICY_DIR}/20-seqs-test-control.policy" ] && ok \
 	|| bad "reset must not remove the test-control policy"
-# An unmarked file under a SEQS policy name is reported and kept.
-echo "qubes.InputKeyboard * sys-usb @adminvm allow" > "${SEQS_POLICY_DIR}/30-user-input.policy"
+# An unmarked file under a SEQS policy name is reported and kept, also when
+# the marker appears below its first line.
+printf '%s\n' "qubes.InputKeyboard * sys-usb @adminvm allow" "# Managed by SEQS? No, by hand." \
+	> "${SEQS_POLICY_DIR}/30-user-input.policy"
 out="$(bash "${REPO}/test/hardware/dom0-test.sh" reset 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && ok || bad "reset should fail on an unmarked SEQS policy name"
+[ "$rc" -ne 0 ] && grep -qF "30-user-input.policy is not marked as SEQS-managed; left in place" <<<"${out}" && ok \
+	|| bad "reset should fail on an unmarked SEQS policy name: ${out}"
 [ -e "${SEQS_POLICY_DIR}/30-user-input.policy" ] && ok || bad "reset removed an unmarked policy"
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_TMP_DIR SEQS_TEST_DELETE_VMS SEQS_TEST_CTL_VM SEQS_MOCK_UNMANAGED
 rm -rf "${SBX}"
@@ -680,7 +714,9 @@ grep -vE '^[[:space:]]*#' "${SBX}/qr.sh" | grep -E '(^|[^-/A-Za-z_])systemctl\b|
 write_mock() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "${SBX}/bin/$1"; chmod +x "${SBX}/bin/$1"; }
 write_mock sync ':'
 write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
-write_mock qvm-prefs 'awk -v k="$2 $3" '"'"'$1" "$2 == k { print $3; f=1 } END { exit !f }'"'"' "'"${SBX}"'/prefs"'
+# The fixture holds "<vm> <property> <flag> <value>" lines; "qvm-prefs -- VM"
+# lists them as "<property> <flag> <value>".
+write_mock qvm-prefs 'awk -v v="${!#}" '"'"'$1 == v { print $2, $3, $4 }'"'"' "'"${SBX}"'/prefs"'
 write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; cat "'"${SBX}"'/staged"'
 write_mock qvm-usb ':'
 write_mock qvm-kill ':'
@@ -702,7 +738,7 @@ qr_reset() {
 	echo ABSENT > "${SBX}/staged"
 	: > "${SBX}/prefs"
 	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
-		printf '%s netvm \n%s default_dispvm \n' "${vm}" "${vm}" >> "${SBX}/prefs"
+		printf '%s netvm - None\n%s default_dispvm - None\n' "${vm}" "${vm}" >> "${SBX}/prefs"
 	done
 }
 if command -v setsid >/dev/null 2>&1; then
@@ -721,12 +757,16 @@ if command -v setsid >/dev/null 2>&1; then
 	qr_reset; echo PRESENT > "${SBX}/staged"; qr_case "old key.asc" "already holds an incoming key.asc"
 	qr_reset; : > "${SBX}/staged"; qr_case "staging unreadable" "could not check A-qr-staging"
 	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
+		# A NetVM or default disposable, or a None inherited from a global
+		# default (flag D), which turns networked when that default changes.
 		for pref in netvm default_dispvm; do
-			qr_reset; sed -i "s/^${vm} ${pref} $/${vm} ${pref} sys-firewall/" "${SBX}/prefs"
-			rm -f "${SBX}/qvm-run.log"
-			qr_case "${vm} ${pref}" "'${vm}' has ${pref} set"
-			[ ! -e "${SBX}/qvm-run.log" ] && ok \
-				|| bad "${vm} ${pref}: the script started a qube before refusing a networked camera side"
+			for value in "- sys-firewall" "D None"; do
+				qr_reset; sed -i "s/^${vm} ${pref} - None$/${vm} ${pref} ${value}/" "${SBX}/prefs"
+				rm -f "${SBX}/qvm-run.log"
+				qr_case "${vm} ${pref} ${value}" "'${vm}' does not have netvm and default_dispvm explicitly set to none"
+				[ ! -e "${SBX}/qvm-run.log" ] && ok \
+					|| bad "${vm} ${pref} ${value}: the script started a qube before refusing a networked camera side"
+			done
 		done
 	done
 else

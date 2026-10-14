@@ -12,6 +12,7 @@ Usage: python3 test/key_expiry.py
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -40,7 +41,7 @@ def signing_expiries(block, home):
 
 
 def main():
-    if subprocess.run(["gpg", "--version"], capture_output=True).returncode != 0:
+    if shutil.which("gpg") is None:
         print("  skip: gpg not available")
         return 0
     failed = 0

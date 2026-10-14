@@ -175,8 +175,8 @@ Removing `offline`, `no_handoff`, `firewall`, `dispvm_template`, or
 
 A build adds one launcher to the dom0 XFCE panel for each app qube and named
 disposable it builds, before the panel's first expanding separator. The
-launcher's button starts the qube's `main_app`; its arrow opens the qube's
-terminal and file manager. A disposable template gets none, because its
+launcher's button starts the qube's `main_app` (without one, its terminal);
+its arrow opens the qube's terminal and file manager. A disposable template gets none, because its
 entries would run in the template instead of in a disposable. The build
 needs to find a running XFCE panel of the user who runs it; otherwise it adds
 no launchers and says so.

@@ -278,7 +278,7 @@ the results, changes the code, and runs the test again.
 | install | dom0 | Runs the SEQS runner from the commit under test for the selected qubes, answering each `[y/N]` prompt with `y`. |
 | check | dom0 | Verifies what was built: see below. |
 | lifecycle | dom0 | Restarts the app qubes and checks that the cleanup service has not failed, that the boot and shutdown cleanup ran (and did not, with `preserve_incoming`) and that state kept through bind-dirs survived. |
-| invalidate | dom0 | Only with `--force-rerun`: empties every completion marker, and removes the interpreter line from the firewall hooks SEQS added to, which the installers must restore. |
+| invalidate | dom0 | Only with `--force-rerun`: empties every completion marker, and removes the interpreter line from the hooks SEQS added to (the firewall hook and `rc.local`), which the installers must restore. |
 | rerun-install, rerun-check | dom0 | Runs install and check again. A second run must succeed and should be much faster, because finished components are skipped. |
 | update, update-check | dom0 | Only with `--update`: updates the templates as a user would, then checks again. |
 | reboot, reboot-check | laptop, dom0 | Only with `--reboot`: reboots the test machine, waits until it answers again, then checks again. |

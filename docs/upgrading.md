@@ -45,7 +45,7 @@ those advanced changes explicitly.
 
 ```bash
 git diff
-sed -n '1,230p' salt/pillar/seqs/config.sls
+less salt/pillar/seqs/config.sls
 ```
 
 Run the offline tests in the repository qube when their dependencies are
@@ -78,8 +78,8 @@ the bootstrap window. Before execution, review the copied runner and,
 preferably, compare it with the same verified revision on an independent
 machine.
 
-If the repository is in a temporary DisposableVM, replace `seqs-repo` in both
-commands with its exact `dispNNNN` name and keep it running until the fetch in
+If the repository is in a temporary DisposableVM, replace `seqs-repo` in this
+command and in the fetch command of the next step with its exact `dispNNNN` name and keep it running until the fetch in
 the next step finishes. Once the fetch completes, it is no longer needed.
 
 ## 3. Fetch and review without applying

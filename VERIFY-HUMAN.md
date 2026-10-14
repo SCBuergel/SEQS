@@ -130,7 +130,7 @@ When you run `setup-qubes.sh`:
 After install:
 
 - `qvm-ls` shows the expected templates (`Z-*`) and app qubes (`A-*`). Pay attention to labels (they encode the trust taxonomy in `config.sls`): `A-keepass` should be `black`, `A-wallet-ledger`/`A-wallet-trezor` `gray`, `A-dev-full` `orange`, browsers/chat `red`/`green`, etc.
-- `qvm-prefs A-keepass netvm` should print nothing / `None` (the offline qube) — the runner already verified this before provisioning, but check it yourself.
+- `qvm-prefs A-keepass | grep -E '^(netvm|default_dispvm) '` should show `-` and then `None` on both lines (the offline qube; a `D` instead of `-` means the none is only inherited from a global default) — the runner already verified this before provisioning, but check it yourself.
 - If using WireGuard, `qvm-prefs A-wireguard provides_network` should print
   `True`; `/usr/bin/seqs-wireguard-import` and `~/WireGuard` should exist in
   `A-wireguard`; importing a copy of the configuration with an added

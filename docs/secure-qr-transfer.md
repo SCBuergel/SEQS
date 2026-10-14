@@ -214,8 +214,10 @@ keyboard input, reaches the camera side.
 
 The sequential path cannot protect against malicious state that survives power
 removal in the controller, keyboard, or webcam firmware, a webcam attack that
-escapes through Qubes itself or qrexec (the Qubes service through which qubes
-copy files, open links, and send input to each other), a compromised dom0, or a webcam left
+escapes through Qubes itself or
+[qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
+(the Qubes service through which qubes copy files, open links, and send input
+to each other), a compromised dom0, or a webcam left
 plugged in at the next boot. Anything the webcam leaves behind that survives
 the power-off reaches `sys-usb`, which with a USB keyboard can type into dom0,
 as described under [What you must trust](#what-you-must-trust). The worst case
@@ -657,19 +659,23 @@ Run these checks once after building and before you use any secret.
 
 ### Sending computer: check that the display qubes are offline
 
-A qube is offline if it has no NetVM and no default disposable (a networked
-disposable it could open files in). The SEQS run that builds an offline qube
-checks both itself and stops otherwise; its output then contains a line
+A qube is offline if it has no NetVM and no default disposable (the
+disposable it opens files in by default, normally a networked one). Both must
+be set to none explicitly: a none inherited from a global default becomes
+networked when that default changes. The SEQS run that builds an offline qube
+checks this itself and stops otherwise; its output then contains a line
 starting with `Air gap verified:` that names `A-qr-display` and
-`D-qr-display`. If you no longer have that output, run
-`qvm-prefs <qube> netvm` and `qvm-prefs <qube> default_dispvm` for both qubes
-in a dom0 terminal of the sending computer; each must print nothing, `None`,
-or `none`.
+`D-qr-display`. If you no longer have that output, run in a dom0 terminal of
+the sending computer:
 
-Having no network does not stop
-[qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
-(the Qubes service that lets qubes copy files, open links, and send input to
-each other), so SEQS also installs qrexec policies (dom0 rules deciding which
+```bash
+for q in A-qr-display D-qr-display; do qvm-prefs $q | grep -E '^(netvm|default_dispvm) '; done
+```
+
+Each of the four output lines must show `-` and then `None`; a `D` instead of
+`-` means the value is only inherited.
+
+Having no network does not stop qrexec, so SEQS also installs qrexec policies (dom0 rules deciding which
 qube may use which service). Check that the display qubes may neither hand
 links to the browser qube nor start a program in another qube or a
 disposable, as a second layer behind the unset default disposable. In a dom0 terminal of the sending computer, run:
@@ -690,16 +696,16 @@ services: `qubes.OpenURL`, `qubes.OpenInVM`, `qubes.StartApp`,
 
 The `Air gap verified:` line of the SEQS run covers `A-qr-camera` and, on the
 sequential path, `A-qr-staging`, in the same way. If you no longer have that
-output, check them with `qvm-prefs` as on the sending computer. On the
+output, check them with the `qvm-prefs` loop of the sending computer. On the
 dedicated-controller path, no scan script checks `sys-usb-webcam` and
 `seqs-qr-scanner` at each transfer, so check them yourself; in a dom0 terminal
 of the receiving computer, run:
 
 ```bash
-for q in sys-usb-webcam seqs-qr-scanner; do qvm-prefs $q netvm; qvm-prefs $q default_dispvm; done
+for q in sys-usb-webcam seqs-qr-scanner; do qvm-prefs $q | grep -E '^(netvm|default_dispvm) '; done
 ```
 
-Each of the four output lines must be empty, `None`, or `none`.
+Each of the four output lines must show `-` and then `None`.
 
 ### Receiving computer: check the controller assignment
 
@@ -931,7 +937,7 @@ use step 4b.
 1. Start the target key qube, so that it can be chosen as a copy destination.
 2. Start `sys-usb-webcam` in the Qube Manager and plug the webcam into its
    socket.
-3. Open the Qubes Devices widget (the USB icon in the system tray). The webcam
+3. Open the Qubes Devices widget. The webcam
    must be listed as `sys-usb-webcam:...`, as a single device. If it is listed
    as `sys-usb:...`, it is in a socket of the keyboard's controller: unplug it
    and stop. If any device appears under `sys-usb-webcam` other than the webcam
@@ -963,7 +969,7 @@ use step 4b.
    other from `seqs-qr-scanner`, and treat it like a fingerprint mismatch.
 7. After the copy succeeds, unplug the webcam and shut down `seqs-qr-scanner`
    and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
-   Domains widget that both have stopped before you take out the paper.
+   Domains widget (the tray icon that lists running qubes) that both have stopped before you take out the paper.
 
 If `sys-usb` handled the webcam at any point since the receiving computer last
 booted, or `sys-usb-webcam` handled your keyboard, stop and do not type the

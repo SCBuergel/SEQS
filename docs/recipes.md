@@ -8,7 +8,7 @@ Apply the ones you want by hand.
 - [Sync clock in the base template](#sync-clock-in-the-base-template)
 - [CPU pinning for `A-gnosisvpn`](#cpu-pinning-for-a-gnosisvpn)
 - [Firewall between app VMs](#firewall-between-app-vms)
-- [Get rid of lags in LibreOffice](#get-rid-of-lags-in-libreoffice)
+- [Get rid of lags in OpenOffice or LibreOffice](#get-rid-of-lags-in-openoffice-or-libreoffice)
 - [Reliably copy large files from/to an Android phone](#reliably-copy-large-files-fromto-an-android-phone)
 - [Mount a USB drive](#mount-a-usb-drive)
 - [Minimal templates](#minimal-templates)
@@ -86,7 +86,7 @@ dedicated disposable template instead.
 The source qube can now reach port 45750 of the target, and nothing else of it.
 If either qube is re-created, its address changes; update both rules.
 
-## Get rid of lags in LibreOffice
+## Get rid of lags in OpenOffice or LibreOffice
 
 ```
 echo 'export SAL_USE_VCLPLUGIN=gen' >> ~/.bashrc
