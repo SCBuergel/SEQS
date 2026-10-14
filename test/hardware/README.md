@@ -301,7 +301,10 @@ The check phase verifies, for every qube the runner was asked to build, that:
   third-party repository can ship only its allowlisted packages;
 - each component passes a short smoke test, its menu entries exist, and vim
   uses the SEQS settings;
-- each panel launcher item opens a window of its qube;
+- each panel launcher item opens a window of its qube within 90 s. An item
+  gets a second try: a miss is a `WARNING` in the findings, with the qube's
+  processes, the app's own output and any keyring or portal window the check
+  ignored; a second miss is a failure;
 - each app qube and named disposable carries exactly the handoff tag its
   catalogue entry calls for, and dom0's policy refuses every way out of a
   qube whose entry forbids handoff;

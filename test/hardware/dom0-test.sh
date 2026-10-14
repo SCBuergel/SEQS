@@ -406,7 +406,7 @@ checkVim() {
 # each menu entry its seqs-launcher-items feature names, in order; each one,
 # started as the panel starts it, opens a new window of VM.
 checkLauncher() {
-	local vm="$1" items item p f n=0 i new before class w name
+	local vm="$1" items item p f n=0 i new before class w name try ignored
 	export DISPLAY="${DISPLAY:-:0}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
 	items="$(qvm-features -- "${vm}" seqs-launcher-items 2>/dev/null)" || { fail "${vm}: no seqs-launcher-items feature"; return; }
 	for p in $(xfconf-query -c xfce4-panel -l | sed -n 's|^/plugins/plugin-\([0-9]*\)/seqs-qube$|\1|p'); do
@@ -424,6 +424,7 @@ checkLauncher() {
 	sleep 15
 	for item in ${items}; do
 		n=$((n + 1))
+		[[ "${item}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$ ]] || { fail "${vm}: unsafe launcher item name"; continue; }
 		f="${HOME}/.config/xfce4/panel/launcher-${p}/seqs-${n}.desktop"
 		if ! grep -qx "X-Qubes-VmName=${vm}" "${f}" 2>/dev/null || ! grep -qx "X-Qubes-AppName=${item%.desktop}" "${f}"; then
 			fail "${vm}: launcher item ${n} is not ${item}"
@@ -435,22 +436,43 @@ checkLauncher() {
 			xfce4-terminal.desktop | thunar.desktop) class="^${vm}:${item%.desktop}$" ;;
 			*) class="^${vm}:" ;;
 		esac
-		before="$(xdotool search --class "${class}" 2>/dev/null | sort)"
-		gio launch "${f}" </dev/null >/dev/null 2>&1 &
-		new=""
-		for i in $(seq 45); do
-			# Helper windows (portal, keyring prompt, polkit, settings) do not count.
-			for w in $(comm -13 <(echo "${before}") <(xdotool search --class "${class}" 2>/dev/null | sort)); do
-				name="$(xprop -id "${w}" WM_CLASS 2>/dev/null | sed 's/.*= "\([^"]*\)".*/\1/')"
-				[[ "${name}" =~ :(xdg-desktop-portal|gcr-prompter|polkit|xfsettingsd) ]] || { new="${name}"; break; }
+		# A second try: a main app has been seen to start and quit without a
+		# window, once in a few full runs (Brave, Ledger Live), and not again
+		# in eight manual retries; the launcher itself worked.
+		for try in 1 2; do
+			before="$(xdotool search --class "${class}" 2>/dev/null | sort)"
+			gio launch "${f}" </dev/null >/dev/null 2>&1 &
+			new=""
+			ignored=""
+			for i in $(seq 45); do
+				# Helper windows (portal, keyring prompt, polkit, settings) do not count.
+				for w in $(comm -13 <(echo "${before}") <(xdotool search --class "${class}" 2>/dev/null | sort)); do
+					name="$(xprop -id "${w}" WM_CLASS 2>/dev/null | sed 's/.*= "\([^"]*\)".*/\1/')"
+					if [[ "${name}" =~ :(xdg-desktop-portal|gcr-prompter|polkit|xfsettingsd) ]]; then
+						[[ " ${ignored} " == *" ${name} "* ]] || ignored+=" ${name}"
+					else
+						new="${name}"
+						break
+					fi
+				done
+				[ -n "${new}" ] && break
+				sleep 2
 			done
-			[ -n "${new}" ] && break
-			sleep 2
+			[ -z "${new}" ] || break
+			echo "    WARNING: ${vm}: launcher item ${n} (${item}) opened no window within 90 s (try ${try})"
+			echo "      helper windows it ignored:${ignored:- none}"
+			# What runs in the qube, and what the app printed: qrexec logs a
+			# StartApp call's output under this tag, readable only with sudo.
+			# The item name was checked above, so it is safe in the command.
+			qvm-run --pass-io --no-gui -- "${vm}" \
+				"ps -eo pid,etime,args --sort=start_time | tail -n 15; sudo journalctl -b --no-pager -o short -t 'qubes.StartApp+${item%.desktop}-dom0' | tail -n 30" \
+				</dev/null 2>&1 | LC_ALL=C tr -cd '[:print:]\t\n' | sed 's/^/      /'
 		done
 		if [ -n "${new}" ]; then
-			pass "${vm}: launcher item ${n} (${item}) opened ${new}"
+			[ "${try}" -eq 1 ] && try="" || try=" (second try)"
+			pass "${vm}: launcher item ${n} (${item}) opened ${new}${try}"
 		else
-			fail "${vm}: launcher item ${n} (${item}) opened no window within 90 s"
+			fail "${vm}: launcher item ${n} (${item}) opened no window within 90 s, twice"
 		fi
 	done
 	qvm-shutdown --wait --timeout 60 -- "${vm}" </dev/null >/dev/null 2>&1 || qvm-kill -- "${vm}" </dev/null >/dev/null 2>&1
