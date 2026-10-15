@@ -673,12 +673,97 @@ def test_dom0_named_disposable():
           "a D- qube with an interrupted-run intent marker must be adopted")
 
 
+def test_dom0_netvm_key():
+    case("dom0.sls: 'netvm' routes a qube and its named disposable through a network provider")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="gnosisvpn\nanon"))
+    check("seqs-validation-failed" not in parsed, "anon with gnosisvpn must pass validation: " + _errors(parsed))
+    app = parsed.get("seqs-app-anon", {}).get("qvm.vm", [])
+    check({"netvm": "A-gnosisvpn"} in next((i["prefs"] for i in app if "prefs" in i), []),
+          "A-anon must get A-gnosisvpn as NetVM")
+    check({"cmd": "seqs-network-provider-gnosisvpn"} in next((i["require"] for i in app if "require" in i), []),
+          "A-anon must wait until A-gnosisvpn provides network")
+    dvm = parsed.get("seqs-disposable-prefs-anon", {}).get("cmd.run", [])
+    check("qvm-prefs -- D-anon netvm A-gnosisvpn\n" in next((i["name"] for i in dvm if "name" in i), ""),
+          "D-anon must get A-gnosisvpn as NetVM")
+    check('$1 == "netvm" && $3 == "A-gnosisvpn"' in next((i["unless"] for i in dvm if "unless" in i), ""),
+          "the disposable's NetVM must be rechecked as explicitly A-gnosisvpn")
+    targets = next((i["contents"] for i in parsed.get("seqs-targets", {}).get("file.managed", []) if "contents" in i), "")
+    check("app A-anon anon netvm=A-gnosisvpn\n" in targets and "disposable D-anon anon netvm=A-gnosisvpn\n" in targets,
+          "the runner must be told to verify both NetVMs")
+    check("qvm-prefs -- D-qr-display netvm none\n" in state_arg(
+        render_state("dom0", "dom0", Scenario(selection="qr-display\nbrave"))[1], "seqs-disposable-prefs-qr-display", "cmd.run", "name"),
+          "a disposable without 'netvm' must stay offline")
+    # The provider must be selected or already built for its recipe.
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="anon"))
+    check("qube 'anon' needs its netvm 'A-gnosisvpn': select 'gnosisvpn' in this run or build it first" in _errors(parsed),
+          "anon without its provider must be refused")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="anon", existing_qubes=["A-gnosisvpn"],
+                                                      tagged_qubes=["A-gnosisvpn"], recipes={"A-gnosisvpn": "brave"}))
+    check("needs its netvm 'A-gnosisvpn'" in _errors(parsed), "a provider built for another recipe must not count")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="anon", existing_qubes=["A-gnosisvpn"],
+                                                      tagged_qubes=["A-gnosisvpn"], recipes={"A-gnosisvpn": "gnosisvpn"}))
+    check("seqs-validation-failed" not in parsed, "anon with an existing A-gnosisvpn must pass: " + _errors(parsed))
+    check("seqs-network-provider-gnosisvpn" not in str(parsed.get("seqs-app-anon", "")),
+          "an unselected provider has no state to wait for")
+    for entry, why in [({"netvm": "brave"}, "a qube that provides no network"),
+                       ({"netvm": "no-such"}, "an unknown entry"),
+                       ({"netvm": ["gnosisvpn"]}, "a non-string")]:
+        cat = {"brave": {"label": "red", "components": ["brave"]},
+               "gnosisvpn": {"label": "purple", "components": ["gnosisvpn"], "network_provider": True},
+               "x": dict({"label": "red", "components": ["brave"]}, **entry)}
+        check(_rejected("qube 'x': 'netvm' must name a catalogue entry with 'network_provider'", _bad_pillar(catalogue=cat)),
+              "'netvm' naming %s must be refused" % why)
+    for flag in ("offline", "network_provider"):
+        cat = {"brave": {"label": "red", "components": ["brave"]},
+               "gnosisvpn": {"label": "purple", "components": ["gnosisvpn"], "network_provider": True},
+               "x": {"label": "red", "components": ["brave"], "netvm": "gnosisvpn", flag: True}}
+        check(_rejected("qube 'x' sets 'netvm' together with 'offline' or 'network_provider'", _bad_pillar(catalogue=cat)),
+              "'netvm' with '%s' must be refused" % flag)
+
+
+def test_dom0_protonvpn_network_manager():
+    case("dom0.sls: the Proton VPN qube runs NetworkManager and the Qubes firewall")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="protonvpn"))
+    check("qvm-service --enable A-protonvpn network-manager" in str(parsed.get("seqs-network-manager-protonvpn", "")),
+          "A-protonvpn must get the network-manager service")
+    check("seqs-network-provider-protonvpn" in parsed, "A-protonvpn must run the Qubes firewall")
+    # qvm-service prints "on", not "1": the guards read the feature itself.
+    for state, svc in (("seqs-network-manager-protonvpn", "network-manager"), ("seqs-network-provider-protonvpn", "qubes-firewall")):
+        check('test "$(qvm-features -- A-protonvpn service.%s 2>/dev/null)" = "1"' % svc in str(parsed.get(state, "")),
+              "the %s state must be skipped once the service is on" % svc)
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="wireguard"))
+    check("seqs-network-manager-wireguard" not in parsed, "only Proton VPN qubes get NetworkManager")
+
+
+def test_protonvpn_fail_closed_hook():
+    case("protonvpn: the app qube's firewall hook drops forwarding to eth0 for IPv4 and IPv6")
+    d = os.path.join(sr.REPO_ROOT, "install-scripts", "components", "protonvpn")
+    hook = app = ""
+    for name in ("protonvpn-firewall.sh", "app-vm.sh"):
+        path = os.path.join(d, name)
+        check(os.path.isfile(path), "the protonvpn component must ship %s" % name)
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                if name == "app-vm.sh":
+                    app = f.read()
+                else:
+                    hook = f.read()
+    for family in ("ip", "ip6"):
+        check('\nnft add rule %s qubes custom-forward oifname "eth0" counter drop\n' % family in hook,
+              "the hook must drop forwarded %s traffic to eth0" % family)
+    check(hook.startswith("#!/bin/sh\n") and "\nset -e\n" in hook, "the hook must run directly and stop on a missing chain")
+    check("entry=/rw/config/seqs-protonvpn-firewall.sh" in app and
+          'printf \'%s\\n\' "${entry}" | sudo tee -a "${hook}"' in app and
+          "hook=/rw/config/qubes-firewall-user-script" in app,
+          "app-vm.sh must add the hook to qubes-firewall-user-script")
+
+
 def test_dom0_named_disposable_rerun_churn_free():
     case("dom0.sls: an already-built named disposable is churn-free on re-run")
     dom0 = render_pillar("dom0")
     names = list(dom0["catalogue"].keys())
     existing = (["Z-" + n for n in names] + ["A-" + n for n in names]
-                + ["D-qr-display"])
+                + ["D-qr-display", "D-anon"])
     _, parsed = render_state(
         "dom0", "dom0",
         Scenario(existing_qubes=existing, tagged_qubes=existing))
@@ -777,7 +862,7 @@ def test_dom0_validation_catches_bad_config():
         catalogue={"x": {"label": "purple", "components": ["wireguard"],
                      "network_provider": True, "offline": True}})),
         "network_provider + offline is contradictory and must fail validation")
-    check(_rejected("is a DisposableVM template for sensitive data but is not offline", _bad_pillar(
+    check(_rejected("is a DisposableVM template but neither offline nor routed through a 'netvm' network provider", _bad_pillar(
         catalogue={"x": {"label": "black", "components": ["brave"], "dispvm_template": True}})),
         "a disposable template must be offline")
     seq = copy.deepcopy(render_pillar("dom0"))
@@ -1266,6 +1351,7 @@ def test_gnosisvpn_panel_monitor():
           "only GnosisVPN qubes get a monitor")
     pillar = copy.deepcopy(render_pillar("dom0"))
     del pillar["catalogue"]["gnosisvpn"]
+    pillar["catalogue"].pop("anon", None)
     _, parsed = render_state("dom0", "dom0", Scenario(selection="brave"), pillar_seqs=pillar)
     check("Managed by SEQS" in state_arg(parsed, "seqs-vpn-monitor", "cmd.run", "onlyif"),
           "without GnosisVPN in the catalogue, dom0 removes only the monitor SEQS wrote")

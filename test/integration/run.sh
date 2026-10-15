@@ -189,6 +189,24 @@ out="$(SEQS_MOCK_FEATURES="${SBX}/features" run_setup --build-only --qubes gnosi
 	|| bad "a Whonix UpdateVM must stop the GnosisVPN build before the proxy exists"
 rm -rf "${SBX}"
 
+# ── Scenario 1b1: qubes routed through a VPN qube ──────────────────────────
+echo "== scenario: a qube with a 'netvm' is verified, then provisioned after its provider =="
+new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "NetVM verified: A-anon uses A-gnosisvpn" <<<"$out" \
+	&& grep -q "NetVM verified: D-anon uses A-gnosisvpn" <<<"$out" && ok \
+	|| bad "both NetVMs must be verified ($rc): $(tail -n 3 <<<"$out")"
+eq "the provider's wave comes first" "$(grep -o -- "--targets=A-[^ ]*" "${SEQS_MOCK_QUBESCTL_LOG}" | tail -n 2 | tr '\n' ' ')" \
+	"--targets=A-gnosisvpn --targets=A-anon "
+echo "A-anon netvm sys-firewall" > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes gnosisvpn,anon 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "qube 'A-anon' does not have its netvm explicitly set to 'A-gnosisvpn'" <<<"$out" \
+	&& ! grep -q "state.apply seqs.qube" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "a wrong NetVM must stop the build before anything is provisioned"
+unset SEQS_MOCK_QUBESCTL_LOG
+rm -rf "${SBX}"
+
 # ── Scenario 1b2: a killed run's GnosisVPN proxy and policy are removed ─────
 echo "== scenario: any build first removes a GnosisVPN proxy and policy a killed run left =="
 new_sandbox

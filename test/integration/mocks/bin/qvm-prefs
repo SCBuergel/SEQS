@@ -90,4 +90,10 @@ if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ] && [ "${property}" = netvm ]; then
 	exit $?
 fi
 
+# A qube whose catalogue entry names a 'netvm' has it, as the dom0 apply sets
+# it, unless SEQS_MOCK_NETVM overrides every qube.
+if [ "${property}" = netvm ] && [ -z "${SEQS_MOCK_NETVM:-}" ] && [ -r "${SEQS_TARGETS_FILE:-}" ] \
+	&& awk -v vm="${vm}" '$2 == vm && $4 ~ /^netvm=/ { sub(/^netvm=/, "", $4); print $4; f=1 } END { exit !f }' "${SEQS_TARGETS_FILE}"; then
+	exit 0
+fi
 [ "${property}" = "netvm" ] && echo "${SEQS_MOCK_NETVM:-}"

@@ -448,7 +448,8 @@ checkLauncher() {
 				# Helper windows (portal, keyring prompt, polkit, settings) do not count.
 				for w in $(comm -13 <(echo "${before}") <(xdotool search --class "${class}" 2>/dev/null | sort)); do
 					name="$(xprop -id "${w}" WM_CLASS 2>/dev/null | sed 's/.*= "\([^"]*\)".*/\1/')"
-					if [[ "${name}" =~ :(xdg-desktop-portal|gcr-prompter|polkit|xfsettingsd) ]]; then
+					# A GTK 4 app also maps an unnamed 1x1 window, which is not the app's.
+					if [[ "${name}" =~ :(xdg-desktop-portal|gcr-prompter|polkit|xfsettingsd|nm-applet) || "${name}" == "${vm}:" ]]; then
 						[[ " ${ignored} " == *" ${name} "* ]] || ignored+=" ${name}"
 					else
 						new="${name}"
@@ -456,6 +457,12 @@ checkLauncher() {
 					fi
 				done
 				[ -n "${new}" ] && break
+				# The Proton VPN app opens its window only after the first keyring
+				# prompt is answered, which no unattended check can do.
+				if [ "${item}" = proton.vpn.app.gtk.desktop ] && [[ " ${ignored} " == *":gcr-prompter "* ]]; then
+					new="${vm}:gcr-prompter (the keyring prompt it asks first)"
+					break
+				fi
 				sleep 2
 			done
 			[ -z "${new}" ] || break
@@ -536,6 +543,7 @@ print(d.get("local", d).get(sys.argv[1], ""))' "${1#brave-extension-}" <<< "${EX
 		qr-display) echo 'qrencode -o - seqs-smoke | head -c 4 | grep -q PNG' ;;
 		qr-camera) echo 'command -v zbarimg >/dev/null && command -v zbarcam >/dev/null' ;;
 		wireguard) echo 'wg --version >/dev/null && test -x /usr/bin/seqs-wireguard-import && sudo grep -qx /rw/config/seqs-wireguard/boot.sh /rw/config/rc.local' ;;
+		protonvpn) echo 'test -x /usr/bin/protonvpn-app && sudo grep -qx /rw/config/seqs-protonvpn-firewall.sh /rw/config/qubes-firewall-user-script' ;;
 		gnosisvpn) echo 'dpkg-query -W -f="\${Status}" gnosisvpn 2>/dev/null | grep -q "install ok installed" && systemctl is-enabled --quiet seqs-gnosisvpn-dns.path && test -d /rw/bind-dirs/var/lib/gnosisvpn' ;;
 		*) echo "" ;;
 	esac
@@ -694,6 +702,24 @@ checkFirewallHook() {
 	fi
 }
 
+# checkProtonvpn VM -- NetworkManager, which the Proton VPN app needs, runs and
+# leaves the qube its own upstream access and DNS; clients fail closed while
+# no tunnel is up.
+checkProtonvpn() {
+	local out
+	[ "$(qvm-features -- "$1" service.network-manager 2>/dev/null)" = 1 ] \
+		&& pass "$1: the network-manager service is enabled" || fail "$1: the network-manager service is not enabled"
+	# shellcheck disable=SC2016 # runs inside the qube
+	out="$(qvm-run --pass-io --no-gui "$1" 'systemctl is-active --quiet NetworkManager || echo NM-INACTIVE
+		getent hosts repo.protonvpn.com >/dev/null || echo NO-DNS
+		timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null || echo NO-UPLINK' </dev/null 2>&1)"
+	[ -z "${out}" ] && pass "$1: NetworkManager runs, and the qube resolves names and reaches the internet" \
+		|| fail "$1: $(tr '\n' ' ' <<< "${out}")"
+	checkFirewallHook "$1"
+	failsClosed "$1" "not connected"
+	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+}
+
 # checkGnosisvpn VM -- fail-closed forwarding, the DNS reconciler, and its
 # panel monitor, which shows n/a while the tunnel is down.
 checkGnosisvpn() {
@@ -721,6 +747,20 @@ checkGnosisvpn() {
 	else
 		fail "$1: no panel monitor running seqs-vpn-monitor"
 	fi
+	# The autoconnect service ran at this start: it found the exit, started the
+	# worker, and the worker accepted the connect (it waits for a route until
+	# the account is funded and peered).
+	# shellcheck disable=SC2016 # runs inside the qube
+	out="$(qvm-run --pass-io --no-gui -u root "$1" '[ "$(head -n 1 /rw/config/seqs-gnosisvpn-exit)" = Netherlands ] || echo AC-EXIT
+		systemctl is-enabled --quiet seqs-gnosisvpn-autoconnect || echo AC-DISABLED
+		[ "$(systemctl show -p Result --value seqs-gnosisvpn-autoconnect)" = success ] || echo AC-RESULT
+		j=$(journalctl -b -u seqs-gnosisvpn-autoconnect -o cat)
+		printf "%s\n" "$j" | grep -q ERROR: && echo AC-ERROR
+		printf "%s\n" "$j" | grep -qx "starting the worker" || echo AC-NO-START
+		printf "%s\n" "$j" | grep -qx "connecting to Netherlands" || echo AC-NO-CONNECT
+		printf "%s\n" "$j" | grep -qiE "connect(ed|ing)? to Netherlands \(Exit:" || echo AC-CONNECT-NOT-ACCEPTED' </dev/null 2>&1)"
+	[ -z "${out}" ] && pass "$1: at start, the worker started and accepted the connect to Netherlands" \
+		|| fail "$1: autoconnect: $(tr '\n' ' ' <<< "${out}")"
 	out="$(qvm-run --pass-io --no-gui "$1" 'cat /proc/sys/net/core/rmem_default; nproc' </dev/null 2>&1 | tr '\n' ' ')"
 	if [[ "${out}" == "4194304 4 " ]]; then
 		pass "$1: 4 vCPUs and a 4 MiB default socket receive buffer"
@@ -793,7 +833,7 @@ qrRoundTrip() {
 }
 
 check() {
-	local kind name recipe flags tpl klass nv dv d ours started=()
+	local kind name recipe flags tpl klass nv dv d want ours started=()
 	local targets="${STATE_DIR}/targets"
 	sudo test -r "${targets}" || { fail "${targets} missing -- the dom0 state did not run"; return 1; }
 	if sudo grep -qx 'result=success' "${STATE_DIR}/last-run" 2>/dev/null; then
@@ -862,6 +902,7 @@ check() {
 				case "${recipe}" in
 					wireguard) checkWireguard "${name}" ;;
 					gnosisvpn) checkGnosisvpn "${name}" ;;
+					protonvpn) checkProtonvpn "${name}" ;;
 				esac
 				if noHandoff "${recipe}"; then
 					[ "$(catField "${recipe}" dispvm_template)" != "True" ] || unnamedDisposableRefused "${name}"
@@ -887,6 +928,11 @@ check() {
 				checkLauncher "${name}"
 				;;
 		esac
+		if [[ " ${flags} " == *" netvm="* ]]; then
+			want="${flags##*netvm=}" want="${want%% *}"
+			qvm-prefs -- "${name}" | awk -v n="${want}" '$1 == "netvm" && $2 == "-" && $3 == n { f = 1 } END { exit !f }' \
+				&& pass "${name}: NetVM is explicitly ${want}" || fail "${name}: NetVM is '${nv}', not explicitly ${want}"
+		fi
 		if [[ " ${flags} " == *" offline "* ]]; then
 			if isNone "${nv}" && isNone "${dv}"; then
 				pass "${name}: no netvm and no default disposable"

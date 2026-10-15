@@ -235,8 +235,18 @@ for vm in qubesadmin.Qubes().domains:
 {#     Optional outbound allowlist ('firewall' key): validate before any
        entry is interpolated into a qvm-firewall command below. #}
 {%     set fw = q.get('firewall') %}
-{%     if q.get('dispvm_template') and not q.get('offline') %}
-{%       do errors.append("qube '" ~ name ~ "' is a DisposableVM template for sensitive data but is not offline") %}
+{%     if q.get('dispvm_template') and not q.get('offline') and q.get('netvm') is none %}
+{%       do errors.append("qube '" ~ name ~ "' is a DisposableVM template but neither offline nor routed through a 'netvm' network provider") %}
+{%     endif %}
+{#     'netvm' names the catalogue entry of a network provider; the qube and
+       its named disposable use that entry's app qube as NetVM. #}
+{%     set nv = q.get('netvm') %}
+{%     if nv is not none %}
+{%       if nv is not string or nv | regex_match(name_re) is none or not qcatalog.get(nv, {}).get('network_provider') %}
+{%         do errors.append("qube '" ~ name ~ "': 'netvm' must name a catalogue entry with 'network_provider'") %}
+{%       elif q.get('offline') or q.get('network_provider') %}
+{%         do errors.append("qube '" ~ name ~ "' sets 'netvm' together with 'offline' or 'network_provider'") %}
+{%       endif %}
 {%     endif %}
 {%     if q.get('named_disposable') and not q.get('dispvm_template') %}
 {%       do errors.append("qube '" ~ name ~ "' sets 'named_disposable' but not 'dispvm_template' -- a named disposable can only derive from a dispvm template") %}
@@ -273,6 +283,15 @@ for vm in qubesadmin.Qubes().domains:
 {%         endfor %}
 {%       endif %}
 {%     endif %}
+{%   endif %}
+{% endfor %}
+
+{# ── A selected qube's 'netvm' provider must be selected in this run or be
+     an existing qube SEQS built for that recipe. ── #}
+{% for name, q in qmap.items() if q.get('netvm') is string and q.netvm in qcatalog %}
+{%   set provider = papp ~ q.netvm %}
+{%   if q.netvm not in qmap and inventory.get(provider, {}).get('recipe') != q.netvm %}
+{%     do errors.append("qube '" ~ name ~ "' needs its netvm '" ~ provider ~ "': select '" ~ q.netvm ~ "' in this run or build it first") %}
 {%   endif %}
 {% endfor %}
 
@@ -632,18 +651,25 @@ seqs-app-{{ name }}:
 {%   if q.get('network_provider') %}
       - provides_network: True
 {%   endif %}
+{%   if q.get('netvm') %}
+      - netvm: {{ papp ~ q.netvm }}
+{%   endif %}
 {%   if q.get('cpu_pinning') %}
       - vcpus: {{ q.cpu_pinning.cpus | length }}
 {%   elif q.get('vcpus') %}
       - vcpus: {{ q.vcpus }}
 {%   endif %}
-{%   if (not app_tagged) or (not tpl_exists) %}
+{%   set provider_selected = q.get('netvm') and q.netvm in qmap %}
+{%   if (not app_tagged) or (not tpl_exists) or provider_selected %}
     - require:
 {%     if not app_tagged %}
       - file: seqs-intent-app-{{ name }}
 {%     endif %}
 {%     if not tpl_exists %}
       - qvm: seqs-clone-{{ name }}
+{%     endif %}
+{%     if provider_selected %}
+      - cmd: seqs-network-provider-{{ q.netvm }}
 {%     endif %}
 {%   endif %}
 
@@ -677,7 +703,17 @@ seqs-no-dispvm-{{ name }}:
 seqs-network-provider-{{ name }}:
   cmd.run:
     - name: qvm-service --enable {{ app }} qubes-firewall
-    - unless: test "$(qvm-service -- {{ app }} qubes-firewall 2>/dev/null)" = "1"
+    - unless: test "$(qvm-features -- {{ app }} service.qubes-firewall 2>/dev/null)" = "1"
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+{%   if 'protonvpn' in q.get('components', []) %}
+# The Proton VPN app connects through NetworkManager, which Qubes runs in a
+# qube only with this service.
+seqs-network-manager-{{ name }}:
+  cmd.run:
+    - name: qvm-service --enable {{ app }} network-manager
+    - unless: test "$(qvm-features -- {{ app }} service.network-manager 2>/dev/null)" = "1"
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}
@@ -814,18 +850,19 @@ seqs-create-disposable-{{ name }}:
       - file: seqs-intent-disposable-{{ name }}
 {%     endif %}
 
-# Clear the NetVM and the default disposable of every named disposable,
-# whatever its entry's flags (the shipped one derives from an offline dispvm
-# template), and suppress the dispvm-launcher menu entries so this disposable
-# shows normal app launchers, not "start a disposable from me".
+# Set the NetVM of every named disposable explicitly: the 'netvm' provider
+# if its entry names one, otherwise none. Clear its default disposable, and
+# suppress the dispvm-launcher menu entries so this disposable shows normal
+# app launchers, not "start a disposable from me".
+{%     set dvm_netvm = (papp ~ q.netvm) if q.get('netvm') else 'none' %}
 seqs-disposable-prefs-{{ name }}:
   cmd.run:
     - name: |
         set -e
-        qvm-prefs -- {{ dvm }} netvm none
+        qvm-prefs -- {{ dvm }} netvm {{ dvm_netvm }}
         qvm-prefs -- {{ dvm }} default_dispvm none
         qvm-features -- {{ dvm }} appmenus-dispvm ''
-    - unless: qvm-prefs -- {{ dvm }} | {{ explicitly_offline }} && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
+    - unless: qvm-prefs -- {{ dvm }} | awk '$2 == "-" && (($1 == "netvm" && $3 == "{{ 'None' if dvm_netvm == 'none' else dvm_netvm }}") || ($1 == "default_dispvm" && $3 == "None")) { n++ } END { exit n != 2 }' && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
     - require:
       - qvm: seqs-app-{{ name }}
 {%     if not dvm_exists %}
@@ -1080,8 +1117,9 @@ seqs-qr-sequential-config:
 # ── Target list for the runner ─────────────────────────────────────────────
 # setup-qubes.sh reads this to know which qubes to provision (templates
 # first, then app qubes), instead of guessing from qvm-ls prefixes. The
-# 'offline' flag lets the runner independently verify the air gap before
-# provisioning starts.
+# 'offline' and 'netvm=' flags let the runner independently verify the air
+# gap and the NetVM before provisioning starts.
+{% macro target_flag(q) %}{{ ' offline' if q.get('offline') else (' netvm=' ~ papp ~ q.netvm if q.get('netvm') else '') }}{% endmacro %}
 seqs-targets:
   file.managed:
     - name: /var/lib/seqs/targets
@@ -1091,15 +1129,15 @@ seqs-targets:
     - makedirs: True
     - contents: |
         # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
-        # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline]
+        # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>]
         {%- for name in qmap %}
         template {{ ptpl }}{{ name }} {{ recipes[name] }}
         {%- endfor %}
         {%- for name, q in qmap.items() %}
-        app {{ papp }}{{ name }} {{ recipes[name] }}{{ ' offline' if q.get('offline') else '' }}
+        app {{ papp }}{{ name }} {{ recipes[name] }}{{ target_flag(q) }}
         {%- endfor %}
         {%- for name, q in qmap.items() if q.get('named_disposable') %}
-        disposable {{ pdvm }}{{ name }} {{ recipes[name] }}{{ ' offline' if q.get('offline') else '' }}
+        disposable {{ pdvm }}{{ name }} {{ recipes[name] }}{{ target_flag(q) }}
         {%- endfor %}
 
 {% endif %}

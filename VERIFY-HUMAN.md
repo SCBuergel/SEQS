@@ -31,7 +31,7 @@ Read top-to-bottom, in this order:
 4. **`salt/seqs/qube.sls`** — per-qube provisioning: component staging on tmpfs with the libs overlaid *after* component files, completion markers under `/rw/config/seqs/`, the browser handler, the cleanup service, the xdg default-browser step.
 5. **`install-scripts/lib/brave.sh`** — Brave install + keyring verification logic + `install_brave_extension`. Also adds the apt-`preferences.d` pin that locks the Brave repo to the brave-browser packages and `brave-keyring`, which is then held at its installed version.
 6. **`install-scripts/lib/verify-gpg.sh`** — shared `verify_detached_sig` helper, which `fetch_signed` runs after it checks the pinned SHA-256, for keepass / bitbox / openoffice / gnosisvpn. Requires both `GOODSIG` and `VALIDSIG <pinned_fpr>` and explicitly rejects `BADSIG / ERRSIG / EXP*SIG / REV*SIG / KEYEXPIRED / KEYREVOKED / NO_PUBKEY`. If this helper is wrong, all four signed installers are wrong.
-7. **`install-scripts/components/*/template-vm.sh`** and `*/app-vm.sh` — every component you'll actually use. For Brave / Docker / VS Code / Signal / Element / GnosisVPN specifically, verify the script also installs an `/etc/apt/preferences.d/<repo>.pref` default-denying the origin and re-allowing only the named package set — without this, a compromise of the upstream signing key could ship higher-version `bash` / `libc6` / `systemd` etc. via that repo.
+7. **`install-scripts/components/*/template-vm.sh`** and `*/app-vm.sh` — every component you'll actually use. For Brave / Docker / VS Code / Signal / Element / GnosisVPN / Proton VPN specifically, verify the script also installs an `/etc/apt/preferences.d/<repo>.pref` default-denying the origin and re-allowing only the named package set — without this, a compromise of the upstream signing key could ship higher-version `bash` / `libc6` / `systemd` etc. via that repo.
 8. **`TRUST.md`** — the trust model you are signing up for. Note especially §3 "Brave wallet extensions ⚠️", §4 "Wallet qube egress is unrestricted ⚠️", §4 "USB-keyboard policy override" and the Trezor-specific note under §4 "Hardware-wallet udev rules ⚠️" — these are deferred-acceptance items, not closed gaps.
 9. **`README.md` and `docs/first-install.md`** — sanity-check the documented
    command path matches the code.
@@ -71,6 +71,7 @@ For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (
 | BitBoxApp (ShiftCrypto) | `DD09E41309750EBFAE0DEF63509249B068D215AE` | `curl -fsSL https://bitbox.swiss/download/shiftcryptosec-509249B068D215AE.gpg.asc \| gpg --show-keys`; BitBox's own docs publish the fingerprint at <https://support.bitbox.swiss/en_US/verify-app-signature/verify-bitboxapp-signature-linux> |
 | Apache OpenOffice (Jim Jagielski) | `A93D62ECC3C8EA12DB220EC934EA76E6791485A8` | `curl -fsSL https://downloads.apache.org/openoffice/KEYS \| gpg --show-keys --with-colons \| grep A93D62EC`; also check `https://people.apache.org/keys/committer/jim.asc` |
 | Element | `12D4CD600C2240A9F4A82071D7B0B66941D01538` | `curl -fsSL https://packages.element.io/debian/element-io-archive-keyring.gpg \| gpg --show-keys` then check both keyservers by-fingerprint |
+| Proton VPN | `84B0D3492C76C9C6F5873C18EDA3E22630349F1C` | `curl -fsSL https://keys.openpgp.org/vks/v1/by-fingerprint/84B0D3492C76C9C6F5873C18EDA3E22630349F1C \| gpg --show-keys`; also download `protonvpn-stable-release_1.0.8_all.deb` as <https://protonvpn.com/support/official-linux-vpn-debian> describes, compare its `sha256sum` with the hash published there, and run `gpg --show-keys` on `usr/share/keyrings/protonvpn-stable-archive-keyring.gpg` inside it (`dpkg-deb -x`) |
 | GnosisVPN | `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, and SHA-256 `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb` for `gnosisvpn_0.95.2_amd64.deb` | `gpg --show-keys install-scripts/components/gnosisvpn/gnosisvpn-public-key.asc`, and `curl -fsSL https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb \| sha256sum`; the key comes only from the GnosisVPN project, so confirm the fingerprint through a channel of your own |
 
 KeePassXC, BitBox, and OpenOffice also pin the SHA-256 of their release file (`*_SHA256` in the script); after you have checked a download's signature yourself, compare its `sha256sum` with the pin.
@@ -105,7 +106,7 @@ When you run `setup-qubes.sh`:
 
 5. To see each qube's own output, add `--verbose` to the setup command; then watch for the verification lines:
     - `Brave keyring verified -- <the three pinned fingerprints>`
-    - `key verified: <pinned fingerprint>` for each imported repository or signing key (KeePassXC, Signal, Docker, VS Code, Element, BitBox, OpenOffice, GnosisVPN, and Brave next to its keyring line); compare it with the table above
+    - `key verified: <pinned fingerprint>` for each imported repository or signing key (KeePassXC, Signal, Docker, VS Code, Element, BitBox, OpenOffice, GnosisVPN, Proton VPN, and Brave next to its keyring line); compare it with the table above
     - `sha256 OK -- <file>`, then `signature OK -- <file> signed by <pinned fingerprint>`, for each signed download, such as `KeePassXC-2.7.12-x86_64.AppImage`, `bitbox_4.51.0_amd64.deb`, the OpenOffice archive, and the GnosisVPN package
     - `installing extension <id>` for each `brave-extension-*`
 
@@ -162,6 +163,9 @@ After install:
   `wg0_gnosisvpn`, not `eth0`, and confirm an attached disposable test client
   loses both DNS and IP connectivity no later than five seconds after the VPN
   disconnects.
+- If using GnosisVPN, `/rw/config/seqs-gnosisvpn-exit` in `A-gnosisvpn` should hold the exit you chose (`Netherlands` by default), and after a start `journalctl -b -u seqs-gnosisvpn-autoconnect` there should show the worker start and the connect to it.
+- If using `anon`, `qvm-prefs A-anon netvm` should print `A-gnosisvpn`, and `qvm-prefs D-anon | grep -E '^(netvm|default_dispvm) '` should show the flag `-` on both lines, then `A-gnosisvpn` and `None`. With GnosisVPN disconnected (`gnosis_vpn-ctl disconnect` in `A-gnosisvpn`), `curl https://ifconfig.co` in a terminal of `D-anon` should fail.
+- If using Proton VPN, `qvm-prefs A-protonvpn provides_network` should print `True` and `qvm-service A-protonvpn network-manager` `on`; `/rw/config/qubes-firewall-user-script` in `A-protonvpn` should start with `#!` and list `/rw/config/seqs-protonvpn-firewall.sh`. With Proton VPN disconnected, a client qube using `A-protonvpn` should reach nothing.
 - For each wallet qube: `qvm-prefs A-wallet-ledger label` shows `gray`, `qvm-prefs A-wallet-ledger template` shows `Z-wallet-ledger`.
 - `qvm-tags A-keepass list` includes `seqs-no-handoff`, as for every `offline`, `no_handoff`, or `firewall` app qube; `qvm-tags A-signal list` shows `seqs-handoff` instead, and `/etc/qubes/policy.d/29-browser.policy` allows `qubes.OpenURL` only from `@tag:seqs-handoff`.
 - `qvm-features A-keepass seqs-managed` prints `1` for every SEQS-built qube (the no-clobber marker), and `/var/lib/seqs/intents/` in dom0 is empty after a clean run.

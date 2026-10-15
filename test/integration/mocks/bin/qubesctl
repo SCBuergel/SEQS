@@ -34,16 +34,16 @@ else:
 ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
 pdvm = seqs["prefix_disposable"]
 lines = ["# Managed by SEQS (mock).",
-         "# Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline]"]
+         "# Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>]"]
+def flag(q):
+    return " offline" if q.get("offline") else (" netvm=" + papp + q["netvm"] if q.get("netvm") else "")
 for n in selected:
     lines.append("template %s%s %s" % (ptpl, n, recipes[n]))
 for n, q in selected.items():
-    lines.append("app %s%s %s%s" % (
-        papp, n, recipes[n], " offline" if q.get("offline") else ""))
+    lines.append("app %s%s %s%s" % (papp, n, recipes[n], flag(q)))
 for n, q in selected.items():
     if q.get("named_disposable"):
-        lines.append("disposable %s%s %s%s" % (
-            pdvm, n, recipes[n], " offline" if q.get("offline") else ""))
+        lines.append("disposable %s%s %s%s" % (pdvm, n, recipes[n], flag(q)))
 os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 open(sys.argv[2], "w").write("\n".join(lines) + "\n")
 PY

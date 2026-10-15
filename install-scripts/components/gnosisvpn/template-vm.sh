@@ -55,6 +55,8 @@ sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-prepare-app" /usr/sbin/seqs-gnosisvpn-prepare-app
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-rates" /usr/bin/seqs-gnosisvpn-rates
+sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-autoconnect" /usr/sbin/seqs-gnosisvpn-autoconnect
+sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-autoconnect.service" /etc/systemd/system/seqs-gnosisvpn-autoconnect.service
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.service" /etc/systemd/system/seqs-gnosisvpn-dns.service
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.path" /etc/systemd/system/seqs-gnosisvpn-dns.path
 sudo install -m 0644 "${ASSET_DIR}/seqs-gnosisvpn-dns.timer" /etc/systemd/system/seqs-gnosisvpn-dns.timer
@@ -62,5 +64,6 @@ sudo install -m 0644 "${ASSET_DIR}/99-seqs-gnosisvpn-rmem.conf" /etc/sysctl.d/99
 sudo systemctl daemon-reload
 sudo systemctl enable seqs-gnosisvpn-dns.path
 sudo systemctl enable seqs-gnosisvpn-dns.timer
+sudo systemctl enable seqs-gnosisvpn-autoconnect.service
 
 echo "GnosisVPN ${GNOSISVPN_URL##*/} installed for network jura-prod."

@@ -37,6 +37,8 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
   {'name': 'signal',            'label': 'green',  'components': ['signal'], 'main_app': 'signal-desktop.desktop'},
   {'name': 'wireguard',         'label': 'purple', 'components': ['wireguard'], 'network_provider': True, 'no_handoff': True},
   {'name': 'gnosisvpn',         'label': 'purple', 'components': ['gnosisvpn'], 'network_provider': True, 'no_handoff': True, 'vcpus': 4},
+  {'name': 'protonvpn',         'label': 'purple', 'components': ['protonvpn'], 'network_provider': True, 'no_handoff': True, 'main_app': 'proton.vpn.app.gtk.desktop'},
+  {'name': 'anon',              'label': 'red',    'components': ['brave'], 'netvm': 'gnosisvpn', 'dispvm_template': True, 'named_disposable': True, 'no_handoff': True, 'main_app': 'brave-browser.desktop'},
   {'name': 'openoffice',        'label': 'yellow', 'components': ['openoffice'], 'main_app': 'openoffice4-startcenter.desktop'},
   {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp'], 'main_app': 'com.github.xournalpp.xournalpp.desktop'},
   {'name': 'usb-data-transfer', 'label': 'red',    'components': ['adb']},

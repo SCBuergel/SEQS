@@ -65,8 +65,8 @@ separate build-plan hash and records the canonical selection in
 The shipped catalogue currently exposes these base names:
 
 ```text
-brave  element  telegram  signal  wireguard  gnosisvpn  openoffice  xournalpp
-usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
+brave  element  telegram  signal  wireguard  gnosisvpn  protonvpn  anon
+openoffice  xournalpp  usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
 claude-code  dev-full  wallet-ledger  wallet-trezor
 ```
 
@@ -89,6 +89,7 @@ needs `A-brave` too; see
 | `ledger`       | Ledger udev rules + Ledger Live |
 | `node`         | Node.js via nvm |
 | `openoffice`   | Apache OpenOffice tarball (GPG-verified) |
+| `protonvpn`    | Proton VPN app (Proton's apt repository, embedded verified key) and a fail-closed NetVM hook |
 | `python`       | pyenv + Python |
 | `qr-camera`    | `zbarcam` QR scanner + Qubes USB proxy for the offline camera DisposableVM template |
 | `qr-display`   | `qrencode` for the offline QR-display DisposableVM template |
@@ -122,16 +123,25 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 - `'dispvm_template': True` — makes the app qube a DisposableVM template. The
   shipped offline `qr-display` and `qr-camera` entries use this flag; see
   [secure QR transfer](secure-qr-transfer.md). Every disposable template
-  must also set `offline: True` (enforced by pre-flight validation).
+  must also set `offline: True` or a `netvm` (enforced by pre-flight
+  validation).
 - `'named_disposable': True` — also creates a named DisposableVM (`D-<name>`,
   the `prefix_disposable`) from the `A-<name>` dispvm template, so the
   disposable is launchable from the Qubes menu rather than only appearing under
-  "Templates". Requires `dispvm_template`; the shipped `qr-display` entry uses
-  it. The named disposable inherits the offline air gap and is reset on every
-  shutdown, so nothing is provisioned inside it.
+  "Templates". Requires `dispvm_template`; the shipped `qr-display` and `anon`
+  entries use it. The named disposable gets the same NetVM as its template
+  (none, or the `netvm` provider) and is reset on every shutdown, so nothing
+  is provisioned inside it.
 - `'network_provider': True` — enables `provides_network` and the
   `qubes-firewall` service on the app qube, allowing other qubes to select it
   as their NetVM. It cannot be combined with `offline` or `dispvm_template`.
+- `'netvm': 'gnosisvpn'` — the app qube and its named disposable use the app
+  qube of that catalogue entry (here `A-gnosisvpn`), which must set
+  `network_provider`, as their NetVM. The provider must be selected in the
+  same build or already built; a postfixed provider cannot be named. The
+  shipped `anon` entry, a Brave disposable (`D-anon`), uses it. The runner
+  re-verifies the NetVM after the dom0 apply. It cannot be combined with
+  `offline` or `network_provider`.
 - `'firewall': [...]` — an outbound allowlist for the app qube: each entry is a
   hostname or IPv4 address, `host:port` for one TCP port (1-65535), `'dns'`, or
   `'icmp'`, and all other traffic is dropped; the pre-flight refuses other
@@ -201,6 +211,12 @@ the `jura-prod` network, and configures reconciled Qubes-aware DNS with
 tunnel-routed fallback resolvers and fail-closed forwarding hooks. See
 [Using the GnosisVPN NetVM](gnosisvpn.md) for the scoped download path,
 verification, and runtime checks.
+
+## Proton VPN NetVM
+
+The optional `protonvpn` entry builds `A-protonvpn`, a fail-closed
+network-provider AppVM running the official Proton VPN app. See
+[Using the Proton VPN NetVM](protonvpn.md).
 
 ## Secure QR USB modes
 

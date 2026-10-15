@@ -1,0 +1,11 @@
+[Unit]
+Description=SEQS: connect GnosisVPN to the exit in /rw/config/seqs-gnosisvpn-exit
+After=gnosisvpn.service
+Wants=gnosisvpn.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/seqs-gnosisvpn-autoconnect
+
+[Install]
+WantedBy=multi-user.target

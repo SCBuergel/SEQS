@@ -1,0 +1,29 @@
+#!/bin/sh
+# Connects GnosisVPN when the qube starts, to the exit named on the first line
+# of /rw/config/seqs-gnosisvpn-exit: one of the names that
+# `gnosis_vpn-ctl destinations` lists. An empty or missing file leaves
+# GnosisVPN disconnected. Run by seqs-gnosisvpn-autoconnect.service.
+set -eu
+conf=/rw/config/seqs-gnosisvpn-exit
+exit_id="$(head -n 1 "$conf" 2>/dev/null || true)"
+if [ -z "$exit_id" ]; then
+	echo "no exit in $conf; not connecting"
+	exit 0
+fi
+# The service needs a few seconds to open its control socket.
+i=0
+until gnosis_vpn-ctl info >/dev/null 2>&1; do
+	i=$((i + 1))
+	[ "$i" -lt 60 ] || { echo "ERROR: the GnosisVPN service does not answer" >&2; exit 1; }
+	sleep 1
+done
+gnosis_vpn-ctl destinations | grep -Fqx -- "$exit_id" || {
+	echo "ERROR: '$exit_id' in $conf is not a GnosisVPN destination (see gnosis_vpn-ctl destinations)" >&2
+	exit 1
+}
+# The worker returns to idle when it has had no command for this long and is
+# not connected.
+echo "starting the worker"
+gnosis_vpn-ctl start-client 1h
+echo "connecting to $exit_id"
+gnosis_vpn-ctl connect "$exit_id"

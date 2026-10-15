@@ -223,6 +223,19 @@ if ( verifyAirgap ) >/dev/null 2>&1; then ok; else bad "verifyAirgap failed a tr
 if ( NETVM=sys-firewall verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed a qube that still has a netvm"; else ok; fi
 if ( FLAG=D verifyAirgap ) >/dev/null 2>&1; then bad "verifyAirgap passed an air gap inherited from a global default"; else ok; fi
 
+echo "== readTargets() and verifyNetvm(): a declared NetVM is set explicitly =="
+printf 'template Z-anon anon\napp A-anon anon netvm=A-gnosisvpn\ndisposable D-anon anon netvm=A-gnosisvpn\n' > "${TARGETS_FILE}"
+eq "netvm entries, none offline" "$( ( readTargets && echo "${NETVM_TARGETS[*]}|${#OFFLINE_TARGETS[@]}" ) 2>&1 )" \
+	"A-anon A-gnosisvpn D-anon A-gnosisvpn|0"
+printf 'template Z-anon anon\napp A-anon anon netvm=x;id\n' > "${TARGETS_FILE}"
+out="$( ( readTargets ) 2>&1 )" && bad "readTargets accepted an unsafe netvm"
+grep -q "unsafe netvm in ${TARGETS_FILE}: 'netvm=x;id'" <<< "${out}" && ok || bad "unsafe netvm: wrong message [${out}]"
+NETVM_TARGETS=("A-anon A-gnosisvpn")
+if ( NETVM=A-gnosisvpn verifyNetvm ) >/dev/null 2>&1; then ok; else bad "verifyNetvm failed the declared NetVM"; fi
+out="$( ( NETVM=sys-firewall verifyNetvm ) 2>&1 )" && bad "verifyNetvm passed another NetVM"
+grep -q "qube 'A-anon' does not have its netvm explicitly set to 'A-gnosisvpn'" <<< "${out}" && ok || bad "verifyNetvm: wrong message [${out}]"
+if ( NETVM=A-gnosisvpn FLAG=D verifyNetvm ) >/dev/null 2>&1; then bad "verifyNetvm passed an inherited NetVM"; else ok; fi
+
 echo "== test machine setup: input validation and generated qube scripts =="
 # test/hardware/setup-test-machine.sh interpolates these values into scripts
 # that run as root in test-ctl and sys-net, so its validators must hold.
@@ -595,6 +608,25 @@ if [[ "${out}" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] && [ "${out%% *}" -ge "${b
 else bad "the rates of lo must be four numbers, total received first: ${out}"; fi
 eq "no tunnel: no output" "$(sh "${R}" seqs-no-such-interface)" ""
 rm -rf "${vb}"
+
+echo "== seqs-gnosisvpn-autoconnect starts the worker, then connects to the configured exit =="
+# A fake gnosis_vpn-ctl logs its arguments and lists two destinations; the
+# script runs with its exit file moved into the test directory.
+ab="$(mktemp -d)"
+printf '#!/bin/sh\necho "$*" >> "%s/calls"\n[ "$1" != destinations ] || printf "Netherlands\\nSouth Korea\\n"\n' "${ab}" > "${ab}/gnosis_vpn-ctl"
+chmod +x "${ab}/gnosis_vpn-ctl"
+sed "s|/rw/config/seqs-gnosisvpn-exit|${ab}/exit|" install-scripts/components/gnosisvpn/seqs-gnosisvpn-autoconnect > "${ab}/run"
+ac() { : > "${ab}/calls"; PATH="${ab}:${PATH}" sh "${ab}/run" 2>&1; }
+out="$(ac)"
+[ ! -s "${ab}/calls" ] && grep -q "not connecting" <<< "${out}" && ok || bad "without an exit file nothing must be started: ${out}"
+printf 'South Korea\nUK\n' > "${ab}/exit"
+ac >/dev/null
+eq "start, then connect to the first line" "$(grep -v -e info -e destinations "${ab}/calls" | tr '\n' '|')" "start-client 1h|connect South Korea|"
+printf 'Nowhere\n' > "${ab}/exit"
+out="$(ac)" && bad "an unknown exit must fail"
+grep -q "'Nowhere' in ${ab}/exit is not a GnosisVPN destination" <<< "${out}" && ! grep -q start-client "${ab}/calls" && ok \
+	|| bad "an unknown exit must be refused before the worker starts: ${out}"
+rm -rf "${ab}"
 
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"

@@ -468,6 +468,7 @@ readTargets() {
 	APP_TARGETS=()
 	DISPOSABLE_TARGETS=()
 	OFFLINE_TARGETS=()
+	NETVM_TARGETS=()
 	GNOSIS_TEMPLATE_TARGETS=()
 	[ -r "${TARGETS_FILE}" ] || die "${TARGETS_FILE} missing -- did the seqs.dom0 state run?"
 	local kind name recipe flags flag
@@ -491,6 +492,10 @@ readTargets() {
 		for flag in ${flags}; do
 			case "${flag}" in
 				offline) case "${kind}" in app|disposable) OFFLINE_TARGETS+=("${name}") ;; esac ;;
+				netvm=*)
+					[[ "${flag#netvm=}" =~ ${SAFE_NAME} ]] || die "unsafe netvm in ${TARGETS_FILE}: '${flag}'"
+					NETVM_TARGETS+=("${name} ${flag#netvm=}")
+					;;
 				*) die "unknown flag in ${TARGETS_FILE}: '${flag}'" ;;
 			esac
 		done
@@ -517,6 +522,19 @@ verifyAirgap() {
 	if [ "${#OFFLINE_TARGETS[@]}" -gt 0 ]; then
 		echo "    Air gap verified: no netvm and no default disposable on ${OFFLINE_TARGETS[*]}."
 	fi
+}
+
+# verifyNetvm -- independent post-apply check that every qube whose catalogue
+# entry names a 'netvm' provider has exactly that NetVM, set explicitly: one
+# inherited from the global default would bypass the VPN.
+verifyNetvm() {
+	local entry vm netvm
+	for entry in "${NETVM_TARGETS[@]}"; do
+		vm="${entry% *}" netvm="${entry#* }"
+		qvm-prefs -- "${vm}" 2>/dev/null | awk -v n="${netvm}" '$1 == "netvm" && $2 == "-" && $3 == n { f = 1 } END { exit !f }' \
+			|| die "qube '${vm}' does not have its netvm explicitly set to '${netvm}' after the dom0 apply -- refusing to provision."
+		echo "    NetVM verified: ${vm} uses ${netvm}."
+	done
 }
 
 # shutdownAll VM... -- barrier between phases: templates must be verifiably
@@ -805,6 +823,17 @@ setupGnosisUpdateProxy() {
 		|| die "could not install temporary GnosisVPN updates policy"
 }
 
+# provisionApps VM... -- apply seqs.qube to the app qubes VM...; a failure
+# marks the run failed.
+provisionApps() {
+	[ "$#" -gt 0 ] || return 0
+	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" --targets="$(joinCsv "$@")" state.apply seqs.qube; then
+		echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
+		echo "         with --verbose for full per-state output)." >&2
+		FAILED=1
+	fi
+}
+
 buildQubes() {
 	[ -f "${SALT_TREE}/.seqs-complete" ] && [ -f "${PILLAR_TREE}/.seqs-complete" ] \
 		|| die "stage is incomplete -- run --stage-only first"
@@ -821,6 +850,7 @@ buildQubes() {
 
 	readTargets
 	verifyAirgap
+	verifyNetvm
 	if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
 		# Named disposables are created and air-gap-verified by the dom0 apply above;
 		# they inherit everything from their dispvm template and are never provisioned.
@@ -896,16 +926,22 @@ buildQubes() {
 	done
 	APP_TARGETS=("${apps[@]}")
 
+	# Qubes with a 'netvm' go in a second wave: Salt shuts each qube down after
+	# provisioning it, and Qubes refuses to shut down a NetVM that a running
+	# qube uses.
+	local entry
+	local -a routed=() first=() second=()
+	for entry in "${NETVM_TARGETS[@]}"; do routed+=("${entry% *}"); done
+	for vm in "${APP_TARGETS[@]}"; do
+		if [[ " ${routed[*]} " == *" ${vm} "* ]]; then second+=("${vm}"); else first+=("${vm}"); fi
+	done
+
 	echo ""
 	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
-	if [ "${#APP_TARGETS[@]}" -gt 0 ] && ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" \
-		--targets="$(joinCsv "${APP_TARGETS[@]}")" state.apply seqs.qube; then
-		echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
-		echo "         with --verbose for full per-state output)." >&2
-		FAILED=1
-	fi
+	provisionApps "${first[@]}"
+	provisionApps "${second[@]}"
 
-	shutdownAll "${APP_TARGETS[@]}"
+	shutdownAll "${second[@]}" "${first[@]}"
 	addPanelPlugins "${APP_TARGETS[@]}" "${DISPOSABLE_TARGETS[@]}"
 
 	echo ""

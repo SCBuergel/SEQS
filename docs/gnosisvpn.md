@@ -96,10 +96,45 @@ than creating one by hand from `Z-gnosisvpn`: a hand-made qube lacks the dom0
 policy that stops `A-gnosisvpn` from handing links to the browser qube, and the
 private-state and firewall preparation that the SEQS build performs.
 
+## Connect automatically at start
+
+Each time `A-gnosisvpn` starts, the `seqs-gnosisvpn-autoconnect` service
+connects GnosisVPN to the Amsterdam exit. It runs two commands of
+`gnosis_vpn-ctl`, GnosisVPN's command-line control: first
+`gnosis_vpn-ctl start-client 1h`, which starts the worker (the process that
+runs the connection), then `gnosis_vpn-ctl connect Netherlands`. The connect
+command returns at once; the worker keeps trying until it has a route to the
+exit, which needs a funded GnosisVPN account. `gnosis_vpn-ctl status` shows
+how far it is, such as `Waiting to connect to Netherlands` or what funds are
+missing. Without a connection, the worker returns to idle after an hour
+without a command. Starting a qube that uses `A-gnosisvpn` as its NetVM, such
+as `D-anon` below, starts `A-gnosisvpn` too, and so connects it.
+
+To change the exit, in a terminal of `A-gnosisvpn`:
+
+```bash
+gnosis_vpn-ctl destinations
+echo 'UK' | sudo tee /rw/config/seqs-gnosisvpn-exit
+```
+
+The first command lists the exit names; `Netherlands` is Amsterdam. The second
+writes one of them, here `UK` (London), as the exit for every later start; a
+name that is not in the list makes the service stop with an error before it
+starts the worker. The file is kept across restarts and rebuilds: a build
+writes `Netherlands` only when the file is missing. To stop connecting
+automatically, empty it:
+
+```bash
+sudo truncate -s 0 /rw/config/seqs-gnosisvpn-exit
+```
+
+`journalctl -b -u seqs-gnosisvpn-autoconnect` shows what the service did at
+the last start.
+
 ## Test GnosisVPN
 
-Start `A-gnosisvpn` and launch the installed GnosisVPN application. Do not
-attach sensitive client qubes until completing the checks below.
+Start `A-gnosisvpn`; it connects as described above. Do not attach sensitive
+client qubes until completing the checks below.
 
 Do not replace or relink `/etc/resolv.conf`. It should remain Qubes-managed:
 
@@ -152,7 +187,13 @@ support.
 
 ## Verify before attaching clients
 
-In a terminal of `A-gnosisvpn`, with GnosisVPN disconnected:
+In a terminal of `A-gnosisvpn`, first disconnect GnosisVPN:
+
+```bash
+gnosis_vpn-ctl disconnect
+```
+
+Then:
 
 ```bash
 getent hosts example.com
@@ -162,7 +203,7 @@ sudo nft list table ip seqs_gnosisvpn_dns
 Ordinary Qubes DNS should work; the nft command should report that the table
 does not exist.
 
-Connect GnosisVPN, then verify:
+Connect GnosisVPN again (`gnosis_vpn-ctl connect Netherlands`), then verify:
 
 ```bash
 seqs-gnosisvpn-rates
@@ -213,6 +254,18 @@ The client should retain Qubes' synthetic resolver addresses, resolve names,
 and report the VPN egress address. Disconnect GnosisVPN and confirm that the
 client loses both DNS and IP connectivity instead of falling back to the
 upstream NetVM. Reconnect and repeat the checks before attaching other qubes.
+
+## Browse through GnosisVPN in `D-anon`
+
+The `anon` catalogue entry builds `D-anon`, a named disposable with Brave
+whose NetVM is `A-gnosisvpn`; build it with
+`~/s.sh --build-only --qubes gnosisvpn,anon`. Start Brave in `D-anon` from the
+Qubes menu or its panel launcher. Everything in the disposable is discarded
+when it shuts down, and its traffic leaves only through the tunnel: while
+GnosisVPN is disconnected, it reaches nothing. `D-anon` cannot open links or
+files in other qubes. Its template, `A-anon`, also uses `A-gnosisvpn`; what
+you change in `A-anon` appears in every later `D-anon`, so do not browse in
+`A-anon` itself.
 
 ## Caveats
 

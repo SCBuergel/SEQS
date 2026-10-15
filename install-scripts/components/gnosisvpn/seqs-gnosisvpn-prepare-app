@@ -10,6 +10,7 @@ hook=/rw/config/qubes-firewall-user-script
 entry=/usr/sbin/seqs-gnosisvpn-firewall
 bind_dir_config=/rw/config/qubes-bind-dirs.d/50-seqs-gnosisvpn.conf
 persistent_dir=/rw/bind-dirs/var/lib/gnosisvpn
+exit_file=/rw/config/seqs-gnosisvpn-exit
 
 # qubes-firewall runs the hook directly and fails at every start if it cannot:
 # the hook needs an interpreter line. Qubes creates it with one, but a build
@@ -41,5 +42,9 @@ fi
 	echo "ERROR: GnosisVPN persistent path is not a directory" >&2
 	exit 1
 }
+
+# The exit seqs-gnosisvpn-autoconnect connects to at start: Amsterdam, unless
+# the operator changed it.
+[[ -e "$exit_file" ]] || printf 'Netherlands\n' > "$exit_file"
 
 /usr/sbin/seqs-gnosisvpn-dns
