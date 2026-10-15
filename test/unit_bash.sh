@@ -385,6 +385,16 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(usbmem 300 600)" == "CHECK-FAIL: sys-usb has 300 MiB, expected at least 600" ]] || echo "FAIL checkSysUsbMemory accepted 300 of 600"
 	[[ "$(usbmem '' 600)" == CHECK-FAIL* ]] || echo "FAIL checkSysUsbMemory accepted an unreadable value"
 	[ -z "$(usbmem 300 0)" ] || echo "FAIL checkSysUsbMemory checked with sys_usb_memory 0"
+	# The NUC 11 headset files exist exactly when the fix is on.
+	hs() { NUC11_FW="${tmp}/hs.fw" NUC11_CONF="${tmp}/hs.conf" checkNuc11HeadsetFix "$1"; }
+	rm -f "${tmp}/hs.fw" "${tmp}/hs.conf"
+	[[ "$(hs False)" == "CHECK-OK:   NUC 11 headset fix is not installed (off)" ]] || echo "FAIL checkNuc11HeadsetFix refused no files when off"
+	[[ "$(hs True)" == "CHECK-FAIL: nuc11_headset_fix is True, but "* ]] || echo "FAIL checkNuc11HeadsetFix accepted missing files"
+	printf '[pincfg]\n0x19 0x01a1913c\n' > "${tmp}/hs.fw"
+	[[ "$(hs True)" == CHECK-FAIL* ]] || echo "FAIL checkNuc11HeadsetFix accepted a missing modprobe option"
+	echo 'options snd-hda-intel patch=seqs-nuc11-headset.fw' > "${tmp}/hs.conf"
+	[[ "$(hs True)" == "CHECK-OK:   NUC 11 headset fix is installed" ]] || echo "FAIL checkNuc11HeadsetFix refused both files"
+	[[ "$(hs False)" == "CHECK-FAIL: nuc11_headset_fix is off, but "* ]] || echo "FAIL checkNuc11HeadsetFix accepted leftover files"
 	# A "(null)" domain that does not go away fails; none passes.
 	dead() { xl() { printf 'Name ID\nsys-net 3\n%b' "${DEAD}"; }; sleep() { :; }; DEAD="$1" checkNoDeadDomains; }
 	[[ "$(dead '')" == CHECK-OK* ]] || echo "FAIL checkNoDeadDomains refused a clean list"

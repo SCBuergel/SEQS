@@ -85,8 +85,10 @@ class Scenario:
         recipes=None,            # name -> seqs-recipe feature of existing qubes
         qubesd_up=True,          # False: the qube inventory query returns nothing
         host_cpus="4",           # what `xl info` reports as nr_cpus
+        hda_codecs=(),           # "vendor_id subsystem_id" of each HD audio codec
     ):
         self.host_cpus = host_cpus
+        self.hda_codecs = list(hda_codecs)
         self.recipes = dict(recipes or {})
         self.qubesd_up = qubesd_up
         self.existing_qubes = set(existing_qubes or [])
@@ -131,6 +133,8 @@ class Scenario:
             return self.release
         if "xl info" in cmd:
             return self.host_cpus
+        if "/sys/class/sound/hwC" in cmd:
+            return "\n".join(self.hda_codecs)
         if cmd.startswith("ls -A /var/lib/seqs/intents"):
             return "\n".join(sorted(f.rsplit("/", 1)[1] for f in self.existing_files
                                      if f.startswith("/var/lib/seqs/intents/")))

@@ -18,6 +18,8 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {%- set component_timeout = 900 %}
 {#- Minimum memory of sys-usb in MiB (0 leaves it alone); see docs/configuration.md. #}
 {%- set sys_usb_memory = 600 %}
+{#- Intel NUC 11 headset jack fix (True/False); see docs/configuration.md. #}
+{%- set nuc11_headset_fix = False %}
 
 {#- Keep disabled until completing docs/secure-qr-transfer.md. #}
 {%- set webcam_usb_mode = 'disabled' %}
@@ -111,6 +113,7 @@ seqs:
   brave_extensions: {{ brave_extensions | tojson }}
   cleanup_dirs: {{ cleanup_dirs | tojson }}
   sys_usb_memory: {{ sys_usb_memory | tojson }}
+  nuc11_headset_fix: {{ nuc11_headset_fix | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'
   webcam_usb_mode: '{{ webcam_usb_mode }}'
   webcam_usb_no_strict_reset: {{ webcam_usb_no_strict_reset | tojson }}

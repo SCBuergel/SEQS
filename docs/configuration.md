@@ -50,6 +50,7 @@ The top of `config.sls` sets values that apply to every qube:
 | `browser_vm`, `browser_desktop` | `A-brave`, `open-links-in-browser-qube.desktop` | The qube that opens links handed off by other SEQS qubes, and the desktop entry in those qubes that hands them off; see [below](#browser-link-handoff-requires-a-brave). |
 | `component_timeout` | `900` | Seconds one component may run before Salt stops it. |
 | `sys_usb_memory` | `600` | Minimum memory of `sys-usb` in MiB; see [below](#sys_usb_memory). |
+| `nuc11_headset_fix` | `False` | Makes the headset jack of an Intel NUC 11 Pro work; see [below](#nuc11_headset_fix). |
 | `webcam_*` | QR transfer disabled | See [Secure QR USB modes](#secure-qr-usb-modes). |
 
 ## Components
@@ -250,6 +251,25 @@ Qubes devices widget shows after `sys-usb:`:
 echo 4-1 | sudo tee /sys/bus/usb/drivers/usbip-host/unbind
 echo 4-1 | sudo tee /sys/bus/usb/drivers_probe
 ```
+
+## `nuc11_headset_fix`
+
+On an Intel NUC 11 Pro (models `NUC11PA...`), Linux sees neither the
+microphone of a headset in the front jack nor that anything is plugged in, so
+the dom0 volume control offers the headset neither for sound nor for calls.
+The firmware leaves the jack's microphone connection unconfigured. Setting
+`nuc11_headset_fix` to `True` makes each build install
+the same correction that the Linux kernel ships for the NUC 10, as two files
+in dom0: `/lib/firmware/seqs-nuc11-headset.fw` and
+`/etc/modprobe.d/seqs-nuc11-headset.conf`. It takes effect at the next boot.
+With `False`, each build removes both files.
+
+The pre-flight refuses `True` on any other computer: the kernel would apply
+the correction to every audio chip of the same type (Realtek ALC256), which
+many laptops use differently.
+
+After the next boot, the headset should appear as the output and input in the
+dom0 volume control while it is plugged in.
 
 ## Secure QR USB modes
 

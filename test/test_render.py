@@ -486,6 +486,43 @@ def test_dom0_sys_usb_memory():
               "sys_usb_memory %r must fail pre-flight" % (value,))
 
 
+def test_dom0_nuc11_headset_fix():
+    case("dom0.sls: nuc11_headset_fix is off by default and only installs on a NUC 11 codec")
+    def arg(parsed, state_id, function, key):  # None instead of an exception when absent
+        try:
+            return state_arg(parsed, state_id, function, key)
+        except (KeyError, StopIteration):
+            return None
+    fw, conf = "/lib/firmware/seqs-nuc11-headset.fw", "/etc/modprobe.d/seqs-nuc11-headset.conf"
+    nuc = Scenario(hda_codecs=["0x10ec0256 0x80863004", "0x80862812 0x80860101"])
+    check(render_pillar("dom0").get("nuc11_headset_fix") is False,
+          "the shipped configuration should leave the fix off")
+    _, parsed = render_state("dom0", "dom0", nuc)
+    check(arg(parsed, "seqs-nuc11-headset-option", "file.absent", "name") == conf
+          and arg(parsed, "seqs-nuc11-headset-patch", "file.absent", "name") == fw,
+          "with the fix off, both files must be removed")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["nuc11_headset_fix"] = True
+    _, parsed = render_state("dom0", "dom0", nuc, pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed, "a NUC 11 codec may enable the fix")
+    contents = arg(parsed, "seqs-nuc11-headset-patch", "file.managed", "contents") or ""
+    check(arg(parsed, "seqs-nuc11-headset-patch", "file.managed", "name") == fw
+          and "[codec]\n0x10ec0256 0x80863004 0\n[pincfg]\n0x19 0x01a1913c\n[model]\nheadset-mode\n" in contents,
+          "the patch file should set pin 0x19 as headset mic in headset mode")
+    check("options snd-hda-intel patch=seqs-nuc11-headset.fw\n" in
+          (arg(parsed, "seqs-nuc11-headset-option", "file.managed", "contents") or ""),
+          "snd-hda-intel should load the patch file")
+    for codecs in ([], ["0x10ec0256 0x103c8600"], ["0x10ec0257 0x80863004"]):
+        _, parsed = render_state("dom0", "dom0", Scenario(hda_codecs=codecs), pillar_seqs=pillar)
+        check("has no Intel NUC 11 audio codec" in _errors(parsed),
+              "codecs %r must not enable the fix" % (codecs,))
+    for value in ("yes", 1, "True"):
+        pillar["nuc11_headset_fix"] = value
+        _, parsed = render_state("dom0", "dom0", nuc, pillar_seqs=pillar)
+        check("must be True or False" in _errors(parsed),
+              "nuc11_headset_fix %r must fail pre-flight" % (value,))
+
+
 def test_dom0_sequential_qr_mode():
     case("dom0.sls: sequential QR mode renders strict, staged, fail-closed machinery")
     pillar = copy.deepcopy(render_pillar("dom0"))

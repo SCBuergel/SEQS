@@ -13,6 +13,7 @@
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set sys_usb_memory = seqs.get('sys_usb_memory', 0) %}
+{% set nuc11_headset_fix = seqs.get('nuc11_headset_fix', false) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
@@ -112,6 +113,17 @@ for vm in qubesadmin.Qubes().domains:
 {# Interpolated into a shell command; the integer test rejects booleans. #}
 {% if sys_usb_memory is not integer or sys_usb_memory < 0 %}
 {%   do errors.append("sys_usb_memory '" ~ sys_usb_memory ~ "' must be a whole number of MiB (0 leaves sys-usb unchanged)") %}
+{% endif %}
+{# The kernel reads a patch file's subsystem ID as a signed number, so it
+   cannot match Intel's 0x8086.... IDs and would apply the fix to any ALC256
+   codec: only a computer that has the NUC 11's codec may enable it. #}
+{% if nuc11_headset_fix is not sameas true and nuc11_headset_fix is not sameas false %}
+{%   do errors.append("nuc11_headset_fix '" ~ nuc11_headset_fix ~ "' must be True or False") %}
+{% elif nuc11_headset_fix %}
+{%   set codecs = salt['cmd.shell']('for d in /sys/class/sound/hwC*D*; do echo "$(cat $d/vendor_id) $(cat $d/subsystem_id)"; done 2>/dev/null') %}
+{%   if '0x10ec0256 0x80863004' not in codecs.splitlines() %}
+{%     do errors.append("nuc11_headset_fix is True, but this computer has no Intel NUC 11 audio codec (Realtek ALC256, subsystem 0x80863004)") %}
+{%   endif %}
 {% endif %}
 {% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
@@ -554,6 +566,47 @@ seqs-sys-usb-memory:
   cmd.run:
     - name: qvm-prefs -- sys-usb memory {{ sys_usb_memory }} && echo 'sys-usb gets {{ sys_usb_memory }} MiB from its next start'
     - unless: test "$(qvm-prefs -- sys-usb memory)" -ge {{ sys_usb_memory }}
+{% endif %}
+
+{# Intel NUC 11 Pro (NUC11PA*): the firmware leaves the front jack's mic pin
+   unconfigured, so Linux sees neither the headset mic nor a plugged-in jack.
+   This applies the kernel's NUC 10 fix (pin 0x19 as headset mic, headset
+   mode) when snd-hda-intel next loads, normally at the next boot. #}
+{% if nuc11_headset_fix %}
+seqs-nuc11-headset-patch:
+  file.managed:
+    - name: /lib/firmware/seqs-nuc11-headset.fw
+    - mode: '0644'
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
+        # See nuc11_headset_fix in docs/configuration.md.
+        [codec]
+        0x10ec0256 0x80863004 0
+        [pincfg]
+        0x19 0x01a1913c
+        [model]
+        headset-mode
+
+seqs-nuc11-headset-option:
+  file.managed:
+    - name: /etc/modprobe.d/seqs-nuc11-headset.conf
+    - mode: '0644'
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
+        # See nuc11_headset_fix in docs/configuration.md.
+        options snd-hda-intel patch=seqs-nuc11-headset.fw
+    - require:
+      - file: seqs-nuc11-headset-patch
+{% else %}
+seqs-nuc11-headset-option:
+  file.absent:
+    - name: /etc/modprobe.d/seqs-nuc11-headset.conf
+
+seqs-nuc11-headset-patch:
+  file.absent:
+    - name: /lib/firmware/seqs-nuc11-headset.fw
+    - require:
+      - file: seqs-nuc11-headset-option
 {% endif %}
 
 # ── Qube creation ──────────────────────────────────────────────────────────
