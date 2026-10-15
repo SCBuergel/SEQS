@@ -211,6 +211,23 @@ checkSysUsbMemory() {
 	fi
 }
 
+# checkNoDeadDomains -- no "(null)" domain outlives its qube by 30 s. Such a
+# domain is held by a dom0 process that still maps its memory, normally a
+# leaked qrexec-daemon child.
+checkNoDeadDomains() {
+	local out n i
+	for i in $(seq 15); do
+		# A failed listing must not read as an empty one.
+		out="$(xl list 2>&1)" && [[ "${out}" == Name* ]] \
+			|| { fail "could not list domains: $(head -n 1 <<< "${out}")"; return; }
+		n="$(awk '$1 == "(null)"' <<< "${out}" | wc -l)"
+		[ "${n}" -eq 0 ] && break
+		sleep 2
+	done
+	[ "${n}" -eq 0 ] && pass "no dead domain is left behind" \
+		|| fail "${n} dead domain(s) left in xl list; check for qrexec-daemon processes of qubes that no longer run"
+}
+
 # catField RECIPE FIELD -- one catalogue field of RECIPE ("True"/"False" for
 # flags, empty when absent).
 catField() {
@@ -820,10 +837,13 @@ policyRefused() {
 
 # unnamedDisposableRefused TEMPLATE -- a disposable started by hand from a
 # disposable template inherits the tag, so its link handoff is refused too.
+# The refusal shows a notification through dom0; a disposable destroyed
+# before that call settles leaves a dom0 qrexec-daemon child behind that
+# holds the dead domain (a "(null)" in xl list), so it waits 5 s first.
 unnamedDisposableRefused() {
 	local out
 	out="$(qvm-run --dispvm="$1" --pass-io --no-gui \
-		"echo https://example.com | timeout 20 qrexec-client-vm ${BROWSER_VM} qubes.OpenURL; echo rc=\$?" 2>&1 </dev/null)"
+		"echo https://example.com | timeout 20 qrexec-client-vm ${BROWSER_VM} qubes.OpenURL; echo rc=\$?; sleep 5" 2>&1 </dev/null)"
 	if grep -qi "refused" <<< "${out}"; then
 		pass "a disposable started from $1: qubes.OpenURL to ${BROWSER_VM} is refused"
 	else
@@ -1010,6 +1030,7 @@ check() {
 	if [ "${#started[@]}" -gt 0 ]; then
 		qvm-shutdown --wait -- "${started[@]}" >/dev/null 2>&1 || true
 	fi
+	checkNoDeadDomains
 	echo "checks failed: ${FAILS}"
 	[ "${FAILS}" -eq 0 ]
 }

@@ -385,6 +385,14 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(usbmem 300 600)" == "CHECK-FAIL: sys-usb has 300 MiB, expected at least 600" ]] || echo "FAIL checkSysUsbMemory accepted 300 of 600"
 	[[ "$(usbmem '' 600)" == CHECK-FAIL* ]] || echo "FAIL checkSysUsbMemory accepted an unreadable value"
 	[ -z "$(usbmem 300 0)" ] || echo "FAIL checkSysUsbMemory checked with sys_usb_memory 0"
+	# A "(null)" domain that does not go away fails; none passes.
+	dead() { xl() { printf 'Name ID\nsys-net 3\n%b' "${DEAD}"; }; sleep() { :; }; DEAD="$1" checkNoDeadDomains; }
+	[[ "$(dead '')" == CHECK-OK* ]] || echo "FAIL checkNoDeadDomains refused a clean list"
+	[[ "$(dead '(null) 202\n')" == "CHECK-FAIL: 1 dead domain(s)"* ]] || echo "FAIL checkNoDeadDomains accepted a dead domain"
+	nolist() { xl() { echo "xl: permission denied" >&2; return 1; }; checkNoDeadDomains; }
+	[[ "$(nolist)" == "CHECK-FAIL: could not list domains: xl: permission denied" ]] || echo "FAIL checkNoDeadDomains accepted a failed xl list"
+	nolist() { xl() { return 0; }; checkNoDeadDomains; }
+	[[ "$(nolist)" == "CHECK-FAIL: could not list domains"* ]] || echo "FAIL checkNoDeadDomains accepted an empty xl list"
 	echo CHECKS-DONE
 ) > "${tmp}/dom0test.out" 2>&1
 # A subshell that stops early, such as on a failed source, checked nothing.
