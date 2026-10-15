@@ -121,6 +121,8 @@ MUTATIONS = [
     ("dom0-escape-openurl", S, "['qubes.OpenURL', ", "["),
     ("dom0-escape-target", S, "*  %s  @anyvm  deny", "*  %s  @dispvm  deny"),
     ("dom0-stale-intent", S, "     if m not in inventory and m not in planned", "     if false and m not in inventory"),
+    ("dom0-sys-usb-memory-int", S, "{% if sys_usb_memory is not integer or sys_usb_memory < 0 %}", "{% if false %}"),
+    ("dom0-sys-usb-memory-raise", S, "    - unless: test \"$(qvm-prefs -- sys-usb memory)\" -ge {{ sys_usb_memory }}\n", ""),
     ("dom0-qr-filecopy-deny", S, "        qubes.Filecopy  *  {{ webcam_scanner_qube }}  @anyvm  deny\n", ""),
     ("dom0-qr-input-deny", S, "        qubes.InputKeyboard  *  {{ webcam_usb_qube }}  @adminvm  deny\n", ""),
     ("dom0-handoff-firewall", S, " or q.get('firewall') is not none %}\n{%   do no_handoff", " %}\n{%   do no_handoff"),

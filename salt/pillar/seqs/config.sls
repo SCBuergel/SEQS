@@ -16,6 +16,8 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {%- set browser_desktop = 'open-links-in-browser-qube.desktop' %}
 {#- Per-component installation timeout in seconds. #}
 {%- set component_timeout = 900 %}
+{#- Minimum memory of sys-usb in MiB (0 leaves it alone); see docs/configuration.md. #}
+{%- set sys_usb_memory = 600 %}
 
 {#- Keep disabled until completing docs/secure-qr-transfer.md. #}
 {%- set webcam_usb_mode = 'disabled' %}
@@ -108,6 +110,7 @@ seqs:
   catalogue: {{ qubes | tojson }}
   brave_extensions: {{ brave_extensions | tojson }}
   cleanup_dirs: {{ cleanup_dirs | tojson }}
+  sys_usb_memory: {{ sys_usb_memory | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'
   webcam_usb_mode: '{{ webcam_usb_mode }}'
   webcam_usb_no_strict_reset: {{ webcam_usb_no_strict_reset | tojson }}

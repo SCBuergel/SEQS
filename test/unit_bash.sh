@@ -379,6 +379,12 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(probe REACHED '')" == *"CHECK-FAIL: A-vpn: could not run"* ]] || echo "FAIL failsClosed accepted a client that did not run"
 	[[ "$(probe BLOCKED BLOCKED)" == *"CHECK-FAIL: seqs-test-client could not reach"* ]] || echo "FAIL failsClosed ran without a baseline"
 	[[ "$(probe '' BLOCKED)" == *"did not run"* ]] || echo "FAIL failsClosed accepted a baseline that did not run"
+	# sys-usb must have at least the configured memory; 0 checks nothing.
+	usbmem() { qvm-check() { return 0; }; qvm-prefs() { echo "${HAVE}"; }; HAVE="$1" checkSysUsbMemory "$2"; }
+	[[ "$(usbmem 600 600)" == CHECK-OK* ]] || echo "FAIL checkSysUsbMemory refused 600 of 600"
+	[[ "$(usbmem 300 600)" == "CHECK-FAIL: sys-usb has 300 MiB, expected at least 600" ]] || echo "FAIL checkSysUsbMemory accepted 300 of 600"
+	[[ "$(usbmem '' 600)" == CHECK-FAIL* ]] || echo "FAIL checkSysUsbMemory accepted an unreadable value"
+	[ -z "$(usbmem 300 0)" ] || echo "FAIL checkSysUsbMemory checked with sys_usb_memory 0"
 	echo CHECKS-DONE
 ) > "${tmp}/dom0test.out" 2>&1
 # A subshell that stops early, such as on a failed source, checked nothing.

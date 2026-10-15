@@ -455,6 +455,37 @@ def test_dom0_usb_policy_release_gated():
           "4.3 without sys-usb must not install the USB keyboard policy")
 
 
+def test_dom0_sys_usb_memory():
+    case("dom0.sls: sys_usb_memory only raises sys-usb's memory, and only to a whole number")
+    check(render_pillar("dom0").get("sys_usb_memory") == 600,
+          "the shipped configuration should give sys-usb 600 MiB")
+    _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True))
+    st = parsed.get("seqs-sys-usb-memory")
+    check(st is not None, "a build should raise sys-usb's memory")
+    if st is not None:
+        check(state_arg(parsed, "seqs-sys-usb-memory", "cmd.run", "name").startswith(
+                  "qvm-prefs -- sys-usb memory 600 &&"),
+              "the state should set sys-usb's memory to 600 MiB")
+        check(state_arg(parsed, "seqs-sys-usb-memory", "cmd.run", "unless")
+              == 'test "$(qvm-prefs -- sys-usb memory)" -ge 600',
+              "a sys-usb that already has at least 600 MiB must be left alone")
+    _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=False))
+    check("seqs-sys-usb-memory" not in parsed, "without sys-usb there is nothing to change")
+    for value in (0, 400):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["sys_usb_memory"] = value
+        _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+        check("seqs-validation-failed" not in parsed, "%r is a valid sys_usb_memory" % value)
+        check(("seqs-sys-usb-memory" in parsed) == bool(value),
+              "sys_usb_memory %r should %srender the state" % (value, "" if value else "not "))
+    for value in ("600; reboot", True, -1, 600.5):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["sys_usb_memory"] = value
+        _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+        check("must be a whole number of MiB" in _errors(parsed),
+              "sys_usb_memory %r must fail pre-flight" % (value,))
+
+
 def test_dom0_sequential_qr_mode():
     case("dom0.sls: sequential QR mode renders strict, staged, fail-closed machinery")
     pillar = copy.deepcopy(render_pillar("dom0"))

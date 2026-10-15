@@ -198,6 +198,19 @@ except ValueError:
 print(d.get("local", "") if isinstance(d, dict) else d)'
 }
 
+# checkSysUsbMemory WANT -- sys-usb has at least WANT MiB (the configured
+# sys_usb_memory); 0 or no sys-usb means SEQS leaves it alone.
+checkSysUsbMemory() {
+	local have
+	[ "${1:-0}" != 0 ] && qvm-check --quiet -- sys-usb >/dev/null 2>&1 || return 0
+	have="$(qvm-prefs -- sys-usb memory 2>/dev/null)"
+	if [[ "${have}" =~ ^[0-9]+$ ]] && [ "${have}" -ge "$1" ]; then
+		pass "sys-usb has ${have} MiB (at least $1)"
+	else
+		fail "sys-usb has ${have:-unknown} MiB, expected at least $1"
+	fi
+}
+
 # catField RECIPE FIELD -- one catalogue field of RECIPE ("True"/"False" for
 # flags, empty when absent).
 catField() {
@@ -976,6 +989,7 @@ check() {
 	d="$(policyDecision qubes.OpenURL sys-firewall "${BROWSER_VM}")"
 	[ "${d}" = AskResolution ] && pass "sys-firewall: links to ${BROWSER_VM} need the Qubes prompt" \
 		|| fail "sys-firewall: policy gives ${d:-nothing} for links to ${BROWSER_VM}, expected the Qubes default ask"
+	checkSysUsbMemory "$(pillarValue seqs:sys_usb_memory)"
 	if grep -q "^app A-qr-display " < <(sudo cat "${targets}") && grep -q "^app A-qr-camera " < <(sudo cat "${targets}"); then
 		qrRoundTrip
 		qvm-shutdown -- A-qr-display A-qr-camera >/dev/null 2>&1 || true

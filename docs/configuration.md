@@ -49,6 +49,7 @@ The top of `config.sls` sets values that apply to every qube:
 | `base_template` | `debian-13-xfce` | The template every SEQS template is cloned from. A change affects only templates cloned afterwards. |
 | `browser_vm`, `browser_desktop` | `A-brave`, `open-links-in-browser-qube.desktop` | The qube that opens links handed off by other SEQS qubes, and the desktop entry in those qubes that hands them off; see [below](#browser-link-handoff-requires-a-brave). |
 | `component_timeout` | `900` | Seconds one component may run before Salt stops it. |
+| `sys_usb_memory` | `600` | Minimum memory of `sys-usb` in MiB; see [below](#sys_usb_memory). |
 | `webcam_*` | QR transfer disabled | See [Secure QR USB modes](#secure-qr-usb-modes). |
 
 ## Components
@@ -217,6 +218,38 @@ verification, and runtime checks.
 The optional `protonvpn` entry builds `A-protonvpn`, a fail-closed
 network-provider AppVM running the official Proton VPN app. See
 [Using the Proton VPN NetVM](protonvpn.md).
+
+## `sys_usb_memory`
+
+Each build raises the memory of `sys-usb` (the Qubes qube that owns the USB
+controllers and forwards USB devices to other qubes) to `sys_usb_memory` MiB if
+it has less. It never lowers it, and `0` leaves `sys-usb` alone. The change
+takes effect when `sys-usb` next starts, normally at the next boot, and the
+memory is then reserved for as long as `sys-usb` runs.
+
+With the 300 MiB that the Qubes installer usually gives `sys-usb`, a device
+can drop in the middle of use, typically a webcam during a call. Forwarding a
+device needs blocks of 128 KiB of contiguous memory in `sys-usb`; when it runs
+short, the kernel refuses the allocation and the device disappears from the
+qube it was attached to. On the
+SEQS test machine, a 300 MiB `sys-usb` with 120 MiB of its memory taken lost
+the webcam within a minute; with 600 MiB it kept it for the whole 10-minute
+test.
+
+To find out whether a lost device had this cause, run in a `sys-usb` terminal:
+
+```bash
+sudo dmesg | grep 'stub_rx: page allocation failure'
+```
+
+Any output means it did. The device then cannot be attached again until it is
+replugged or released in the same terminal, with `4-1` replaced by the ID the
+Qubes devices widget shows after `sys-usb:`:
+
+```bash
+echo 4-1 | sudo tee /sys/bus/usb/drivers/usbip-host/unbind
+echo 4-1 | sudo tee /sys/bus/usb/drivers_probe
+```
 
 ## Secure QR USB modes
 

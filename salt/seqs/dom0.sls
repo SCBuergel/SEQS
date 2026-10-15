@@ -12,6 +12,7 @@
 {% set selection = selection_raw.splitlines() %}
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
+{% set sys_usb_memory = seqs.get('sys_usb_memory', 0) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
@@ -108,6 +109,10 @@ for vm in qubesadmin.Qubes().domains:
 {%   do errors.append("runtime selection resolved to no qube instances") %}
 {% endif %}
 
+{# Interpolated into a shell command; the integer test rejects booleans. #}
+{% if sys_usb_memory is not integer or sys_usb_memory < 0 %}
+{%   do errors.append("sys_usb_memory '" ~ sys_usb_memory ~ "' must be a whole number of MiB (0 leaves sys-usb unchanged)") %}
+{% endif %}
 {% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
 {% endif %}
@@ -539,6 +544,16 @@ seqs-policy-usb-keyboard:
         # numeric prefix (30-) wins over the shipped 50-config-input.policy,
         # which silently denies qubes.InputKeyboard on Qubes 4.3.
         qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm
+{% endif %}
+
+{# With too little memory, the USB/IP export in sys-usb fails to allocate a
+   128 KiB buffer and drops the device it forwards, such as a webcam during
+   a call. Only raises; takes effect when sys-usb next starts. #}
+{% if sys_usb_memory and ('sys-usb' in inventory) %}
+seqs-sys-usb-memory:
+  cmd.run:
+    - name: qvm-prefs -- sys-usb memory {{ sys_usb_memory }} && echo 'sys-usb gets {{ sys_usb_memory }} MiB from its next start'
+    - unless: test "$(qvm-prefs -- sys-usb memory)" -ge {{ sys_usb_memory }}
 {% endif %}
 
 # ── Qube creation ──────────────────────────────────────────────────────────
