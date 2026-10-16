@@ -31,6 +31,25 @@ Do not edit the staged `/srv` copy to select qubes. Editing the repository file
 is an advanced operation for changing catalogue definitions or machine-wide
 settings; those changes must go through fetch, review, and stage again.
 
+## Changing a setting
+
+Change a setting in the checkout in the download disposable, after verifying
+its commit (README step 2) and before you install or upgrade. The runner
+installs only committed files, so commit the change. For example, to turn on
+`nuc11_headset_fix`, in the disposable's terminal:
+
+```bash
+cd ~/SEQS
+sed -i 's/nuc11_headset_fix = False/nuc11_headset_fix = True/' salt/pillar/seqs/config.sls
+git -c user.name=me -c user.email=me@localhost commit -qam 'Enable nuc11_headset_fix'
+git show HEAD
+```
+
+`git show` should list only the lines you changed. Then continue with README
+step 3 as usual. The runner now names your commit, whose parent is the commit
+you verified. Repeat the change for every revision you fetch later: a build
+from a revision without your change reverts it.
+
 For an already installed machine, follow [the upgrade procedure](upgrading.md).
 In particular, repository changes must be fetched into
 `/var/lib/seqs/fetched`, staged under `/srv`, and then built.
@@ -277,6 +296,10 @@ With `False`, each build removes both files.
 The pre-flight refuses `True` on any other computer: the kernel would apply
 the correction to every audio chip of the same type (Realtek ALC256), which
 many laptops use differently.
+
+To turn it on, set `nuc11_headset_fix = True` as described in
+[Changing a setting](#changing-a-setting); a build from a revision without the
+change removes both files again.
 
 After the next boot, the headset should appear as the output and input in the
 dom0 volume control while it is plugged in.
