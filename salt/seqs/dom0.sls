@@ -35,15 +35,20 @@
 
 {#- One qubesd query lists every qube with its seqs-managed and seqs-recipe
     features, instead of one qvm-check/qvm-features process per name. An
-    empty or unreadable list must never read as "no qube exists": that would
-    let the no-clobber guard below pass, so the run stops unless dom0 is in
-    it. #}
+    empty, unreadable, or partial list must never read as "no such qube
+    exists": that would let the no-clobber guard below pass, so the run stops
+    unless dom0 is in it and the query printed its final END line. #}
 {% set inventory_cmd %}python3 -c 'import qubesadmin
 for vm in qubesadmin.Qubes().domains:
     f = vm.features
-    print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()))'{% endset %}
+    print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()))
+print("END")'{% endset %}
 {% set inventory = {} %}
-{% for line in salt['cmd.shell'](inventory_cmd | trim).splitlines() %}
+{% set inventory_lines = salt['cmd.shell'](inventory_cmd | trim).splitlines() %}
+{% if inventory_lines[-1:] != ['END'] %}
+{%   do errors.append("the list of existing qubes ended early -- refusing to continue without knowing which qubes exist") %}
+{% endif %}
+{% for line in inventory_lines %}
 {%   set f = line.split() %}
 {%   if f | length == 3 %}
 {%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2]}}) %}
@@ -1111,7 +1116,10 @@ seqs-webcam-usb-backend:
         # PCI devices are managed by qvm-pci/qvm-device, not qvm-prefs. dom0
         # is skipped: qvm-pci list dom0 shows every device dom0 exposes.
         stopped=''
-        for current in $(qvm-ls --raw-list); do
+        # A failed listing must stop the state, not skip every other owner.
+        vms="$(qvm-ls --raw-list)"
+        [ -n "$vms" ]
+        for current in $vms; do
           printf '%s\n' "$current" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || continue
           [ "$current" = dom0 ] && continue
           [ "$current" = "{{ webcam_usb_qube }}" ] && continue

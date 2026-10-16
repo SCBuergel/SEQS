@@ -147,7 +147,9 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 - `'netvm': 'gnosisvpn'` — the app qube and its named disposable use the app
   qube of that catalogue entry (here `A-gnosisvpn`), which must set
   `network_provider`, as their NetVM. The provider must be selected in the
-  same build or already built; a postfixed provider cannot be named. The
+  same build or already built; a postfixed provider cannot be named, so a
+  postfixed instance such as `anon-x` still uses the unpostfixed
+  `A-gnosisvpn`, also with `--all --postfix x`. The
   shipped `anon` entry, a Brave disposable (`D-anon`), uses it. The runner
   re-verifies the NetVM after the dom0 apply. It cannot be combined with
   `offline` or `network_provider`.

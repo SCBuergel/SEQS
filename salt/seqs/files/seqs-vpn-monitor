@@ -5,7 +5,7 @@
 # starts the qube.
 vm="${1:-}"
 [[ "${vm}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || { echo " VPN: n/a"; exit 0; }
-out="$(timeout 5 qvm-run --no-autostart --pass-io -- "${vm}" seqs-gnosisvpn-rates 2>/dev/null | head -c 100)"
+out="$(timeout 2 qvm-run --no-autostart --pass-io -- "${vm}" seqs-gnosisvpn-rates 2>/dev/null | head -c 100)"
 [[ "${out}" =~ ^[0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}\ [0-9]{1,19}$ ]] || { echo " VPN: n/a"; exit 0; }
 read -r rx tx drx dtx <<< "${out}"
 h() { numfmt --to=iec-i --suffix=B --format='%.2f' "$1"; }

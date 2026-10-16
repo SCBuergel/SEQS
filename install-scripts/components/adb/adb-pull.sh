@@ -132,7 +132,8 @@ adb_connect_prompt() {
         read -rp "Pairing code (shown on device): " pair_code
         local pair_ip="${target%%:*}"
         echo "Pairing with $pair_ip:$pair_port ..."
-        $ADB pair "$pair_ip:$pair_port" "$pair_code"
+        # The output names the phone, which could send terminal escapes.
+        $ADB pair "$pair_ip:$pair_port" "$pair_code" 2>&1 | LC_ALL=C tr -cd '[:print:]\n'
         echo ""
     fi
 

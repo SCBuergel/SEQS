@@ -312,6 +312,11 @@ def test_dom0_inventory_fails_closed():
           "the failure must say that the qube list was unavailable")
     check(not ids_containing(parsed, "seqs-clone-") and not ids_containing(parsed, "seqs-app-"),
           "no qube may be created without an inventory")
+    # A list cut short, such as by a qube removed while it is read, may miss
+    # the existing A-brave although dom0 is in it.
+    text, parsed = render_state("dom0", "dom0", Scenario(existing_qubes=["A-brave"], inventory_complete=False))
+    check("the list of existing qubes ended early" in text and not ids_containing(parsed, "seqs-app-"),
+          "an inventory without its END line must stop the run")
 
 
 # Every service that gets data or code out of a qube into another qube or a
@@ -670,6 +675,17 @@ def test_dom0_dedicated_qr_uses_device_api():
     check('qvm-pci unassign --port "$current" dom0:03_00.0' in backend,
           "dedicated mode must also drop assignments carried over from 4.2")
     check("could not stop $current" in backend, "a former owner that keeps running must stop the state")
+    # The owner list runs under the state's set -e: a failing or empty
+    # qvm-ls must stop it before the camera is attached.
+    has_listing = 'vms="$(qvm-ls' in backend and 'for current in $vms' in backend
+    check(has_listing, "dedicated mode must list the qubes into a variable it can check")
+    listing = backend[backend.index('vms="$(qvm-ls'):backend.index('for current in $vms')] if has_listing else ""
+    for fake in ("exit 1", "true") if has_listing else ():
+        r = subprocess.run(["bash", "-ec", "qvm-ls() { %s; }\n%secho ATTACHED" % (fake, listing)],
+                           capture_output=True, text=True)
+        check(r.returncode != 0 and "ATTACHED" not in r.stdout and "syntax" not in r.stderr.lower(),
+              "dedicated mode must stop when qvm-ls %s" %
+              ("fails" if fake == "exit 1" else "lists nothing"))
     unless = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "unless")
     check("exit !(mine && !other)" in unless,
           "the backend state may be skipped only while the webcam qube is the controller's sole owner")

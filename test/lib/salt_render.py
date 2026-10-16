@@ -84,6 +84,7 @@ class Scenario:
         selection="@all",        # runtime catalogue selection, one name per line
         recipes=None,            # name -> seqs-recipe feature of existing qubes
         qubesd_up=True,          # False: the qube inventory query returns nothing
+        inventory_complete=True,  # False: the inventory query stops before its END line
         host_cpus="4",           # what `xl info` reports as nr_cpus
         hda_codecs=(),           # "vendor_id subsystem_id" of each HD audio codec
     ):
@@ -91,6 +92,7 @@ class Scenario:
         self.hda_codecs = list(hda_codecs)
         self.recipes = dict(recipes or {})
         self.qubesd_up = qubesd_up
+        self.inventory_complete = inventory_complete
         self.existing_qubes = set(existing_qubes or [])
         # The base template is expected to exist on any real dom0 running SEQS.
         if base_template:
@@ -124,7 +126,7 @@ class Scenario:
             return "\n".join(
                 "%s %s %s" % (n, "1" if n in self.tagged_qubes else "0",
                               self.recipes.get(n, "-"))
-                for n in names)
+                for n in names) + ("\nEND" if self.qubesd_up and self.inventory_complete else "")
         if "/var/lib/seqs/selection" in cmd:
             return self.selection
         if "config.top" in cmd:

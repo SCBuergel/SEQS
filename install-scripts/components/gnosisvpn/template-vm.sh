@@ -45,11 +45,16 @@ EOF
 # package rewrites it, so unlock it first.
 KEYRING="/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg"
 sudo chattr -i "${KEYRING}" 2>/dev/null || true
+sudo apt-mark unhold gnosisvpn >/dev/null 2>&1 || true
 sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"
 
 # The package wrote its keyring; it must hold exactly the pinned key, and is
 # locked against rewrite by later maintainer scripts.
 lock_keyring "${KEYRING}" "${GNOSISVPN_KEY_FPR}"
+# Every upgrade rewrites that keyring, which the lock makes fail in dpkg and
+# then block every update of the template. Held, GnosisVPN changes only when a
+# reviewed SEQS pin installs a new release; the release above lifts the hold.
+sudo apt-mark hold gnosisvpn >/dev/null
 
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-dns" /usr/sbin/seqs-gnosisvpn-dns
 sudo install -m 0755 "${ASSET_DIR}/seqs-gnosisvpn-firewall" /usr/sbin/seqs-gnosisvpn-firewall

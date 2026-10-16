@@ -110,6 +110,8 @@ MUTATIONS = [
     ("dom0-dvm-netvm", S, "        qvm-prefs -- {{ dvm }} netvm {{ dvm_netvm }}\n", ""),
     ("dom0-dvm-netvm-default", S, "if q.get('netvm') else 'none' %}", "if q.get('netvm') else 'sys-firewall' %}"),
     ("dom0-dispvm-tpl-offline", S, "{%     if q.get('dispvm_template') and not q.get('offline') and q.get('netvm') is none %}", "{%     if false %}"),
+    ("dom0-inventory-end", S, "{% if inventory_lines[-1:] != ['END'] %}", "{% if false %}"),
+    ("dom0-webcam-list-checked", S, '        [ -n "$vms" ]\n', ''),
     ("dom0-audio-offline", S, "{%     if q.get('audio_provider') and (not q.get('offline') or q.get('dispvm_template')) %}", "{%     if q.get('audio_provider') and q.get('dispvm_template') %}"),
     ("dom0-audio-dispvm", S, "{%     if q.get('audio_provider') and (not q.get('offline') or q.get('dispvm_template')) %}", "{%     if q.get('audio_provider') and not q.get('offline') %}"),
     ("dom0-audio-policy-target", S, "{%-      for target in [a, '@adminvm', '@tag:audiovm-' ~ a] %}", "{%-      for target in [a, '@adminvm', '@anyvm'] %}"),

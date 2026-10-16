@@ -8,7 +8,9 @@ can send its sound to the headset and use its microphone.
 
 `A-bluetooth` hears everything that a qube using it plays, and while the
 microphone is attached, everything that qube records. It has no network
-connection.
+connection, but its radio reaches nearby devices: if it were compromised, it
+could send what it hears over the air. Do not point offline qubes, such as
+`A-keepass`, at it.
 
 ## Build the qube
 

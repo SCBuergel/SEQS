@@ -275,9 +275,10 @@ you change in `A-anon` appears in every later `D-anon`, so do not browse in
 - The package configures upstream's APT repository on two mirrors. SEQS pins
   both so that only the `gnosisvpn` package can come from them, checks that
   the repository keyring holds exactly the pinned key, and locks that keyring.
-  Once the temporary policy is removed, later `gnosisvpn` updates use the
-  template's normal `qubes.UpdatesProxy` route, are not restricted by the temporary domain-only
-  proxy, and can move past the version SEQS pinned.
+  Every `gnosisvpn` upgrade rewrites that keyring, which the lock would make
+  fail and then block all updates of the template, so SEQS holds the package:
+  template updates leave GnosisVPN at the pinned release, and a newer one
+  arrives only with a reviewed SEQS pin.
 - The DNS helper expects the interface to be named `wg0_gnosisvpn`. A future
   GnosisVPN release that renames it requires a reviewed component update.
 - Only IPv4 DNS servers are accepted. Missing or unusable openresolv data uses
