@@ -68,8 +68,8 @@ The shipped catalogue currently exposes these base names:
 
 ```text
 brave  element  telegram  signal  wireguard  gnosisvpn  protonvpn  anon
-openoffice  xournalpp  usb-data-transfer  keepass  qr-display  qr-camera  qr-staging
-claude-code  dev-full  wallet-ledger  wallet-trezor
+openoffice  xournalpp  usb-data-transfer  keepass  bluetooth  qr-display  qr-camera
+qr-staging  claude-code  dev-full  wallet-ledger  wallet-trezor
 ```
 
 Names are case-sensitive and must be passed without the generated `A-` or `Z-`
@@ -83,6 +83,7 @@ needs `A-brave` too; see
 | `adb`          | Android Debug Bridge + `pv` (Debian apt) + chunked, resumable `/usr/bin/adb-pull` helper |
 | `brave`        | Brave browser (apt repo; the downloaded keyring must hold exactly the pinned fingerprints); asks once per qube for a keyring password, which may be empty |
 | `bitbox`       | BitBoxApp `.deb` (GPG-verified) |
+| `bluetooth`    | BlueZ, PipeWire's Bluetooth plugin, the Qubes audio daemon, Blueman, and `pavucontrol` (Debian and Qubes apt) for a Bluetooth audio qube; see [bluetooth.md](bluetooth.md) |
 | `claude-code`  | Claude Code (native installer) |
 | `docker`       | Docker engine + persistent `/var/lib/docker` bind-dir |
 | `element`      | Element chat (apt repo) |
@@ -137,6 +138,12 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
 - `'network_provider': True` — enables `provides_network` and the
   `qubes-firewall` service on the app qube, allowing other qubes to select it
   as their NetVM. It cannot be combined with `offline` or `dispvm_template`.
+- `'audio_provider': True` — makes the app qube an audio qube: other qubes
+  whose `audiovm` names it play and record through it. dom0 enables its Qubes
+  `audiovm` service, gives it no audio qube of its own, and lets it read
+  through `/etc/qubes/policy.d/50-seqs-audiovm.policy` which qubes use it.
+  Requires `offline` and cannot be combined with `dispvm_template`. The shipped
+  `bluetooth` entry uses it; see [bluetooth.md](bluetooth.md).
 - `'netvm': 'gnosisvpn'` — the app qube and its named disposable use the app
   qube of that catalogue entry (here `A-gnosisvpn`), which must set
   `network_provider`, as their NetVM. The provider must be selected in the
@@ -177,10 +184,11 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   others, and refuses to overwrite such a file that SEQS did not write. Removing the key deletes the
   file; the vCPU count stays.
 
-Removing `offline`, `no_handoff`, `firewall`, `dispvm_template`, or
-`network_provider` from a built qube does not revert the qube preferences
-(`qvm-prefs`) these flags set: a NetVM or default disposable set to none stays none, and
-`template_for_dispvms` or `provides_network` stays on (see
+Removing `offline`, `no_handoff`, `firewall`, `dispvm_template`,
+`network_provider`, or `audio_provider` from a built qube does not revert the
+qube preferences (`qvm-prefs`) and services these flags set: a NetVM, default
+disposable, or audio qube set to none stays none, and `template_for_dispvms`,
+`provides_network`, or the `audiovm` service stays on (see
 [convergence](architecture.md#convergence)).
 
 ## Panel launchers

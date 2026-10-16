@@ -463,11 +463,13 @@ out="$(PTY_RUN_ANSWERS= run_setup --qubes brave 2>&1)"; rc=$?
 	|| bad "an empty answer (Enter) must abort before anything is staged: rc=$rc"
 mkdir -p "${SEQS_POLICY_DIR}"
 printf '%s\n' 'qubes.OpenURL * @anyvm A-brave ask' > "${SEQS_POLICY_DIR}/29-browser.policy"
+printf '%s\n' 'admin.vm.List * A-x @anyvm allow target=dom0' > "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy"
 out="$(PTY_RUN_ANSWERS=y,n run_setup --qubes brave 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "were NOT written by SEQS" <<<"$out" \
-	&& grep -q "qubes.OpenURL \* @anyvm A-brave ask" <<<"$out" && ok \
+	&& grep -q "qubes.OpenURL \* @anyvm A-brave ask" <<<"$out" \
+	&& grep -q "admin.vm.List \* A-x @anyvm allow" <<<"$out" && ok \
 	|| bad "an unmarked policy file must be shown and need a y to be overwritten: rc=$rc"
-rm -rf "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_FETCH_ROOT}" "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}"
+rm -rf "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" "${SEQS_FETCH_ROOT}" "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}"
 mkdir -p "${SEQS_FETCH_ROOT}/salt"
 out="$(run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "fetched/salt exists but is not managed by SEQS" <<<"$out" && ok \

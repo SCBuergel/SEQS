@@ -41,7 +41,7 @@ ETC_DIR="${SEQS_ETC_DIR:-/etc/seqs}"
 QR_SCRIPT="${SEQS_QR_SCRIPT:-/usr/local/sbin/seqs-qr-sequential}"
 TMP_DIR="${SEQS_TMP_DIR:-/tmp}"
 SEQS_POLICIES=(00-seqs-qr-input-deny 01-seqs-qr-filecopy 20-seqs-gnosisvpn-updates
-	28-browser-suppress 29-browser 30-user-input)
+	28-browser-suppress 29-browser 30-user-input 50-seqs-audiovm)
 MARKER="Managed by SEQS"
 # isMarked FILE -- SEQS wrote FILE: its first line starts with the marker, as
 # setup-qubes.sh requires.
@@ -593,6 +593,7 @@ print(d.get("local", d).get(sys.argv[1], ""))' "${1#brave-extension-}" <<< "${EX
 		qr-camera) echo 'command -v zbarimg >/dev/null && command -v zbarcam >/dev/null' ;;
 		wireguard) echo 'wg --version >/dev/null && test -x /usr/bin/seqs-wireguard-import && sudo grep -qx /rw/config/seqs-wireguard/boot.sh /rw/config/rc.local' ;;
 		protonvpn) echo 'test -x /usr/bin/protonvpn-app && sudo grep -qx /rw/config/seqs-protonvpn-firewall.sh /rw/config/qubes-firewall-user-script' ;;
+		bluetooth) echo 'test -x /usr/bin/pacat-simple-vchan && command -v blueman-manager >/dev/null && systemctl cat bluetooth 2>/dev/null | grep -qx "ExecStartPre=-/usr/sbin/seqs-bluetooth-bredr" && findmnt -n /var/lib/bluetooth >/dev/null && test "$(qubesdb-read /qubes-service/blueman)" = 1' ;;
 		gnosisvpn) echo 'dpkg-query -W -f="\${Status}" gnosisvpn 2>/dev/null | grep -q "install ok installed" && systemctl is-enabled --quiet seqs-gnosisvpn-dns.path && test -d /rw/bind-dirs/var/lib/gnosisvpn' ;;
 		*) echo "" ;;
 	esac
@@ -646,15 +647,20 @@ handoffTag() {
 
 CLIENT=seqs-test-client
 
-# reaches NETVM -- a throwaway client qube behind NETVM tries to open a TCP
-# connection to 1.1.1.1:443 (three tries, for a qube that is still starting).
-# Prints REACHED or BLOCKED; nothing if the client could not be set up or run.
-reaches() {
+# stoppedClient -- the throwaway client qube exists and is shut down.
+stoppedClient() {
 	if ! qvm-check --quiet -- "${CLIENT}" >/dev/null 2>&1; then
 		qvm-create --class AppVM --template "$(pillarValue seqs:base_template)" --label red -- "${CLIENT}" >/dev/null 2>&1 \
 			|| return
 	fi
 	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+}
+
+# reaches NETVM -- a throwaway client qube behind NETVM tries to open a TCP
+# connection to 1.1.1.1:443 (three tries, for a qube that is still starting).
+# Prints REACHED or BLOCKED; nothing if the client could not be set up or run.
+reaches() {
+	stoppedClient || return
 	qvm-prefs -- "${CLIENT}" netvm "$1" >/dev/null 2>&1 || return
 	# shellcheck disable=SC2016 # runs inside the qube
 	qvm-run --pass-io --no-gui "${CLIENT}" \
@@ -767,6 +773,24 @@ checkProtonvpn() {
 	checkFirewallHook "$1"
 	failsClosed "$1" "not connected"
 	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+}
+
+# checkAudioProvider VM -- VM is an audio qube with none of its own, and the
+# throwaway client gets its audio daemon in VM, which needs the audio policy.
+checkAudioProvider() {
+	local out
+	[ "$(qvm-features -- "$1" service.audiovm 2>/dev/null)" = 1 ] \
+		&& pass "$1: the audiovm service is enabled" || fail "$1: the audiovm service is not enabled"
+	isNone "$(qvm-prefs -- "$1" audiovm 2>/dev/null)" \
+		&& pass "$1: has no audio qube of its own" || fail "$1: has an audio qube of its own"
+	stoppedClient && qvm-prefs -- "${CLIENT}" audiovm "$1" >/dev/null 2>&1 && qvm-start -- "${CLIENT}" >/dev/null 2>&1 \
+		|| { fail "$1: could not start ${CLIENT} with it as audio qube"; qvm-prefs -- "${CLIENT}" audiovm --default >/dev/null 2>&1; return; }
+	# shellcheck disable=SC2016 # runs inside the qube
+	out="$(qvm-run --pass-io --no-gui "$1" "for i in \$(seq 30); do pgrep -f 'pacat-simple-vchan .* ${CLIENT}\$' >/dev/null && { echo PACAT; exit; }; sleep 1; done" </dev/null 2>/dev/null)"
+	[ "${out}" = PACAT ] && pass "$1: plays and records for a qube that uses it" \
+		|| fail "$1: started no audio daemon for ${CLIENT}"
+	qvm-shutdown --wait -- "${CLIENT}" >/dev/null 2>&1
+	qvm-prefs -- "${CLIENT}" audiovm --default >/dev/null 2>&1
 }
 
 # checkGnosisvpn VM -- fail-closed forwarding, the DNS reconciler, and its
@@ -956,6 +980,7 @@ check() {
 					gnosisvpn) checkGnosisvpn "${name}" ;;
 					protonvpn) checkProtonvpn "${name}" ;;
 				esac
+				[ "$(catField "${recipe}" audio_provider)" != "True" ] || checkAudioProvider "${name}"
 				if noHandoff "${recipe}"; then
 					[ "$(catField "${recipe}" dispvm_template)" != "True" ] || unnamedDisposableRefused "${name}"
 					refused "${name}" "${BROWSER_VM}" qubes.OpenURL qubes.OpenInVM

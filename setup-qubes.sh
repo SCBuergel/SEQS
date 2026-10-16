@@ -51,6 +51,7 @@ POLICY_FILES=(
 	"${POLICY_DIR}/28-browser-suppress.policy"
 	"${POLICY_DIR}/29-browser.policy"
 	"${POLICY_DIR}/30-user-input.policy"
+	"${POLICY_DIR}/50-seqs-audiovm.policy"
 )
 
 # ---- Helpers ----------------------------------------------------------------

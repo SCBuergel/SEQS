@@ -82,6 +82,7 @@ the hash — read the code that will run as root in dom0:
 | Configure and use the WireGuard NetVM | [docs/wireguard.md](docs/wireguard.md) |
 | Configure and verify the GnosisVPN NetVM | [docs/gnosisvpn.md](docs/gnosisvpn.md) |
 | Use the Proton VPN NetVM | [docs/protonvpn.md](docs/protonvpn.md) |
+| Use a Bluetooth headset | [docs/bluetooth.md](docs/bluetooth.md) |
 | Upgrade an existing installation | [docs/upgrading.md](docs/upgrading.md) |
 | Delete or rebuild managed qubes | [docs/deleting-vms.md](docs/deleting-vms.md) |
 | Configure secure QR transfer | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |

@@ -652,6 +652,20 @@ grep -q "'Nowhere' in ${ab}/exit is not a GnosisVPN destination" <<< "${out}" &&
 	|| bad "an unknown exit must be refused before the worker starts: ${out}"
 rm -rf "${ab}"
 
+echo "== seqs-bluetooth-bredr: dual-mode devices connect over classic Bluetooth =="
+# Three paired devices, with the script's /var/lib/bluetooth moved into the
+# test directory: dual-mode with BlueZ's default, Low Energy only, and
+# dual-mode set to Low Energy by the user.
+bb="$(mktemp -d)"
+info() { mkdir -p "${bb}/AA/$1"; printf '[General]\nSupportedTechnologies=%s\nPreferredBearer=%s\n' "$2" "$3" > "${bb}/AA/$1/info"; }
+info dual 'BR/EDR;LE;' last-seen; info le 'LE;' last-seen; info chosen 'BR/EDR;LE;' le
+sed "s|/var/lib/bluetooth|${bb}|" install-scripts/components/bluetooth/seqs-bluetooth-bredr > "${bb}/run"
+sh "${bb}/run"
+eq "dual-mode default" "$(grep PreferredBearer "${bb}/AA/dual/info")" "PreferredBearer=bredr"
+eq "Low Energy only" "$(grep PreferredBearer "${bb}/AA/le/info")" "PreferredBearer=last-seen"
+eq "user's choice" "$(grep PreferredBearer "${bb}/AA/chosen/info")" "PreferredBearer=le"
+rm -rf "${bb}"
+
 echo
 echo "bash unit tests: ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

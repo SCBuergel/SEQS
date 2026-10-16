@@ -1004,6 +1004,47 @@ def test_dom0_network_provider():
           "a no_handoff qube must not keep a networked default disposable")
 
 
+def test_dom0_audio_provider():
+    case("dom0.sls: an audio qube gets the audiovm service, no audio qube, and only Qubes' sys-audio rules")
+    bt = {"label": "blue", "components": ["bluetooth"], "offline": True, "audio_provider": True}
+    pillar = _bad_pillar(catalogue={"bluetooth": bt, "brave": {"label": "red", "components": ["brave"]}})
+    _, parsed = render_state("dom0", "dom0", Scenario(), pillar_seqs=pillar)
+    cmd = state_arg(parsed, "seqs-audio-provider-bluetooth", "cmd.run", "name")
+    check("qvm-service --enable A-bluetooth audiovm" in cmd and "qvm-prefs -- A-bluetooth audiovm ''" in cmd,
+          "an audio qube must get the audiovm service and no audio qube of its own")
+    check(state_arg(parsed, "seqs-blueman-bluetooth", "cmd.run", "name") == "qvm-service --enable A-bluetooth blueman",
+          "the bluetooth component's qube must get the blueman service, which starts its panel icon")
+    policy = state_arg(parsed, "seqs-policy-audiovm", "file.managed", "contents")
+    rules = [line.split() for line in policy.splitlines() if line and not line.startswith("#")]
+    tag = "@tag:audiovm-A-bluetooth"
+    want = [[s, "*", "A-bluetooth", t, "allow", "target=dom0"]
+            for s in ("admin.Events", "admin.vm.CurrentState", "admin.vm.List")
+            for t in ("A-bluetooth", "@adminvm", tag)]
+    want += [["admin.vm.property.Get", "+" + p, "A-bluetooth", tag, "allow", "target=dom0"]
+             for p in ("audiovm", "xid", "stubdom_xid", "virt_mode", "is_preload")]
+    want += [["admin.vm.feature.CheckWithTemplate", "+" + f, "A-bluetooth", tag, "allow", "target=dom0"]
+             for f in ("audio", "audio-model")]
+    check(rules == want, "the audio policy must hold exactly Qubes' sys-audio rules, got %r" % rules)
+    check(policy.startswith("# Managed by SEQS"), "the audio policy must carry the SEQS marker")
+
+    case("dom0.sls: a built audio qube keeps its rules when another qube is built; none removes the file")
+    sc = Scenario(existing_qubes=["A-bluetooth"], tagged_qubes=["A-bluetooth"],
+                  recipes={"A-bluetooth": "bluetooth"}, selection="brave")
+    _, parsed = render_state("dom0", "dom0", sc, pillar_seqs=pillar)
+    check("A-bluetooth" in state_arg(parsed, "seqs-policy-audiovm", "file.managed", "contents"),
+          "an unselected, built audio qube must keep its policy rules")
+    _, parsed = render_state("dom0", "dom0", Scenario(), pillar_seqs=_bad_pillar())
+    check("grep -q '^# Managed by SEQS'" in state_arg(parsed, "seqs-policy-audiovm", "cmd.run", "onlyif"),
+          "without an audio qube, only a SEQS-written audio policy may be removed")
+
+    case("dom0.sls: an audio qube must be an offline app qube")
+    for extra in ({"offline": False}, {"dispvm_template": True}):
+        cat = {"bluetooth": dict(bt, **extra)}
+        check(_rejected("qube 'bluetooth' sets 'audio_provider' without 'offline' or with 'dispvm_template'",
+                        _bad_pillar(catalogue=cat)), "audio_provider with %r must be refused" % extra)
+    check(_validation_error(pillar) == "", "an offline audio qube must be accepted")
+
+
 # ---------------------------------------------------------------------------
 # qube.sls
 # ---------------------------------------------------------------------------

@@ -274,6 +274,12 @@ for vm in qubesadmin.Qubes().domains:
 {%     if q.get('network_provider') and q.get('dispvm_template') %}
 {%       do errors.append("qube '" ~ name ~ "' sets both 'network_provider' and 'dispvm_template' -- persistent network-provider configuration requires an AppVM") %}
 {%     endif %}
+{#     An audio qube hears and records every qube that uses it, so it must
+       have no network; its policy names its app qube, which a disposable
+       template's disposables are not. #}
+{%     if q.get('audio_provider') and (not q.get('offline') or q.get('dispvm_template')) %}
+{%       do errors.append("qube '" ~ name ~ "' sets 'audio_provider' without 'offline' or with 'dispvm_template' -- an audio qube must be an offline app qube") %}
+{%     endif %}
 {%     if q.get('named_disposable') and (not pdvm or pdvm | regex_match(name_re) is none) %}
 {%       do errors.append("qube '" ~ name ~ "' requests a named disposable but prefix_disposable is missing or unsafe") %}
 {%     endif %}
@@ -558,6 +564,50 @@ seqs-policy-usb-keyboard:
         qubes.InputKeyboard  *  sys-usb  @adminvm  ask default_target=@adminvm
 {% endif %}
 
+{# ── Audio qubes (catalogue flag 'audio_provider'). A qube whose 'audiovm'
+     names one plays and records through it, and Qubes tags that qube
+     audiovm-<audio qube>. The audio qube's daemon then needs to read, through
+     the Qubes admin API, which qubes use it and when they start; these are the
+     rules Qubes' own sys-audio gets. Every SEQS-built audio qube is listed,
+     selected or not. #}
+{% set audio_qubes = [] %}
+{% for vm, info in inventory.items() if info.managed and papp and vm.startswith(papp)
+     and vm | regex_match(name_re) is not none and qcatalog.get(info.recipe, {}).get('audio_provider') %}
+{%   do audio_qubes.append(vm) %}
+{% endfor %}
+{% for name, q in qmap.items() if q.get('audio_provider') and papp ~ name not in audio_qubes %}
+{%   do audio_qubes.append(papp ~ name) %}
+{% endfor %}
+{% if audio_qubes %}
+seqs-policy-audiovm:
+  file.managed:
+    - name: /etc/qubes/policy.d/50-seqs-audiovm.policy
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten.
+        # Each audio qube may watch itself, dom0, and the qubes that use it
+        # as their audiovm, and read their audio settings.
+{%-  for a in audio_qubes | sort %}
+{%-    for service in ['admin.Events', 'admin.vm.CurrentState', 'admin.vm.List'] %}
+{%-      for target in [a, '@adminvm', '@tag:audiovm-' ~ a] %}
+        {{ '%-40s *  %s  %s  allow target=dom0' | format(service, a, target) }}
+{%-      endfor %}
+{%-    endfor %}
+{%-    for arg in ['admin.vm.property.Get +audiovm', 'admin.vm.property.Get +xid', 'admin.vm.property.Get +stubdom_xid',
+                   'admin.vm.property.Get +virt_mode', 'admin.vm.property.Get +is_preload',
+                   'admin.vm.feature.CheckWithTemplate +audio', 'admin.vm.feature.CheckWithTemplate +audio-model'] %}
+        {{ '%-40s %s  @tag:audiovm-%s  allow target=dom0' | format(arg, a, a) }}
+{%-    endfor %}
+{%-  endfor %}
+{% else %}
+seqs-policy-audiovm:
+  cmd.run:
+    - name: rm -f /etc/qubes/policy.d/50-seqs-audiovm.policy
+    - onlyif: head -n 1 /etc/qubes/policy.d/50-seqs-audiovm.policy | grep -q '^# Managed by SEQS'
+{% endif %}
+
 {# With too little memory, the USB/IP export in sys-usb fails to allocate a
    128 KiB buffer and drops the device it forwards, such as a webcam during
    a call. Only raises; takes effect when sys-usb next starts. #}
@@ -772,6 +822,32 @@ seqs-network-provider-{{ name }}:
   cmd.run:
     - name: qvm-service --enable {{ app }} qubes-firewall
     - unless: test "$(qvm-features -- {{ app }} service.qubes-firewall 2>/dev/null)" = "1"
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+{%   if q.get('audio_provider') %}
+# The audiovm service starts the Qubes audio daemon for the qubes that use this
+# one as their audiovm. With no audiovm of its own, their audio cannot pass on
+# to dom0's speakers, and this qube cannot reach dom0's microphone.
+seqs-audio-provider-{{ name }}:
+  cmd.run:
+    - name: |
+        set -e
+        qvm-service --enable {{ app }} audiovm
+        qvm-prefs -- {{ app }} audiovm ''
+    - unless: >-
+        test "$(qvm-features -- {{ app }} service.audiovm 2>/dev/null)" = "1"
+        && qvm-prefs -- {{ app }} | awk '$1 == "audiovm" && $2 == "-" && $3 == "None" { f = 1 } END { exit !f }'
+    - require:
+      - qvm: seqs-app-{{ name }}
+{%   endif %}
+{%   if 'bluetooth' in q.get('components', []) %}
+# Qubes starts Blueman's panel icon, which connects and disconnects devices,
+# only in a qube with this service.
+seqs-blueman-{{ name }}:
+  cmd.run:
+    - name: qvm-service --enable {{ app }} blueman
+    - unless: test "$(qvm-features -- {{ app }} service.blueman 2>/dev/null)" = "1"
     - require:
       - qvm: seqs-app-{{ name }}
 {%   endif %}

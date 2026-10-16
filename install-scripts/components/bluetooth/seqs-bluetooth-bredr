@@ -1,0 +1,12 @@
+#!/bin/sh
+# SEQS: before bluetoothd starts, make it connect each paired device that
+# supports both classic Bluetooth and Bluetooth Low Energy over classic
+# Bluetooth, which carries headset audio. With BlueZ's default (last-seen),
+# a headset that advertises over Low Energy never connects when the computer
+# starts the connection.
+for f in /var/lib/bluetooth/*/*/info; do
+	[ -f "$f" ] || continue
+	grep -qx 'SupportedTechnologies=BR/EDR;LE;' "$f" \
+		&& sed -i 's/^PreferredBearer=last-seen$/PreferredBearer=bredr/' "$f"
+done
+exit 0

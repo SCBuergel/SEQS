@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Bluetooth volume
+Comment=Set the volume of each qube that uses this audio qube, and the headset profile
+Exec=pavucontrol
+Icon=multimedia-volume-control
+Terminal=false
+Categories=Qubes;AudioVideo;Audio;

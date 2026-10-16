@@ -47,6 +47,7 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
   {'name': 'xournalpp',         'label': 'yellow', 'components': ['xournalpp'], 'main_app': 'com.github.xournalpp.xournalpp.desktop'},
   {'name': 'usb-data-transfer', 'label': 'red',    'components': ['adb']},
   {'name': 'keepass',           'label': 'black',  'components': ['keepass'], 'offline': True, 'main_app': 'keepass.desktop'},
+  {'name': 'bluetooth',         'label': 'blue',   'components': ['bluetooth'], 'offline': True, 'audio_provider': True, 'main_app': 'blueman-manager.desktop'},
   {'name': 'qr-display',        'label': 'black',  'components': ['qr-display'], 'offline': True, 'dispvm_template': True, 'named_disposable': True, 'main_app': 'qr-display.desktop'},
   {'name': 'qr-camera',         'label': 'red',    'components': ['qr-camera'], 'offline': True, 'dispvm_template': True},
   {'name': 'qr-staging',        'label': 'red',    'components': [], 'offline': True, 'preserve_incoming': True},
