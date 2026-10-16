@@ -189,11 +189,15 @@ An entry in your SSH configuration lets every later command refer to the test
 machine as `seqs-test`.
 
 In the terminal of the controlling qube on your laptop, set the address that
-the test machine showed, then paste the rest:
+the test machine showed, then paste the rest. If the entry already exists,
+the commands only update its address:
 
 ```bash
 ADDR=192.168.1.50
-mkdir -p ~/.ssh && grep -qx 'Host seqs-test' ~/.ssh/config 2>/dev/null || cat >> ~/.ssh/config <<EOF
+mkdir -p ~/.ssh
+if grep -qx 'Host seqs-test' ~/.ssh/config 2>/dev/null; then
+  sed -i "/^Host seqs-test\$/,/^Host /s/^  HostName .*/  HostName $ADDR/" ~/.ssh/config
+else cat >> ~/.ssh/config <<EOF
 Host seqs-test
   HostName $ADDR
   HostKeyAlias seqs-test
@@ -202,18 +206,30 @@ Host seqs-test
   IdentityFile ~/.ssh/seqs-test
   IdentitiesOnly yes
 EOF
+fi
 ssh seqs-test dom0 qvm-ls --running
 ```
 
-On the first connection, SSH shows a host key fingerprint and asks whether to
-continue. Type `yes` only if it matches the host key the test machine showed.
-The output is the list of running qubes on the test machine, produced by its
-dom0.
+On the first connection, and after a reinstall, SSH shows a host key
+fingerprint and asks whether to continue. Type `yes` only if it matches the
+host key the test machine showed. The output is the list of running qubes on
+the test machine, produced by its dom0.
+
+After a reinstall of the test machine, run the commands above with the new
+address. SSH then refuses with `REMOTE HOST IDENTIFICATION HAS CHANGED`,
+because the new install has a new host key. Forget the old one and connect
+again, comparing the fingerprint with the test machine's screen as on the
+first connection:
+
+```bash
+ssh-keygen -R seqs-test
+ssh seqs-test dom0 qvm-ls --running
+```
 
 `HostKeyAlias seqs-test` makes SSH remember the host key under the name
-`seqs-test` instead of under the address. If the address changes, you edit
-only the `HostName` line in `~/.ssh/config`, and SSH still checks that it
-reaches the same `test-ctl`.
+`seqs-test` instead of under the address. If the address changes, run the
+commands above with the new address, and SSH still checks that it reaches the
+same `test-ctl`.
 
 ### Reboot the test machine once
 
