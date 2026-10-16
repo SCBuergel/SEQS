@@ -82,8 +82,10 @@ For each supplied base name, the helper:
    (`/etc/qubes/templates/libvirt/xen/by-name/<qube>.xml`) and its creation
    marker, both of which would otherwise apply to a later qube of the same
    name, and its recorded firewall rules under `/var/lib/seqs/firewall/`.
-8. Removes the removed qubes' launchers and VPN monitor from the dom0 panel,
-   then restarts the panel.
+8. Removes the removed qubes' launchers and VPN monitor from the dom0 panel.
+   From launchers it did not add, such as ones you added yourself, it removes
+   each entry that starts a removed qube, and the launcher once it has no
+   entries left. Then it restarts the panel.
 
 The helper changes no policy file: the dom0 handoff rules match the qubes'
 tags, which disappear with them. Deleting the browser qube (`brave`) leaves

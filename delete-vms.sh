@@ -207,11 +207,32 @@ for vm in "${found[@]}"; do
 	sudo rm -f -- "${STATE_DIR}/firewall/${vm}" "${INTENTS_DIR}/${vm}"
 done
 
-# The panel launcher and VPN monitor setup-qubes.sh added for a removed qube
-# (marked with the qube's name in a seqs-qube or seqs-monitor property) would
-# show or start nothing.
+# dropPanelPlugin N -- take panel plugin N off every panel and delete its
+# settings and files.
+dropPanelPlugin() {
+	local panel i ids
+	for panel in $(xfconf-query -c xfce4-panel -p /panels | tail -n +3); do
+		ids=()
+		for i in $(xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" | tail -n +3); do
+			[ "${i}" = "$1" ] || ids+=(-t int -s "${i}")
+		done
+		if [ "${#ids[@]}" -gt 0 ]; then
+			xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" -n -a "${ids[@]}"
+		else
+			xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" -r
+		fi
+	done
+	xfconf-query -c xfce4-panel -p "/plugins/plugin-$1" -r -R
+	rm -rf -- "${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-$1"
+}
+
+# Panel entries that start a removed qube would start nothing. The launcher
+# and VPN monitor setup-qubes.sh added name their qube in a seqs-qube or
+# seqs-monitor property and go entirely. In any other launcher, such as one
+# the user added, each entry whose menu file names a removed qube in its
+# X-Qubes-VmName line goes, and the launcher goes once it has none left.
 removePanelPlugins() {
-	local pid v prop p vm panel i ids removed=0
+	local pid v prop p vm item dir keep gone removed=0
 	command -v xfconf-query >/dev/null 2>&1 || return 0
 	pid="$(pgrep -u "$(id -u)" -x xfce4-panel | head -n 1)" && [ -n "${pid}" ] || return 0
 	# This may run outside the graphical session: use the panel's display and bus.
@@ -222,17 +243,36 @@ removePanelPlugins() {
 		vm="$(xfconf-query -c xfce4-panel -p "${prop}")"
 		[[ " ${found[*]} " == *" ${vm} "* ]] || continue
 		p="${prop#/plugins/plugin-}"
-		p="${p%/seqs-*}"
-		for panel in $(xfconf-query -c xfce4-panel -p /panels | tail -n +3); do
-			ids=()
-			for i in $(xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" | tail -n +3); do
-				[ "${i}" = "${p}" ] || ids+=(-t int -s "${i}")
-			done
-			[ "${#ids[@]}" -eq 0 ] || xfconf-query -c xfce4-panel -p "/panels/panel-${panel}/plugin-ids" -n -a "${ids[@]}"
-		done
-		xfconf-query -c xfce4-panel -p "/plugins/plugin-${p}" -r -R
-		rm -rf -- "${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-${p}"
+		dropPanelPlugin "${p%/seqs-*}"
 		echo "removed a panel plugin of ${vm}"
+		removed=1
+	done
+	for prop in $(xfconf-query -c xfce4-panel -l | grep -E '^/plugins/plugin-[0-9]+/items$'); do
+		p="${prop#/plugins/plugin-}"
+		p="${p%/items}"
+		dir="${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-${p}"
+		keep=()
+		gone=0
+		while IFS= read -r item; do
+			[ -n "${item}" ] || continue
+			vm=""
+			# An item with a path is not a file XFCE copied from a qube's menu into
+			# the launcher's own directory: leave it alone.
+			[[ "${item}" == */* ]] || vm="$(sed -n 's/^X-Qubes-VmName=//p' -- "${dir}/${item}" 2>/dev/null | head -n 1)"
+			if [ -n "${vm}" ] && [[ " ${found[*]} " == *" ${vm} "* ]]; then
+				rm -f -- "${dir}/${item}"
+				echo "removed the panel entry ${item} of ${vm}"
+				gone=1
+			else
+				keep+=(-t string -s "${item}")
+			fi
+		done < <(xfconf-query -c xfce4-panel -p "${prop}" | tail -n +3)
+		[ "${gone}" -eq 1 ] || continue
+		if [ "${#keep[@]}" -eq 0 ]; then
+			dropPanelPlugin "${p}"
+		else
+			xfconf-query -c xfce4-panel -p "${prop}" -n -a "${keep[@]}"
+		fi
 		removed=1
 	done
 	[ "${removed}" -eq 0 ] || xfce4-panel -r

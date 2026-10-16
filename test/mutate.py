@@ -89,6 +89,7 @@ MUTATIONS = [
     ("delete-pin-sudo", D, "	if sudo head -n 1 --", "	if head -n 1 --"),
     ("delete-pin-unmarked", D, "| grep -q 'Managed by SEQS'; then", "| true; then"),
     ("delete-users-fields", D, "for (i = 2; i <= 7; i++)", "for (i = 2; i <= 4; i++)"),
+    ("delete-panel-entry-other-qube", D, 'if [ -n "${vm}" ] && [[ " ${found[*]} " == *" ${vm} "* ]]; then', 'if [ -n "${vm}" ]; then'),
     ("panel-items-name", R, '[[ "${items}" =~ ^${name_re}( ${name_re})*$ ]] \\', '[[ -n "${items}" ]] \\'),
     # Runner: the temporary GnosisVPN download proxy and its policy.
     ("gnosis-proxy-drop", R, 'qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add drop \\\n', 'true \\\n'),

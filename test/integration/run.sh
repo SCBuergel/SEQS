@@ -529,12 +529,23 @@ grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been re
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
 # The removed qube's panel launcher and monitor go; another qube's, and the
 # user's own launchers, stay.
-mkdir -p "${SBX}/xbin" "${SBX}/config/xfce4/panel/launcher-16"
+mkdir -p "${SBX}/xbin" "${SBX}/config/xfce4/panel/launcher-16" "${SBX}/config/xfce4/panel/launcher-19" \
+	"${SBX}/config/xfce4/panel/launcher-20" "${SBX}/config/xfce4/panel/launcher-1"
+# Launchers added by hand carry no mark: only their entries that start the
+# removed qube go, and a launcher left with none goes too.
+printf '[Desktop Entry]\nX-Qubes-VmName=A-keepass\n' > "${SBX}/config/xfce4/panel/launcher-19/1.desktop"
+printf '[Desktop Entry]\nX-Qubes-VmName=A-brave\n' > "${SBX}/config/xfce4/panel/launcher-19/2.desktop"
+printf '[Desktop Entry]\nX-Qubes-VmName=A-keepass\n' > "${SBX}/config/xfce4/panel/launcher-20/3.desktop"
+printf '[Desktop Entry]\nExec=xfce4-terminal\n' > "${SBX}/config/xfce4/panel/launcher-1/4.desktop"
 printf '#!/bin/sh\nexec python3 %s "$@"\n' "${REPO}/test/lib/fake_xfconf.py" > "${SBX}/xbin/xfconf-query"
 printf '#!/bin/sh\necho $PPID\n' > "${SBX}/xbin/pgrep"
 printf '#!/bin/sh\necho restarted >> %s\n' "${SBX}/panel.log" > "${SBX}/xbin/xfce4-panel"
 chmod +x "${SBX}/xbin/"*
-echo '{"/panels": ["1"], "/panels/panel-1/plugin-ids": ["1", "16", "17", "18"], "/plugins/plugin-1": "launcher",
+echo '{"/panels": ["1", "2"], "/panels/panel-1/plugin-ids": ["1", "16", "17", "18", "19"],
+  "/panels/panel-2/plugin-ids": ["20"],
+  "/plugins/plugin-1": "launcher", "/plugins/plugin-1/items": ["4.desktop"],
+  "/plugins/plugin-19": "launcher", "/plugins/plugin-19/items": ["1.desktop", "2.desktop"],
+  "/plugins/plugin-20": "launcher", "/plugins/plugin-20/items": ["3.desktop"],
   "/plugins/plugin-18": "genmon", "/plugins/plugin-18/seqs-monitor": "A-keepass", "/plugins/plugin-18/command": "x",
   "/plugins/plugin-16": "launcher", "/plugins/plugin-16/seqs-qube": "A-keepass", "/plugins/plugin-16/items": ["seqs-1.desktop"],
   "/plugins/plugin-17": "launcher", "/plugins/plugin-17/seqs-qube": "A-brave"}' > "${SBX}/xfconf.json"
@@ -542,12 +553,21 @@ printf '%s\n' "A-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
 PATH="${SBX}/xbin:${PATH}" SEQS_FAKE_XFCONF="${SBX}/xfconf.json" XDG_CONFIG_HOME="${SBX}/config" \
 	bash "${REPO}/delete-vms.sh" keepass >/dev/null 2>&1
 python3 -c 'import json, sys; s = json.load(open(sys.argv[1]))
-sys.exit(s["/panels/panel-1/plugin-ids"] != ["1", "17"]
-         or any(k.startswith(("/plugins/plugin-16", "/plugins/plugin-18")) for k in s)
-         or s.get("/plugins/plugin-17/seqs-qube") != "A-brave")' "${SBX}/xfconf.json" && ok \
-	|| bad "only the removed qube's panel launcher and monitor may go: $(cat "${SBX}/xfconf.json")"
-[ ! -e "${SBX}/config/xfce4/panel/launcher-16" ] && [ -s "${SBX}/panel.log" ] && ok \
-	|| bad "the removed launcher's files must go and the panel restart"
+sys.exit(s["/panels/panel-1/plugin-ids"] != ["1", "17", "19"]
+         or any(k.startswith(("/plugins/plugin-16", "/plugins/plugin-18", "/plugins/plugin-20")) for k in s)
+         or s.get("/plugins/plugin-17/seqs-qube") != "A-brave"
+         or s.get("/plugins/plugin-19/items") != ["2.desktop"]
+         or s.get("/plugins/plugin-1/items") != ["4.desktop"])' "${SBX}/xfconf.json" && ok \
+	|| bad "only the removed qube's panel launchers, monitor and entries may go: $(cat "${SBX}/xfconf.json")"
+# A panel whose only plugin went keeps existing, with no plugin list, as
+# xfce4-panel itself saves an empty panel.
+python3 -c 'import json, sys; s = json.load(open(sys.argv[1]))
+sys.exit(s["/panels"] != ["1", "2"] or any(k.startswith("/panels/panel-2/plugin-ids") for k in s))' \
+	"${SBX}/xfconf.json" && ok || bad "an emptied panel must lose its plugin list but stay: $(cat "${SBX}/xfconf.json")"
+L="${SBX}/config/xfce4/panel"
+[ ! -e "${L}/launcher-16" ] && [ ! -e "${L}/launcher-20" ] && [ ! -e "${L}/launcher-19/1.desktop" ] \
+	&& [ -e "${L}/launcher-19/2.desktop" ] && [ -e "${L}/launcher-1/4.desktop" ] && [ -s "${SBX}/panel.log" ] && ok \
+	|| bad "the removed qube's launcher files and entries must go, others stay, and the panel restart"
 # A qube built on a target blocks the deletion before anything changes.
 printf '%s\n' "A-qr-camera halted" "Z-qr-camera halted" "sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
 echo "sys-usb-webcam template A-qr-camera" > "${SBX}/prefs"
