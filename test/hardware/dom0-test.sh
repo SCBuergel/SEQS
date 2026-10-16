@@ -1221,7 +1221,12 @@ update() {
 	list="$(sudo awk '$1 == "template" { print $2 }' "${STATE_DIR}/targets" 2>/dev/null | paste -sd, -)"
 	[ -n "${list}" ] || { fail "no SEQS templates listed in ${STATE_DIR}/targets"; return 1; }
 	note "Updating ${list}"
-	if qubes-vm-update --force-update --show-output --targets "${list}" </dev/null; then
+	# The updater redraws a progress bar per template many times a second;
+	# keep the package output but drop the redraws, which filled 265 MB of log
+	# in one run of 20 fresh templates.
+	qubes-vm-update --force-update --show-output --targets "${list}" </dev/null 2>&1 \
+		| tr '\r' '\n' | grep -v ' (updating): '
+	if [ "${PIPESTATUS[0]}" -eq 0 ]; then
 		pass "qubes-vm-update updated ${list}"
 	else
 		fail "qubes-vm-update failed for ${list}"

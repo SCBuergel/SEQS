@@ -403,6 +403,18 @@ echo "== hardware system test: dom0-side helpers =="
 	[[ "$(nolist)" == "CHECK-FAIL: could not list domains: xl: permission denied" ]] || echo "FAIL checkNoDeadDomains accepted a failed xl list"
 	nolist() { xl() { return 0; }; checkNoDeadDomains; }
 	[[ "$(nolist)" == "CHECK-FAIL: could not list domains"* ]] || echo "FAIL checkNoDeadDomains accepted an empty xl list"
+	# update keeps the updater's package output and its exit status, but not
+	# the progress bars it redraws many times a second.
+	printf 'template Z-x\n' > "${tmp}/targets"
+	upd() {
+		qubes-vm-update() { printf 'Z-x (updating):  5%%|\rZ-x (updating): 50%%|\rZ-x (success): 100%%\nE: one error\n'; return "${URC}"; }
+		STATE_DIR="${tmp}" URC="$1" update; echo "rc=$?"
+	}
+	out="$(upd 0)"
+	[[ "${out}" == *"Z-x (success)"* && "${out}" == *"E: one error"* && "${out}" != *"(updating)"* ]] \
+		|| echo "FAIL update must keep the package output and drop the progress bars: ${out}"
+	[[ "${out}" == *"CHECK-OK:   qubes-vm-update updated Z-x"*"rc=0" ]] || echo "FAIL update refused a successful update"
+	[[ "$(upd 3)" == *"CHECK-FAIL: qubes-vm-update failed for Z-x"*"rc=1" ]] || echo "FAIL update accepted a failed update"
 	echo CHECKS-DONE
 ) > "${tmp}/dom0test.out" 2>&1
 # A subshell that stops early, such as on a failed source, checked nothing.

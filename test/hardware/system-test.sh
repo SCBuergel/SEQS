@@ -142,7 +142,9 @@ sync() {
 # passes through SSH and qrexec.
 dom0() {
 	local out rc
-	out="$(mktemp)"
+	# On disk next to the logs: a phase can print hundreds of MB, and the marker
+	# must not depend on room in a RAM-backed /tmp.
+	out="$(mktemp -p "${RESULTS}")"
 	"${SSH[@]}" dom0 <<EOF | tee "${out}"
 d="\$(getent passwd "\$(id -un)" | cut -d: -f6)/seqs-test"
 mkdir -p "\$d"
