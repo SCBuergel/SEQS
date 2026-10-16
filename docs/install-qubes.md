@@ -1,8 +1,8 @@
 # Installing Qubes OS
 
-The detailed, one-time host install that precedes SEQS. The short version lives
-in the [first-install guide](first-install.md#1-install-and-verify-qubes-os);
-this is the full walkthrough.
+How to install Qubes OS itself, once, before SEQS: verify the ISO, install, and
+prepare dom0. The [first-install guide](first-install.md#1-install-and-verify-qubes-os)
+sends you here from its §1 and continues with SEQS afterwards.
 
 ## 1. Prepare the installer USB
 
