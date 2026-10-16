@@ -54,7 +54,23 @@ Suggested partitions / mount points:
    just boot you into a black screen)
 3. whatever is left `/` (encrypted, LUKS2)
 
-## 4. Post-install
+## 4. Initial setup
+
+After the first reboot, Qubes' initial setup asks which templates and qubes to
+create. SEQS needs only the Debian template; everything else is optional.
+
+- **Templates:** tick Debian 13 (`debian-13-xfce`) and make it the default.
+  Fedora and Whonix are not needed.
+- **Default application qubes** (personal, work, untrusted, vault): untick;
+  SEQS builds its own qubes.
+- **Whonix qubes and updates over Tor:** leave unticked. With dom0's updates
+  over Tor, SEQS refuses to build GnosisVPN; see [GnosisVPN](gnosisvpn.md).
+- **System qubes** (`sys-net`, `sys-firewall`, `sys-usb`, the default
+  disposable template): keep them. The
+  [full first-install walkthrough](first-install.md) starts in a disposable
+  of the default disposable template.
+
+## 5. Post-install
 
 - **Window tiling** (optional, for arranging windows neatly): Qubes menu →
   System Tools → Window Manager → Keyboard → scroll to the Tile settings and
@@ -62,8 +78,8 @@ Suggested partitions / mount points:
 
   ![Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
 
-- **Debian template:** SEQS builds on the `debian-13-xfce` template, which the
-  installer offers as an option. If you did not select it there, install it
+- **Debian template:** SEQS builds on the `debian-13-xfce` template. If you
+  did not tick it in the initial setup, install it
   after connecting to wifi, in a dom0 terminal:
   ```
   qvm-template install debian-13-xfce

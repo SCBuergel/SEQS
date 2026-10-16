@@ -65,11 +65,12 @@ These settings let the machine restart without anyone at the keyboard.
    behaviour after a power loss to "power on". A smart plug can then restart
    the machine by switching its power off and on.
 2. Install Qubes OS from the [official ISO](https://www.qubes-os.org/downloads/)
-   with the installer's defaults. They include a Debian template and a
-   `sys-net` that is a normal qube, which the setup requires; `sys-firewall`
-   and `sys-usb` may be disposables. If the installer lets you skip disk
-   encryption, do so; otherwise every boot stops at the passphrase prompt
-   until someone types it.
+   with the installer's defaults, or with only the Debian template as in
+   [installing Qubes](../../docs/install-qubes.md#4-initial-setup). Both give
+   a Debian template and a `sys-net` that is a normal qube, which the setup
+   requires; `sys-firewall` and `sys-usb` may be disposables. If the
+   installer lets you skip disk encryption, do so; otherwise every boot stops
+   at the passphrase prompt until someone types it.
 3. Plug the webcam into the test machine.
 
 ## 2. Show your laptop's test key as a QR code
