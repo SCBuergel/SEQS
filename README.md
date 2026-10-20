@@ -85,6 +85,7 @@ the hash — read the code that will run as root in dom0:
 | Use a Bluetooth headset | [docs/bluetooth.md](docs/bluetooth.md) |
 | Upgrade an existing installation | [docs/upgrading.md](docs/upgrading.md) |
 | Delete or rebuild managed qubes | [docs/deleting-vms.md](docs/deleting-vms.md) |
-| Configure secure QR transfer | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |
+| Transfer a key by QR code, short form for one USB controller | [docs/secure-qr-transfer-sequential.md](docs/secure-qr-transfer-sequential.md) |
+| Secure QR transfer in full, with the dedicated-controller path | [docs/secure-qr-transfer.md](docs/secure-qr-transfer.md) |
 | Use additional recipes | [docs/recipes.md](docs/recipes.md) |
 | Run repository tests | [test/README.md](test/README.md) |
