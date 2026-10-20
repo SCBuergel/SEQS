@@ -460,6 +460,36 @@ def test_dom0_usb_policy_release_gated():
           "4.3 without sys-usb must not install the USB keyboard policy")
 
 
+def test_dom0_usb_policy_defers_to_qubes_rule():
+    case("dom0.sls: no USB-keyboard override when 50-config-input.policy allows or asks")
+    # An 'ask' rule is answered only inside a session, so on a computer whose
+    # only keyboard is USB the override locks the login screen. The installer
+    # writes 'allow' for such a computer; SEQS must then remove its own file.
+    path = "/etc/qubes/policy.d/50-config-input.policy"
+    for rule in ("qubes.InputKeyboard * sys-usb @adminvm allow",
+                 "qubes.InputKeyboard  *  sys-usb  dom0  ask default_target=dom0"):
+        sc = Scenario(release="4.3", sys_usb=True,
+                      file_contents={path: "qubes.InputMouse * sys-usb @adminvm ask\n" + rule + "\n"})
+        _, parsed = render_state("dom0", "dom0", sc)
+        check("seqs-policy-usb-keyboard" not in parsed,
+              "rule %r must stop the override" % rule)
+        absent = parsed.get("seqs-policy-usb-keyboard-unneeded", {})
+        check(absent.get("file.absent", [{}])[0].get("name") == "/etc/qubes/policy.d/30-user-input.policy",
+              "rule %r must remove a SEQS-written 30-user-input.policy, got %r" % (rule, absent))
+        guard = [d["onlyif"] for d in absent.get("file.absent", []) if "onlyif" in d]
+        check(guard and "head -n 1 /etc/qubes/policy.d/30-user-input.policy" in guard[0]
+              and "Managed by SEQS" in guard[0],
+              "the removal must be guarded by the SEQS marker on the first line, got %r" % guard)
+    for content in ("qubes.InputKeyboard * sys-usb @adminvm deny\n",
+                    "qubes.InputMouse * sys-usb @adminvm ask\n",
+                    "# qubes.InputKeyboard * sys-usb @adminvm allow\n",
+                    "qubes.InputKeyboard * sys-usb A-brave allow\n"):
+        sc = Scenario(release="4.3", sys_usb=True, file_contents={path: content})
+        _, parsed = render_state("dom0", "dom0", sc)
+        check("seqs-policy-usb-keyboard" in parsed and "seqs-policy-usb-keyboard-unneeded" not in parsed,
+              "content %r is not a keyboard allow/ask for dom0, the override must be written" % content)
+
+
 def test_dom0_sys_usb_memory():
     case("dom0.sls: sys_usb_memory only raises sys-usb's memory, and only to a whole number")
     check(render_pillar("dom0").get("sys_usb_memory") == 600,

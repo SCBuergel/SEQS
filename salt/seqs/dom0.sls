@@ -552,9 +552,29 @@ seqs-policy-browser-suppress:
 {%   endfor %}
 {% endif %}
 
-{# Qubes 4.3 USB-keyboard override; skip without deleting on other releases. #}
+{# Qubes 4.3 USB-keyboard override; skip without deleting on other releases.
+   Qubes answers an 'ask' rule only inside a logged-in session, so on a
+   computer whose only keyboard is USB the override would lock the login
+   screen. The installer and Qubes Global Config write their keyboard rule
+   to 50-config-input.policy: when that file already allows or asks, SEQS
+   writes no override and removes one it wrote earlier. #}
 {% set release = salt['cmd.shell']("grep -oE '[0-9]+\\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1") | trim %}
-{% if release == '4.3' and ('sys-usb' in inventory) %}
+{% set input_policy = '/etc/qubes/policy.d/50-config-input.policy' %}
+{% set keyboard_rule_re = '\\s*qubes\\.InputKeyboard\\s+\\*\\s+sys-usb\\s+(@adminvm|dom0)\\s+(allow|ask)(\\s|$)' %}
+{% set keyboard_handled = namespace(value=false) %}
+{% if salt['file.file_exists'](input_policy) %}
+{%   for line in salt['file.read'](input_policy).splitlines() %}
+{%     if line | regex_match(keyboard_rule_re) is not none %}
+{%       set keyboard_handled.value = true %}
+{%     endif %}
+{%   endfor %}
+{% endif %}
+{% if release == '4.3' and ('sys-usb' in inventory) and keyboard_handled.value %}
+seqs-policy-usb-keyboard-unneeded:
+  file.absent:
+    - name: /etc/qubes/policy.d/30-user-input.policy
+    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -qF 'Managed by SEQS'
+{% elif release == '4.3' and ('sys-usb' in inventory) %}
 seqs-policy-usb-keyboard:
   file.managed:
     - name: /etc/qubes/policy.d/30-user-input.policy

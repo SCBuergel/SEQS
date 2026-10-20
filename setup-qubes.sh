@@ -420,12 +420,17 @@ confirmPolicyTakeover() {
 	# hand-written copy doesn't trigger a recurring prompt for a file salt never
 	# touches. Only skip when the release or the absence of sys-usb is
 	# positively known -- an unreadable release or a failed qvm-ls keeps the
-	# prompt (fail safe).
+	# prompt (fail safe). It is also skipped when Qubes' own
+	# 50-config-input.policy already allows or asks for the keyboard: the
+	# state then only removes a SEQS-marked file and never overwrites.
 	local usb_applies=1 release vms
 	release="$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)" || true
 	if [ -n "${release}" ] && [ "${release}" != "4.3" ]; then
 		usb_applies=0
 	elif [ -n "${release}" ] && vms="$(qvm-ls --raw-list 2>/dev/null)" && ! grep -qxF sys-usb <<< "${vms}"; then
+		usb_applies=0
+	elif sudo grep -Eqs '^[[:space:]]*qubes\.InputKeyboard[[:space:]]+\*[[:space:]]+sys-usb[[:space:]]+(@adminvm|dom0)[[:space:]]+(allow|ask)([[:space:]]|$)' \
+			"${POLICY_DIR}/50-config-input.policy"; then
 		usb_applies=0
 	fi
 

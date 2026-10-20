@@ -62,11 +62,12 @@ unset -f sudo
 echo "== confirmPolicyTakeover() skips the USB keyboard policy only when sys-usb is known absent =="
 # On Qubes 4.3, an operator's 30-user-input.policy needs confirmation unless
 # qvm-ls positively lists no sys-usb; a failed qvm-ls must keep the prompt.
-takeover() { # QVM_LS_OUTPUT QVM_LS_RC -> "prompt" or "skip"
+takeover() { # QVM_LS_OUTPUT QVM_LS_RC [50-CONFIG-INPUT LINE] -> "prompt" or "skip"
 	(
 		tmpd="$(mktemp -d)"
 		POLICY_DIR="${tmpd}" POLICY_FILES=("${tmpd}/30-user-input.policy")
 		echo 'qubes.InputKeyboard * sys-usb @adminvm allow' > "${POLICY_FILES[0]}"
+		[ $# -ge 3 ] && echo "$3" > "${tmpd}/50-config-input.policy"
 		sudo() { "$@"; }
 		grep() { if [ "${*: -1}" = /etc/qubes-release ]; then echo 4.3; else command grep "$@"; fi; }
 		qvm-ls() { printf '%b' "${QLS_OUT}"; return "${QLS_RC}"; }
@@ -80,6 +81,12 @@ takeover() { # QVM_LS_OUTPUT QVM_LS_RC -> "prompt" or "skip"
 eq "sys-usb listed" "$(takeover 'dom0\nsys-usb\n' 0)" prompt
 eq "sys-usb absent" "$(takeover 'dom0\nsys-net\n' 0)" skip
 eq "qvm-ls failed" "$(takeover '' 1)" prompt
+# The state writes no override when Qubes' own input policy already allows or
+# asks for the keyboard, so the runner prompts for nothing then.
+eq "50- allows" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard * sys-usb @adminvm allow')" skip
+eq "50- asks" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard  *  sys-usb  dom0  ask default_target=dom0')" skip
+eq "50- denies" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard * sys-usb @adminvm deny')" prompt
+eq "50- comment" "$(takeover 'dom0\nsys-usb\n' 0 '# qubes.InputKeyboard * sys-usb @adminvm allow')" prompt
 
 echo "== adb-pull treats the device's answers as data =="
 # A hostile phone answers stat with a bash arithmetic payload; adb-pull must

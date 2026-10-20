@@ -91,7 +91,7 @@ When you run `setup-qubes.sh`:
 
 2. **The pre-flight validation** runs inside `qubesctl state.apply seqs.dom0` and checks everything before anything is changed: base template exists, `browser_vm` resolves, every component directory exists, extension IDs are well-formed, no duplicate qube names, cleanup paths are in-bounds, prefixes match the `.top` globs, and no same-named qube exists that SEQS didn't create. A failure shows as `seqs-validation-failed` with the reasons in its comment — *no* qubes are built before this passes.
 
-3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file under `/etc/qubes/policy.d/` (`00-seqs-qr-input-deny`, `01-seqs-qr-filecopy`, `28-browser-suppress`, `29-browser`, `50-seqs-audiovm`, or, on Qubes 4.3 with `sys-usb`, `30-user-input`) exists without `# Managed by SEQS` as its first line — e.g. hand-edited or from another tool — the runner prints its full contents and **blocks** on:
+3. **Policy-takeover prompt.** If any SEQS-owned qrexec policy file under `/etc/qubes/policy.d/` (`00-seqs-qr-input-deny`, `01-seqs-qr-filecopy`, `28-browser-suppress`, `29-browser`, `50-seqs-audiovm`, or, on Qubes 4.3 with `sys-usb` whose `50-config-input.policy` neither allows nor asks for the USB keyboard, `30-user-input`) exists without `# Managed by SEQS` as its first line — e.g. hand-edited or from another tool — the runner prints its full contents and **blocks** on:
 
    `Overwrite the file(s) above? [y/N]`
 
