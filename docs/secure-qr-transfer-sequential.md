@@ -110,7 +110,8 @@ qvm-pci list --with-sbdf | grep -i usb
 Ignore lines whose description contains `NHI`; they are Thunderbolt host
 interfaces. Exactly one line should remain, and its last column should show
 `sys-usb`. Its first column, without the `dom0:` prefix, is the controller's
-BDF, for example `00_14.0`; write it down. If more than one line remains,
+BDF (bus-device-function, the address that identifies the controller on the
+PCI bus, and the form SEQS expects), for example `00_14.0`; write it down. If more than one line remains,
 follow the full guide's
 [socket lookup](secure-qr-transfer.md#find-the-controller-of-the-webcams-socket)
 to find the BDF of the socket you will use, and make sure no internal device
