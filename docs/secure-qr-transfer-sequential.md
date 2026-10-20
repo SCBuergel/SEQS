@@ -63,8 +63,9 @@ qube** without a `master.key`, a USB webcam that reads QR codes from a screen
 and appears as a single USB device, and SEQS with `qr-camera` and
 `qr-staging` selected after the setup below. That creates the offline camera
 qubes: `sys-usb-webcam`, which owns the controller during a scan,
-`seqs-qr-scanner`, the disposable that runs the scanner, and `A-qr-staging`,
-which keeps the encrypted file while the computer is off.
+`A-qr-camera` and `seqs-qr-scanner`, the disposable template and the
+disposable started from it that runs the scanner, and `A-qr-staging`, which
+keeps the encrypted file while the computer is off.
 
 A key qube is offline when it has no NetVM and no default disposable. The
 `vault` qube that the Qubes installer creates qualifies on either computer.
@@ -90,9 +91,10 @@ sleep 20; qvm-usb
 ```
 
 During the 20 seconds, unplug every external USB device, including the
-keyboard and mouse. Everything still listed is internal. Switch each listed
-device off in the firmware settings (the BIOS or UEFI setup), then repeat the
-command. Continue when it lists nothing. If a device cannot be switched off,
+keyboard and mouse. Everything still listed is internal; reconnect the
+keyboard and mouse. Switch each listed device off in the firmware settings
+(the BIOS or UEFI setup), then repeat the command. Continue when it lists
+nothing. If a device cannot be switched off,
 this short form does not apply; the full guide's
 [device lookup](secure-qr-transfer.md#find-the-internal-usb-devices) says
 when the sequential path still works.
@@ -108,10 +110,11 @@ qvm-pci list --with-sbdf | grep -i usb
 Ignore lines whose description contains `NHI`; they are Thunderbolt host
 interfaces. Exactly one line should remain, and its last column should show
 `sys-usb`. Its first column, without the `dom0:` prefix, is the controller's
-BDF, for example `00_14.0`; write it down. If more than one line remains, this short form
-does not apply: follow the full guide's
+BDF, for example `00_14.0`; write it down. If more than one line remains,
+follow the full guide's
 [socket lookup](secure-qr-transfer.md#find-the-controller-of-the-webcams-socket)
-to find the socket's controller, then come back here.
+to find the BDF of the socket you will use, and make sure no internal device
+that stayed on shares it; then continue with step 3 here.
 
 ### 3. Check the strict reset
 
@@ -268,7 +271,9 @@ device has been switched back on, for example by a firmware update: press
 `Enter` instead of typing `START`, switch it off as in setup step 1, and run
 the script again. If the script reports an old `key.asc` in `A-qr-staging`,
 delete `~/QubesIncoming/seqs-qr-scanner` in that qube, shut it down, and run
-the script again. Otherwise type `START` in capital letters, then:
+the script again. If it reports that `sys-usb-webcam` is already running, it
+powers off, because that qube has had the shared controller; run it again
+after the restart. Otherwise type `START` in capital letters, then:
 
 1. Unplug the keyboard and mouse at once; the script stops `sys-usb` after
    10 seconds. If you are too slow, press `Ctrl+C` within those seconds and
@@ -369,7 +374,8 @@ stat --format='%a %n' master.key
 
 When GnuPG asks for the passphrase, check that the prompt window has the
 target key qube's colour border; dom0 draws it, so no other qube can fake it.
-Type the passphrase from the paper. The last line must show
+Type the passphrase from the paper, on the built-in keyboard if the full
+guide's check showed that it does not use USB. The last line must show
 `600 master.key`. A wrong passphrase gives an `ERROR` line and no
 `master.key`; run the block again.
 
