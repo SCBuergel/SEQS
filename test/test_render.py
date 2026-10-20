@@ -478,7 +478,7 @@ def test_dom0_usb_policy_defers_to_qubes_rule():
               "rule %r must remove a SEQS-written 30-user-input.policy, got %r" % (rule, absent))
         guard = [d["onlyif"] for d in absent.get("file.absent", []) if "onlyif" in d]
         check(guard and "head -n 1 /etc/qubes/policy.d/30-user-input.policy" in guard[0]
-              and "Managed by SEQS" in guard[0],
+              and "'^# Managed by SEQS'" in guard[0],
               "the removal must be guarded by the SEQS marker on the first line, got %r" % guard)
     for content in ("qubes.InputKeyboard * sys-usb @adminvm deny\n",
                     "qubes.InputMouse * sys-usb @adminvm ask\n",

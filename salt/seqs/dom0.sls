@@ -573,7 +573,7 @@ seqs-policy-browser-suppress:
 seqs-policy-usb-keyboard-unneeded:
   file.absent:
     - name: /etc/qubes/policy.d/30-user-input.policy
-    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -qF 'Managed by SEQS'
+    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -q '^# Managed by SEQS'
 {% elif release == '4.3' and ('sys-usb' in inventory) %}
 seqs-policy-usb-keyboard:
   file.managed:

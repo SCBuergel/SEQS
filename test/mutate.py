@@ -135,7 +135,7 @@ MUTATIONS = [
     ("dom0-nuc11-headset-bool", S, "{% if nuc11_headset_fix is not sameas true and nuc11_headset_fix is not sameas false %}", "{% if false %}"),
     ("dom0-nuc11-headset-codec", S, "{%   if '0x10ec0256 0x80863004' not in codecs.splitlines() %}", "{%   if false %}"),
     ("dom0-qr-filecopy-deny", S, "        qubes.Filecopy  *  {{ webcam_scanner_qube }}  @anyvm  deny\n", ""),
-    ("dom0-usb-override-unmarked", S, "    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -qF 'Managed by SEQS'\n", ""),
+    ("dom0-usb-override-unmarked", S, "    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -q '^# Managed by SEQS'\n", ""),
     ("dom0-usb-override-kept", S, "{% if release == '4.3' and ('sys-usb' in inventory) and keyboard_handled.value %}", "{% if false %}"),
     ("runner-usb-takeover-50", R, "(allow|ask)([[:space:]]|$)' \\\n\t\t\t\"${POLICY_DIR}/50-config-input.policy\"; then\n\t\tusb_applies=0", "(allow|ask)([[:space:]]|$)' \\\n\t\t\t\"${POLICY_DIR}/50-config-input.policy\"; then\n\t\tusb_applies=1"),
     ("dom0-qr-input-deny", S, "        qubes.InputKeyboard  *  {{ webcam_usb_qube }}  @adminvm  deny\n", ""),
