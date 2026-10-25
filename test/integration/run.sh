@@ -343,16 +343,19 @@ out="$(run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "not a valid tar archive" <<<"$out" && ok \
 	|| bad "a compressed archive must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 # A right-to-left override can make a line display as a comment while it runs
-# as code; the whole tree is refused, not only that file.
+# as code, a terminal escape can hide it in a pager, and a zero-width space can
+# make two names look alike; the whole tree is refused, not only that file.
 mkdir -p "${evil}/install-scripts"
-printf 'true # \xe2\x80\xae; reviewed\n' > "${evil}/install-scripts/x.sh"
-SEQS_MOCK_TAR="${SBX}/bidi.tar"
-tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
-tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/x.sh
-out="$(run_setup --fetch-only 2>&1)"; rc=$?
-[ "$rc" -ne 0 ] && grep -qF "refusing archive: install-scripts/x.sh has Unicode bidirectional controls" <<<"$out" \
-	&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
-	|| bad "an archive with a bidirectional control must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zero-width space:\xe2\x80\x8b'; do
+	printf "true # ${hide#*:}; reviewed\\n" > "${evil}/install-scripts/x.sh"
+	SEQS_MOCK_TAR="${SBX}/hidden.tar"
+	tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
+	tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/x.sh
+	out="$(run_setup --fetch-only 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF "refusing archive: install-scripts/x.sh has control or invisible characters" <<<"$out" \
+		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+		|| bad "an archive with a ${hide%%:*} must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+done
 # An endless answer from the repository qube is cut off, not stored whole.
 unset SEQS_MOCK_TAR
 export SEQS_MOCK_ENDLESS_LOG="${SBX}/endless.log"

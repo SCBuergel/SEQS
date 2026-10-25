@@ -298,15 +298,19 @@ fetchSaltTree() {
 	tar -xf - -C "${stage}" --no-same-owner --no-same-permissions < "${tarball}" 2>/dev/null \
 		|| die "tar extraction failed"
 
-	# Unicode bidirectional controls (U+202A-U+202E, U+2066-U+2069) make code
-	# display in another order than the one it runs in ("Trojan Source"), so
-	# review could miss what they hide. No SEQS file has one.
-	local bidi
-	bidi="$(LC_ALL=C grep -rlE $'\xe2\x80[\xaa-\xae]|\xe2\x81[\xa6-\xa9]' -- "${stage}")"
+	# Characters that make code display other than it runs ("Trojan Source"),
+	# so that review could miss what they hide. No SEQS file has one:
+	# terminal controls (C0 but TAB and LF, DEL, C1), as git's pager passes
+	# colour codes, one of which hides text, to the terminal; U+00AD, U+061C, the
+	# Hangul fillers U+115F, U+1160, U+3164, U+FFA0; and the zero-width,
+	# separator, and bidirectional controls U+200B-U+200F, U+2028-U+202E,
+	# U+2060-U+206F, U+FEFF.
+	local hidden
+	hidden="$(LC_ALL=C grep -rlaP '[\x00-\x08\x0b-\x1f\x7f]|\xc2[\x80-\x9f\xad]|\xd8\x9c|\xe1\x85[\x9f\xa0]|\xe2\x80[\x8b-\x8f\xa8-\xae]|\xe2\x81[\xa0-\xaf]|\xe3\x85\xa4|\xef\xbb\xbf|\xef\xbe\xa0' -- "${stage}")"
 	rc=$?
-	bidi="${bidi//"${stage}/"/}"
-	[ "${rc}" -le 1 ] || die "could not scan the fetched tree for Unicode bidirectional controls"
-	[ "${rc}" -eq 1 ] || die "refusing archive: ${bidi//$'\n'/ } has Unicode bidirectional controls, which can hide code from review"
+	hidden="${hidden//"${stage}/"/}"
+	[ "${rc}" -le 1 ] || die "could not scan the fetched tree for characters that hide code"
+	[ "${rc}" -eq 1 ] || die "refusing archive: ${hidden//$'\n'/ } has control or invisible characters, which can hide code from review"
 
 	# Sanity: the tree must carry the pieces the apply phases rely on.
 	local f
