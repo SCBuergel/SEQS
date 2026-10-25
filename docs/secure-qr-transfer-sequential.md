@@ -88,7 +88,12 @@ On both computers, cover the lens of every built-in camera, or switch it off
 with a hardware switch, for the whole transfer. Disabling a camera in
 software is not enough: it stays in `sys-usb`, the qube you are guarding
 against. Use the QR webcam for nothing else, and plug it in only when step 4
-of the transfer says so; at any other time it, too, lands in `sys-usb`.
+of the transfer says so; at any other time it, too, lands in `sys-usb`. If
+that ever happens, including at a boot, unplug it and remove all power as in
+step 4 of the transfer. A hostile webcam has then reached `sys-usb` itself,
+not only the controller, with the consequences of the first limit above; and
+unless `sys-usb` is a disposable (in a dom0 terminal, `qvm-prefs sys-usb klass`
+prints `DispVM`), what it left there survives the restart.
 
 ## Set up the receiving computer once
 
@@ -107,9 +112,9 @@ sleep 20; qvm-usb
 During the 20 seconds, unplug every external USB device, including the
 keyboard and mouse. Everything still listed is internal; reconnect the
 keyboard and mouse. Switch each listed device off in the firmware settings
-(the BIOS or UEFI setup), then repeat the command. Continue when it lists
-nothing. If a device cannot be switched off, this short form does not apply;
-the full guide's
+(the BIOS or UEFI setup), then repeat the check, again unplugging the
+keyboard and mouse. Continue when it lists nothing. If a device cannot be
+switched off, this short form does not apply; the full guide's
 [device lookup](secure-qr-transfer.md#find-the-internal-usb-devices) says
 when the sequential path still works.
 
@@ -271,8 +276,9 @@ compares against it.
 
 ### Step 3: Show the QR code (sending computer)
 
-Put the paper away. In the `D-qr-display` terminal, run this with the name of
-your source key qube:
+Put the paper away and close every window that shows a secret; the webcam
+will film this screen. In the `D-qr-display` terminal, run this with the name
+of your source key qube:
 
 ```bash
 cd ~/QubesIncoming/<source-key-qube>
