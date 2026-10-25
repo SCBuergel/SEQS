@@ -31,12 +31,13 @@ gives the controller to a webcam-only USB qube, scans, and powers the
 computer off; you then remove all power, and `sys-usb` gets the controller
 back at the next boot. Accept these limits before you set anything up:
 
-- **A USB keyboard makes `sys-usb` part of what you trust.** Whatever the
-  webcam leaves in the controller and survives the power removal reaches
-  `sys-usb` at the next boot, and with a USB keyboard `sys-usb` can type into
-  dom0. The worst case is control of the whole receiving computer, not only
-  a lost passphrase. A built-in laptop keyboard that is not internally USB
-  keeps the two pieces apart; the full guide has a
+- **A USB keyboard or mouse makes `sys-usb` part of what you trust.**
+  Whatever the webcam leaves in the controller and survives the power removal
+  reaches `sys-usb` at the next boot, and `sys-usb` can type or click in dom0
+  as your USB keyboard or mouse would. The worst case is control of the whole
+  receiving computer, not only a lost passphrase. A built-in laptop keyboard
+  that is not internally USB at least keeps the passphrase away from
+  `sys-usb`; the full guide has a
   [check for that](secure-qr-transfer.md#check-whether-the-built-in-keyboard-uses-usb).
 - **Internal USB devices stay switched off in the firmware**, for every
   later transfer: a built-in webcam, Bluetooth, a fingerprint or card reader.
@@ -74,7 +75,8 @@ SEQS does not create key qubes.
 On both computers, cover the lens of every built-in camera, or switch it off
 with a hardware switch, for the whole transfer. Disabling a camera in
 software is not enough: it stays in `sys-usb`, the qube you are guarding
-against.
+against. Use the QR webcam for nothing else, and plug it in only when step 4
+of the transfer says so; at any other time it, too, lands in `sys-usb`.
 
 ## Set up the receiving computer once
 
@@ -94,10 +96,16 @@ During the 20 seconds, unplug every external USB device, including the
 keyboard and mouse. Everything still listed is internal; reconnect the
 keyboard and mouse. Switch each listed device off in the firmware settings
 (the BIOS or UEFI setup), then repeat the command. Continue when it lists
-nothing. If a device cannot be switched off,
-this short form does not apply; the full guide's
+nothing. If a device cannot be switched off, this short form does not apply;
+the full guide's
 [device lookup](secure-qr-transfer.md#find-the-internal-usb-devices) says
 when the sequential path still works.
+
+While in the firmware settings of a laptop whose battery you cannot remove,
+also switch off every option that keeps USB powered while the computer is
+off, often called `Always On USB` or `USB charging`, and use a
+battery-disconnect setting if there is one. This guide has not tested
+whether they cut all power.
 
 ### 2. Find the USB controller
 
@@ -111,11 +119,11 @@ Ignore lines whose description contains `NHI`; they are Thunderbolt host
 interfaces. Exactly one line should remain, and its last column should show
 `sys-usb`. Its first column, without the `dom0:` prefix, is the controller's
 BDF (bus-device-function, its PCI address in the form SEQS expects), for
-example `00_14.0`; write it down. If more than one line remains,
-follow the full guide's
-[socket lookup](secure-qr-transfer.md#find-the-controller-of-the-webcams-socket)
-to find the BDF of the socket you will use, and make sure no internal device
-that stayed on shares it; then continue with step 3 here.
+example `00_14.0`; write it down. If more than one line remains, the
+computer has several controllers: find the BDF of the socket you will use
+with the full guide's
+[socket lookup](secure-qr-transfer.md#find-the-controller-of-the-webcams-socket),
+then continue with step 3 here.
 
 ### 3. Check the strict reset
 
@@ -158,12 +166,15 @@ computer and `qr-display` on the sending computer. The build stops with
 it prints a line starting with `Air gap verified:` naming `A-qr-camera` and
 `A-qr-staging`, which it checked to have no NetVM and no default disposable.
 The scan script repeats that check for all camera qubes before every scan.
+To verify the policies and the controller assignment without relying on the
+build output, run the receiving-computer checks under the full guide's
+[Check the setup](secure-qr-transfer.md#check-the-setup).
 
 ### 5. Rehearse with a throwaway file
 
-The scan script has not been tried on every Qubes release, and a failure
-costs nothing while no secret is involved. In a terminal in the source key
-qube, run:
+The scan script is tested mainly against mocked Qubes commands, and a
+failure costs nothing while no secret is involved. In a terminal in the
+source key qube, run:
 
 ```bash
 mkdir ~/qr-rehearsal && cd ~/qr-rehearsal && head -c 1000 /dev/urandom > master.key
@@ -342,10 +353,10 @@ character; do not copy, retype, or photograph the code.
 If any character differs, do not decrypt. A bad scan is unlikely, because QR
 codes carry error correction; assume that the camera side changed the file
 on purpose and is hostile. Delete the received `key.asc` and any other
-received file without opening them. Retry only once you know the cause, or
-if you will type the passphrase on a keyboard that does not go through a USB
-qube: shut down `D-qr-display` and repeat from step 2 with the kept
-`key.asc`.
+received file without opening them. Retry only once you know the cause: that
+side has also had the controller that `sys-usb` uses again, so the receiving
+computer itself is now in doubt. To retry, shut down `D-qr-display` and
+repeat from step 2 with the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
