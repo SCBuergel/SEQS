@@ -69,8 +69,11 @@ Before copying anything into dom0:
    validation, and bootstrap-window defense.
 4. If the chosen commit has a verifiable signature, verify it; do not assume
    every commit is signed.
-5. Run the test suite. It needs `python3-jinja2` and `python3-yaml`. In the
-   disposable's terminal:
+5. Run the test suite in a second disposable, never in the one dom0 copies
+   from: the tests run code of the revision that a review of the dom0-bound
+   files does not cover, and there it could change what Git later serves to
+   dom0. Clone and check out the same commit in it as in §2, then, in its
+   terminal:
 
    ```bash
    sudo apt-get install python3-jinja2 python3-yaml

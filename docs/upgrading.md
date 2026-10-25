@@ -48,10 +48,13 @@ git diff
 less salt/pillar/seqs/config.sls
 ```
 
-Run the offline tests in the repository qube when their dependencies are
-available:
+Run the offline tests in a fresh DisposableVM with its own clone of the same
+revision, not in the repository qube: they run code of the revision that a
+review of the dom0-bound files does not cover, and there it could change what
+Git later serves to dom0. In the disposable's terminal:
 
 ```bash
+sudo apt-get install python3-jinja2 python3-yaml
 ./test/run-tests.sh
 ```
 
