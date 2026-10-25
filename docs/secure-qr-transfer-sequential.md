@@ -93,7 +93,7 @@ that ever happens, including at a boot, unplug it, shut the computer down,
 and remove all power as in step 4 of the transfer. A hostile webcam has then
 reached `sys-usb` itself, not only the controller. If you use a USB keyboard
 or mouse, `sys-usb` could type or click in dom0 at once (the first limit
-above), so treat the receiving computer as compromised. Treat `sys-usb` as
+above), so treat that computer as compromised. Treat `sys-usb` as
 compromised too, unless it is a disposable (in a dom0 terminal,
 `qvm-prefs sys-usb klass` prints `DispVM`), which discards what the webcam
 left in it when it restarts.
@@ -311,7 +311,9 @@ but your keyboard and mouse. Otherwise:
 - Anything else listed is an external device still plugged in, or an
   internal device switched back on, for example by a firmware update. Press
   `Enter` instead of typing `START`, unplug it or switch it off as in setup
-  step 1, and run the script again.
+  step 1, and run the script again. A device you cannot account for has been
+  in `sys-usb` since it appeared: treat it like a webcam that reached
+  `sys-usb` ([What you need](#what-you-need)).
 - An old `key.asc` in `A-qr-staging`: delete `~/QubesIncoming/seqs-qr-scanner`
   in that qube, shut it down, and run the script again.
 - `sys-usb-webcam` already running: the script powers off, because that qube
