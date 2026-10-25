@@ -252,6 +252,10 @@ with the modifier in angle brackets, to the xfwm4 action:
   '<Alt>Left': 'tile_down_left_key', '<Alt>Right': 'tile_down_right_key'} %}
 ```
 
+The shipped map matches this view of the tab:
+
+![Window Manager keyboard settings with the tiling shortcuts](../WindowManagerTile.png)
+
 A build binds each shortcut in the custom key theme, copying xfwm4's default
 theme into it first if the computer still uses the default; a shortcut that
 was bound to another action is rebound. The window manager grabs these keys

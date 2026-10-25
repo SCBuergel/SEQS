@@ -71,19 +71,21 @@ for example with `qvm-backup`, then review what would go:
 ```
 
 The output lists the qubes, the qubes whose network would be disconnected,
-and the dom0 files. Qubes that SEQS did not mark as its own, such as a
-same-named qube you created, are not listed and stay. Then run the reset and
-type `RESET` when asked:
+the dom0 files that would go, and the files under SEQS names that stay
+because SEQS did not write them. Qubes that SEQS did not mark as its own,
+such as a same-named qube you created, are not listed and stay. Then run the
+reset and type `RESET` when asked:
 
 ```bash
 ~/d.sh --reset
 ```
 
 It removes the qubes in dependency order and then the dom0 files: the staged
-trees under `/srv`, `/var/lib/seqs`, `/etc/seqs`, the policy files and the
-two helpers that carry the SEQS marker, and every panel plugin SEQS added.
-A policy or helper under a SEQS name without the marker was written by hand:
-it stays, is reported, and makes the reset exit non-zero. The memory setting
+trees under `/srv`, `/var/lib/seqs`, `/etc/seqs`, the policy files, the two
+helpers, and the NUC 11 headset files that carry the SEQS marker, and every
+panel plugin SEQS added. A file under one of those names without the marker
+was written by hand: it stays, is reported, and makes the reset exit
+non-zero. The memory setting
 of `sys-usb`, the window-manager shortcuts, and your copies of the runner and
 this helper stay as well; delete `~/s.sh` and `~/d.sh` yourself. On the
 dedicated-controller QR path, the webcam's USB controller then belongs to no

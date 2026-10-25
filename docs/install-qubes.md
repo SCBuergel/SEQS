@@ -72,11 +72,8 @@ create. SEQS needs only the Debian template; everything else is optional.
 
 ## 5. Post-install
 
-- **Window tiling** (optional, for arranging windows neatly): Qubes menu →
-  System Tools → Window Manager → Keyboard → scroll to the Tile settings and
-  set them as shown:
-
-  ![Qubes Window Manager Keyboard settings](https://github.com/SCBuergel/SEQS/blob/main/WindowManagerTile.png?raw=true)
+- **Window tiling:** nothing to do here; the SEQS build binds the shortcuts
+  of [`window_tiling_keys`](configuration.md#window_tiling_keys).
 
 - **Debian template:** SEQS builds on the `debian-13-xfce` template. If you
   did not tick it in the initial setup, install it

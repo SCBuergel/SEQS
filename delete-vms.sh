@@ -31,6 +31,8 @@ POLICY_DIR="${SEQS_POLICY_DIR:-/etc/qubes/policy.d}"
 ETC_DIR="${SEQS_ETC_DIR:-/etc/seqs}"
 QR_SCRIPT="${SEQS_QR_SCRIPT:-/usr/local/sbin/seqs-qr-sequential}"
 VPN_MONITOR="${SEQS_VPN_MONITOR:-/usr/local/bin/seqs-vpn-monitor}"
+NUC11_FW="${SEQS_NUC11_FW:-/lib/firmware/seqs-nuc11-headset.fw}"
+NUC11_CONF="${SEQS_NUC11_CONF:-/etc/modprobe.d/seqs-nuc11-headset.conf}"
 POLICIES=(00-seqs-qr-input-deny 01-seqs-qr-filecopy 20-seqs-gnosisvpn-updates
 	28-browser-suppress 29-browser 30-user-input 50-seqs-audiovm)
 DOM0_LAUNCHERS_ADDED="${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/seqs-dom0-launchers"
@@ -53,9 +55,9 @@ audio or GUI qube), or a match is a global default, nothing is changed.
 
 --reset instead removes every qube SEQS built, whatever its name, and then
 the files SEQS wrote in dom0: the staged Salt trees, its state directory, the
-policy files and helpers it marked, and its panel launchers. It asks you to
-type RESET first. sys-usb's memory setting, the window-manager shortcuts, and
-your copies of the runner and this helper stay.
+policy files, helpers, and NUC 11 headset files it marked, and its panel
+launchers. It asks you to type RESET first. sys-usb's memory setting, the
+window-manager shortcuts, and your copies of the runner and this helper stay.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -87,10 +89,6 @@ if [ "${RESET}" -eq 0 ] && [ "${#ARGS[@]}" -eq 0 ]; then
 	exit 1
 fi
 
-# isMarked FILE -- SEQS wrote FILE: its first line starts with the marker.
-isMarked() {
-	sudo head -n 1 -- "$1" 2>/dev/null | grep -q '^# Managed by SEQS'
-}
 
 # waitForShutdown VM [VM ...] -- poll until shutdown or SHUTDOWN_TIMEOUT.
 waitForShutdown() {
@@ -210,14 +208,32 @@ if [ "${#netvm_users[@]}" -gt 0 ]; then
 	done
 fi
 
+# The dom0 files a reset removes: the trees and directories that are SEQS's
+# own, and the single files SEQS marked. A policy, helper, or headset file
+# under a SEQS name without the marker was written by the operator: it stays,
+# and the reset reports it, in the preview as in the run.
+MARKED_FILES=("${QR_SCRIPT}" "${VPN_MONITOR}" "${NUC11_FW}" "${NUC11_CONF}")
+for p in "${POLICIES[@]}"; do MARKED_FILES+=("${POLICY_DIR}/${p}.policy"); done
+# isSeqsFile FILE -- SEQS wrote FILE: its first line is a SEQS marker comment,
+# or a shebang followed by one (the helpers). A marker further down, as in an
+# operator's comment, does not count.
+isSeqsFile() {
+	local l1='' l2=''
+	{ read -r l1; read -r l2; } < <(sudo head -n 2 -- "$1" 2>/dev/null) || true
+	[[ "${l1}" == "# "*SEQS* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# "*SEQS* ]]
+}
+removable=()
+unmarked=()
 if [ "${RESET}" -eq 1 ]; then
-	echo "SEQS files in dom0 to remove:"
-	for f in "${SALT_TREE}" "${PILLAR_TREE}" "${STATE_DIR}" "${ETC_DIR}" "${QR_SCRIPT}" "${VPN_MONITOR}"; do
-		! sudo test -e "${f}" || echo "  ${f}"
+	for f in "${SALT_TREE}" "${PILLAR_TREE}" "${STATE_DIR}" "${ETC_DIR}"; do
+		! sudo test -e "${f}" || removable+=("${f}")
 	done
-	for p in "${POLICIES[@]}"; do
-		! sudo test -e "${POLICY_DIR}/${p}.policy" || echo "  ${POLICY_DIR}/${p}.policy"
+	for f in "${MARKED_FILES[@]}"; do
+		sudo test -e "${f}" || continue
+		if isSeqsFile "${f}"; then removable+=("${f}"); else unmarked+=("${f}"); fi
 	done
+	[ "${#removable[@]}" -eq 0 ] || { echo "SEQS files in dom0 to remove:"; printf '  %s\n' "${removable[@]}"; }
+	[ "${#unmarked[@]}" -eq 0 ] || { echo "not written by SEQS, left in place:"; printf '  %s\n' "${unmarked[@]}"; }
 fi
 if [ "${DRY_RUN}" -eq 1 ]; then
 	echo "  (dry-run: not killing or removing)"
@@ -366,33 +382,17 @@ removePanelPlugins || echo "WARNING: could not remove every panel plugin of the 
 
 [ "${RESET}" -eq 1 ] || exit 0
 
-# The files SEQS wrote in dom0. A policy or helper under a SEQS name that
-# does not carry the SEQS marker was written by the operator: it stays, and
-# the reset reports it.
 echo "removing the SEQS files in dom0..."
 left=0
 sudo qubesctl top.disable seqs.config pillar=true >/dev/null 2>&1 \
 	|| { echo "WARNING: could not disable the SEQS pillar: run 'sudo qubesctl top.disable seqs.config pillar=true'" >&2; left=1; }
-for p in "${POLICIES[@]}"; do
-	f="${POLICY_DIR}/${p}.policy"
-	sudo test -e "${f}" || continue
-	if isMarked "${f}"; then
-		sudo rm -f -- "${f}"
-	else
-		echo "WARNING: ${f} was not written by SEQS; left in place" >&2
-		left=1
-	fi
+for f in "${removable[@]}"; do
+	sudo rm -rf -- "${f}"
 done
-for f in "${QR_SCRIPT}" "${VPN_MONITOR}"; do
-	sudo test -e "${f}" || continue
-	if sudo head -n 2 -- "${f}" 2>/dev/null | grep -q 'SEQS'; then
-		sudo rm -f -- "${f}"
-	else
-		echo "WARNING: ${f} was not written by SEQS; left in place" >&2
-		left=1
-	fi
+for f in "${unmarked[@]}"; do
+	echo "WARNING: ${f} was not written by SEQS; left in place" >&2
+	left=1
 done
-sudo rm -rf -- "${SALT_TREE}" "${PILLAR_TREE}" "${STATE_DIR}" "${ETC_DIR}"
 rm -f -- "${DOM0_LAUNCHERS_ADDED}"
 if [[ " ${found[*]} " == *" sys-usb-webcam "* ]]; then
 	echo "NOTE: on the dedicated-controller QR path, the webcam's USB controller now belongs to no qube;"
