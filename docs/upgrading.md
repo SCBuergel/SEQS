@@ -257,6 +257,12 @@ power-off-based fallback:
 {%- set webcam_usb_strict_reset = True %}  {# False only without a reset method #}
 ```
 
+Older versions named this setting `webcam_usb_no_strict_reset`, with the
+opposite meaning, and SEQS now ignores that name. Replace an old
+`webcam_usb_no_strict_reset = True` with `webcam_usb_strict_reset = False`,
+and delete an old `webcam_usb_no_strict_reset = False`. A build that still
+finds the wrong value stops and names the setting.
+
 Then perform the normal upgrade steps above: verify and check out the reviewed
 commit, copy its `HEAD` runner, fetch with `--repo-vm <VM> --fetch-only`,
 review the fetched tree, stage with `--stage-only`, and build

@@ -138,7 +138,7 @@ sleep 30
 # controller moves with a strict PCI reset is fixed by setup; with or without
 # it, sys-usb gets the controller back only after the power-off.
 qvm-start -- "$WEBCAM_USB_QUBE" || {
-	echo "ERROR: $WEBCAM_USB_QUBE did not start; nothing was scanned. If the message above says the device cannot be reset, the QR guide says what that means for this controller. Powering off in 60 seconds." >&2
+	echo "ERROR: $WEBCAM_USB_QUBE did not start; nothing was scanned. If the message above says the device cannot be reset, see 'Configure and build the QR qubes' in docs/secure-qr-transfer.md. Powering off in 60 seconds." >&2
 	sleep 60
 	exit 1
 }

@@ -378,8 +378,8 @@ Set it to `False` only for a sequential-mode controller without a PCI reset
 method; dedicated mode refuses it, and every build stops if the setting does
 not match the controller's reset methods. Sequential mode intentionally
 powers off rather than restoring normal USB input in place, so the controller
-returns to `sys-usb` only after a cold boot. The other `webcam_*` settings name the qubes the
-transfer creates or uses (`webcam_usb_qube`, `webcam_scanner_dvm`,
+returns to `sys-usb` only after a cold boot. The other `webcam_*` settings
+name the qubes the transfer creates or uses (`webcam_usb_qube`, `webcam_scanner_dvm`,
 `webcam_scanner_qube`, `webcam_staging_qube`, `webcam_normal_usb_qube`);
 change them only to avoid a clash with an existing qube.
 
