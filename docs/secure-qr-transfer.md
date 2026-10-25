@@ -279,14 +279,18 @@ dom0:00_14.0  0000:00:14.0  PCI_USB: Intel ... PCH USB 3.2 xHCI Host Controller 
 
 The first column is the controller's BDF (bus-device-function), its real PCI
 address. SEQS needs it without `dom0:`, such as `00_14.0`. The second column
-is the same address in the form Linux uses in dom0. The last column shows which
+is the same BDF in Linux notation, such as `0000:00:14.0`, which the
+[strict-reset check](#check-whether-the-controller-supports-a-strict-reset)
+uses. The last column shows which
 qube uses the controller; `no-strict-reset=True` there is how the Qubes
 installer assigns USB controllers to `sys-usb`.
 
 Lines whose description contains `NHI` are Thunderbolt host interfaces, not
 USB controllers with sockets of their own; leave them out when you count
-controllers. The example therefore shows two USB controllers: a Thunderbolt
-USB controller and the chipset (PCH) controller. Keep this output for the
+controllers. A `Thunderbolt 4 USB Controller` line without `NHI` does count:
+on recent Intel computers, it serves the USB 3 wires of the USB-C sockets.
+The example therefore shows two USB controllers: a Thunderbolt USB controller
+and the chipset (PCH) controller. Keep this output for the
 lookups below.
 
 ### Check whether the built-in keyboard uses USB
@@ -356,23 +360,27 @@ that controller is the webcam's. If an internal device remained switched on
 there as well, the sequential path is not possible on this computer without a
 USB controller card.
 
-Choose the socket you will always use for the webcam. Most webcams are USB 2,
-which their packaging or specifications state; if yours is USB 3, use a USB 3
-test device, such as a recent USB stick, in this subsection. With the keyboard
-and mouse plugged in, plug the test device into that socket, and in a dom0
-terminal run:
+Choose the socket you will always use for the webcam. A test device in that
+socket shows which controller serves it. Never use the QR webcam as the test
+device: it must not reach `sys-usb`. Most webcams are USB 2, which their
+packaging or specifications state; for one, any USB device works, such as
+your mouse. If the webcam is USB 3, use a USB 3 test device, such as a recent
+USB stick. With the keyboard and mouse plugged in, plug the test device into
+the chosen socket, and in a dom0 terminal run:
 
 ```bash
 qvm-usb
 ```
 
-Find the test device by its name. Its identifier, such as `sys-usb:3-1`,
-starts with its root USB bus number (`3`), the number before the dash: one
-controller has one or more such buses, each serving its sockets. Note this
-number, and the bus number of every internal device that remained switched on.
+Find the test device in this list by its name. Its identifier, such as
+`sys-usb:3-1`, starts with its root USB bus number (`3`), the number before
+the dash: one controller has one or more such buses, each serving its
+sockets. Note this number, and the bus number of every internal device that
+remained switched on.
 
 Then open a terminal in `sys-usb` (in a dom0 terminal:
-`qvm-run sys-usb xterm`) and run this, which prints one line for each bus:
+`qvm-run sys-usb xterm`) and run this, which prints one line for each bus,
+without device names:
 
 ```bash
 for u in /sys/bus/usb/devices/usb*; do p=$(readlink -f "$u/.."); echo "${u##*/} $(cat "$u/speed") $(cat "$p/vendor" "$p/device" | tr '\n' ' ')$(lspci -s "${p##*/}" 2>/dev/null)"; done
@@ -411,11 +419,24 @@ description, match by hardware ID instead. In a dom0 terminal, run:
 lspci -nn | grep -i usb
 ```
 
-Each line starts with a BDF, written with a colon in place of the underscore,
-and ends with a hardware ID in square brackets, such as `[8086:51ed]`. Find
-the ID that the test device's bus showed, written without `0x`. If two
-controllers have the same ID as well, which happens on some AMD laptops, do
-not guess; use the test in the next subsection.
+Each line starts with a BDF in Linux notation without its leading `0000:`,
+such as `00:14.0`, and ends with a hardware ID in square brackets, such as
+`[8086:51ed]`. Find the ID that the test device's bus showed, written without
+`0x`. If two controllers have the same ID as well, which happens on some AMD
+laptops, do not guess; use the test in the next subsection.
+
+Once you have the BDF, write down the test device's socket and that BDF in
+both notations, for example:
+
+```text
+Socket:               left USB-A
+BDF:                  00_14.0        (for the SEQS configuration)
+BDF, Linux notation:  0000:00:14.0   (for the strict-reset check)
+```
+
+The webcam will use this socket, so SEQS will give this BDF to the webcam
+qube. Its line in the controller list must show `sys-usb` in the last
+column.
 
 ### Tell identical controllers apart
 
@@ -460,20 +481,24 @@ skip the `sys-usb-webcam` command there, and run only the `sys-usb` commands.
 
 ### Check whether the controller supports a strict reset
 
-This check decides one setting in the configuration. In a dom0 terminal, run
-this with the webcam's controller address from the second column of the
-controller list:
+This check decides the setting `webcam_usb_strict_reset`. In a dom0 terminal,
+run this with the BDF in Linux notation that you wrote down:
 
 ```bash
 cat /sys/bus/pci/devices/0000:00:14.0/reset_method
 ```
 
-If it prints one or more reset methods, such as `flr` or `pm`, the controller
-supports a strict reset. If it reports `No such file or directory` or prints
-nothing, it does not. Write down the result.
+If it lists `flr`, `af_flr`, `pm`, or `bus`, the controller supports a strict
+reset: the setting is `True`. If it prints nothing, only other words, or
+`No such file or directory`, it does not: the setting is `False`. Add the
+result to your notes, for example:
+
+```text
+Strict reset:         pm   →  webcam_usb_strict_reset = True
+```
 
 You now have everything the sequential path needs: the controller's BDF, which
-`sys-usb` must own in the controller list, and the reset result. Continue with
+`sys-usb` must own in the controller list, and the reset setting. Continue with
 [Configure and build the QR qubes](#configure-and-build-the-qr-qubes), unless
 you want to look for a dedicated controller.
 
@@ -602,7 +627,7 @@ qube. For the sequential path:
 ```jinja
 {%- set webcam_usb_mode = 'sequential' %}
 {%- set webcam_usb_controller = '00_14.0' %}
-{%- set webcam_usb_no_strict_reset = False %}
+{%- set webcam_usb_strict_reset = True %}
 ```
 
 For the dedicated-controller path:
@@ -610,17 +635,17 @@ For the dedicated-controller path:
 ```jinja
 {%- set webcam_usb_mode = 'dedicated' %}
 {%- set webcam_usb_controller = '03_00.0' %}
-{%- set webcam_usb_no_strict_reset = False %}
+{%- set webcam_usb_strict_reset = True %}
 ```
 
-Replace the example BDF with your own, exactly as the controller list shows
-it, without the `dom0:` prefix.
-`webcam_usb_no_strict_reset = True` lets Qubes hand the controller to
-`sys-usb-webcam` without a strict reset. On the sequential path, set it to
-`True` only if the
-[strict-reset check](#check-whether-the-controller-supports-a-strict-reset)
-found no reset method, and to `False` otherwise. The dedicated-controller path
-requires `False`.
+Replace the example BDF with the one you wrote down for the SEQS
+configuration, such as `00_14.0`. Set `webcam_usb_strict_reset` to the
+result of the
+[strict-reset check](#check-whether-the-controller-supports-a-strict-reset):
+`False` lets Qubes hand the controller to `sys-usb-webcam` without a strict
+reset, and the dedicated-controller path refuses it. Every build reads the
+controller's reset methods and stops with a message naming
+`webcam_usb_strict_reset` if the setting does not match them.
 
 The SEQS runner builds only the committed state of the checkout, so an
 uncommitted edit is silently ignored. In a terminal in the repository qube,
@@ -638,15 +663,33 @@ user.name` and `git config user.email` and commit again. If the repository qube
 is a disposable, the commit disappears when it shuts down, and you must repeat
 the edit before any later SEQS run on this computer.
 
-Then run SEQS from dom0 as usual, choosing the qubes with `--qubes`:
+Then run SEQS from dom0 on each computer, choosing the qubes with `--qubes`.
+For a first install, follow the [README](../README.md); with its disposable
+repository qube `disp1234`, the last command is, in a dom0 terminal of the
+sending computer:
 
-- For a first SEQS install, follow the [README](../README.md).
-- For an existing installation, follow [the upgrade procedure](upgrading.md).
+```bash
+~/s.sh --repo-vm disp1234 --qubes qr-display
+```
 
-Select `qr-display` on the sending computer. On the receiving computer, select
-`qr-camera,qr-staging` for the sequential path or `qr-camera` for the
-dedicated-controller path. Add the other role's qubes too if the computer will
-send in both directions.
+In a dom0 terminal of the receiving computer, `disp1234` must be the qube in
+which you committed the edit above. For the sequential path, run:
+
+```bash
+~/s.sh --repo-vm disp1234 --qubes qr-camera,qr-staging
+```
+
+For the dedicated-controller path, run:
+
+```bash
+~/s.sh --repo-vm disp1234 --qubes qr-camera
+```
+
+On an existing installation, follow [the upgrade procedure](upgrading.md)
+with the same qubes, for example `~/s.sh --build-only --qubes qr-display` in
+its build step on the sending computer. A computer that will send in both
+directions needs both lists, such as
+`--qubes qr-display,qr-camera,qr-staging`.
 
 Selecting `qr-staging` creates `A-qr-staging` (a persistent offline qube
 that keeps the encrypted file while the computer is off).
@@ -659,15 +702,13 @@ not a controller that the running `sys-usb` holds; recheck the BDF, and that
 check, whichever qubes it builds.
 
 The build assigns the controller without resetting it. If `sys-usb-webcam`
-later fails to start because the controller cannot be reset, the reset check
-was wrong for this controller. On the dedicated-controller path, the
-controller is then unsuitable; give it back to `sys-usb` with steps 3 and 4 of
-the recovery under
+later fails to start because the controller cannot be reset, Qubes cannot use
+the reset method that the controller lists, and SEQS refuses to skip a listed
+one, so the controller is unsuitable. On the sequential path, the scan script
+says so and powers off after 60 seconds without scanning. On the
+dedicated-controller path, give the controller back to `sys-usb` with steps 3
+and 4 of the recovery under
 [Before you build on the dedicated-controller path](#before-you-build-on-the-dedicated-controller-path).
-On the sequential path, the scan script says so and powers off after 60
-seconds without scanning; set `webcam_usb_no_strict_reset` to `True`, commit,
-build again, and repeat the transfer from
-[Step 2: Copy the encrypted file to the display qube](#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer).
 
 ## Check the setup
 

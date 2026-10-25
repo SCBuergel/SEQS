@@ -87,7 +87,9 @@ class Scenario:
         inventory_complete=True,  # False: the inventory query stops before its END line
         host_cpus="4",           # what `xl info` reports as nr_cpus
         hda_codecs=(),           # "vendor_id subsystem_id" of each HD audio codec
+        pci_reset="flr",         # reset_method of any PCI device, None = no such device
     ):
+        self.pci_reset = pci_reset
         self.host_cpus = host_cpus
         self.hda_codecs = list(hda_codecs)
         self.recipes = dict(recipes or {})
@@ -137,6 +139,8 @@ class Scenario:
             return self.host_cpus
         if "/sys/class/sound/hwC" in cmd:
             return "\n".join(self.hda_codecs)
+        if "/sys/bus/pci/devices/" in cmd:
+            return "" if self.pci_reset is None else ("reset: " + self.pci_reset).strip()
         if cmd.startswith("ls -A /var/lib/seqs/intents"):
             return "\n".join(sorted(f.rsplit("/", 1)[1] for f in self.existing_files
                                      if f.startswith("/var/lib/seqs/intents/")))

@@ -372,11 +372,13 @@ writes the file again.
 test in [secure QR transfer](secure-qr-transfer.md#choose-the-hardware-isolation-path),
 select `dedicated` for a webcam-only physical controller or `sequential` for
 the reduced-assurance shared-controller ceremony. Both require a verified
-physical `webcam_usb_controller` BDF. Set `webcam_usb_no_strict_reset` to
-`True` only for a sequential-mode controller without a PCI reset method;
-dedicated mode refuses it. Sequential mode intentionally powers off rather than
-restoring normal USB input in place, so the controller returns to `sys-usb`
-only after a cold boot. The other `webcam_*` settings name the qubes the
+physical `webcam_usb_controller` BDF. `webcam_usb_strict_reset` is `True` by
+default, so Qubes resets the controller whenever it moves to the webcam qube.
+Set it to `False` only for a sequential-mode controller without a PCI reset
+method; dedicated mode refuses it, and every build stops if the setting does
+not match the controller's reset methods. Sequential mode intentionally
+powers off rather than restoring normal USB input in place, so the controller
+returns to `sys-usb` only after a cold boot. The other `webcam_*` settings name the qubes the
 transfer creates or uses (`webcam_usb_qube`, `webcam_scanner_dvm`,
 `webcam_scanner_qube`, `webcam_staging_qube`, `webcam_normal_usb_qube`);
 change them only to avoid a clash with an existing qube.

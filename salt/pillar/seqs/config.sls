@@ -36,7 +36,10 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {#- Keep disabled until completing docs/secure-qr-transfer.md. #}
 {%- set webcam_usb_mode = 'disabled' %}
 {%- set webcam_usb_controller = '' %}
-{%- set webcam_usb_no_strict_reset = False %}
+{#- True: Qubes resets the controller whenever it moves to the webcam qube.
+    False only for a sequential-mode controller without a reset method; the
+    build checks which applies. #}
+{%- set webcam_usb_strict_reset = True %}
 {%- set webcam_usb_qube = 'sys-usb-webcam' %}
 {%- set webcam_scanner_dvm = prefix_app ~ 'qr-camera' %}
 {%- set webcam_normal_usb_qube = 'sys-usb' %}
@@ -132,7 +135,7 @@ seqs:
   window_tiling_keys: {{ window_tiling_keys | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'
   webcam_usb_mode: '{{ webcam_usb_mode }}'
-  webcam_usb_no_strict_reset: {{ webcam_usb_no_strict_reset | tojson }}
+  webcam_usb_strict_reset: {{ webcam_usb_strict_reset | tojson }}
   webcam_usb_qube: '{{ webcam_usb_qube }}'
   webcam_scanner_dvm: '{{ webcam_scanner_dvm }}'
   webcam_normal_usb_qube: '{{ webcam_normal_usb_qube }}'

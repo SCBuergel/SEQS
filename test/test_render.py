@@ -601,7 +601,7 @@ def test_dom0_sequential_qr_mode():
     pillar.update({
         "webcam_usb_mode": "sequential",
         "webcam_usb_controller": "00_14.0",
-        "webcam_usb_no_strict_reset": False,
+        "webcam_usb_strict_reset": True,
     })
     text, parsed = render_state(
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
@@ -658,7 +658,7 @@ def test_dom0_qr_mode_without_camera_in_selection():
     pillar.update({
         "webcam_usb_mode": "sequential",
         "webcam_usb_controller": "00_14.0",
-        "webcam_usb_no_strict_reset": False,
+        "webcam_usb_strict_reset": True,
     })
     sc = Scenario(sys_usb=True, selection="qr-staging",
                   existing_qubes=["A-brave", "A-qr-camera"],
@@ -684,17 +684,18 @@ def test_dom0_qr_mode_without_camera_in_selection():
 
 
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
-    case("dom0.sls: sequential QR mode accepts an explicit no-strict-reset")
+    case("dom0.sls: sequential QR mode accepts webcam_usb_strict_reset = False without a reset method")
     pillar = copy.deepcopy(render_pillar("dom0"))
     pillar.update({
         "webcam_usb_mode": "sequential",
         "webcam_usb_controller": "00_14.0",
-        "webcam_usb_no_strict_reset": True,
+        "webcam_usb_strict_reset": False,
     })
-    _, parsed = render_state(
-        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
-    check("seqs-validation-failed" not in parsed,
-          "sequential + no-strict-reset must pass pre-flight")
+    for methods in ("", "acpi device_specific"):
+        _, parsed = render_state(
+            "dom0", "dom0", Scenario(sys_usb=True, pci_reset=methods), pillar_seqs=pillar)
+        check("seqs-validation-failed" not in parsed,
+              "sequential mode without a usable reset method (%r) must pass pre-flight" % methods)
     backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
     check("qvm-pci attach --persistent --option no-strict-reset=true "
           "sys-usb-webcam dom0:00_14.0" in backend,
@@ -705,18 +706,51 @@ def test_dom0_sequential_qr_allows_explicit_weak_reset():
           "sequential mode must still require sys-usb to own the controller")
 
 
+def test_dom0_qr_strict_reset_matches_controller():
+    case("dom0.sls: webcam_usb_strict_reset must match the controller's reset methods")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    check(pillar.get("webcam_usb_strict_reset") is True,
+          "the shipped configuration should require a strict reset")
+    pillar.update({"webcam_usb_mode": "sequential", "webcam_usb_controller": "00_14.0"})
+    def errors(strict, methods):
+        pillar["webcam_usb_strict_reset"] = strict
+        _, parsed = render_state(
+            "dom0", "dom0", Scenario(sys_usb=True, pci_reset=methods), pillar_seqs=pillar)
+        return _errors(parsed)
+    check("webcam_usb_controller '00_14.0' has no strict reset, so the webcam qube "
+          "could not start: set webcam_usb_strict_reset = False" in errors(True, ""),
+          "a strict reset on a controller without one must fail pre-flight")
+    check("has no strict reset" in errors(True, "acpi"),
+          "a reset method that libvirt cannot use is no strict reset")
+    check("webcam_usb_strict_reset is False, but webcam_usb_controller '00_14.0' "
+          "supports a strict reset (pm): set it to True" in errors(False, "acpi pm"),
+          "skipping an available strict reset must fail pre-flight")
+    check("webcam_usb_controller '00_14.0' is not a PCI device of this computer"
+          in errors(True, None),
+          "a BDF without a PCI device must fail pre-flight")
+    for value in ("False", 0, "no"):
+        check("webcam_usb_strict_reset '%s' must be True or False" % value in errors(value, ""),
+              "webcam_usb_strict_reset %r must fail pre-flight" % (value,))
+
+
 def test_dom0_dedicated_qr_rejects_weak_reset():
-    case("dom0.sls: dedicated QR mode rejects no-strict-reset")
+    case("dom0.sls: dedicated QR mode rejects webcam_usb_strict_reset = False")
     pillar = copy.deepcopy(render_pillar("dom0"))
     pillar.update({
         "webcam_usb_mode": "dedicated",
         "webcam_usb_controller": "03_00.0",
-        "webcam_usb_no_strict_reset": True,
+        "webcam_usb_strict_reset": False,
     })
     _, parsed = render_state(
-        "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
-    check("dedicated webcam mode forbids webcam_usb_no_strict_reset" in _errors(parsed),
-          "dedicated + no-strict-reset must fail pre-flight")
+        "dom0", "dom0", Scenario(sys_usb=True, pci_reset=""), pillar_seqs=pillar)
+    check("dedicated webcam mode requires webcam_usb_strict_reset = True" in _errors(parsed),
+          "dedicated + no strict reset must fail pre-flight")
+    pillar["webcam_usb_strict_reset"] = True
+    _, parsed = render_state(
+        "dom0", "dom0", Scenario(sys_usb=True, pci_reset=""), pillar_seqs=pillar)
+    check("has no strict reset, so the webcam qube could not start; dedicated mode "
+          "needs a controller with one" in _errors(parsed),
+          "dedicated mode on a controller without a strict reset must fail pre-flight")
 
 
 def test_dom0_dedicated_qr_uses_device_api():
@@ -725,7 +759,7 @@ def test_dom0_dedicated_qr_uses_device_api():
     pillar.update({
         "webcam_usb_mode": "dedicated",
         "webcam_usb_controller": "03_00.0",
-        "webcam_usb_no_strict_reset": False,
+        "webcam_usb_strict_reset": True,
     })
     text, parsed = render_state(
         "dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)

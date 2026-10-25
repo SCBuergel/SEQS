@@ -183,6 +183,9 @@ MUTATIONS = [
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]\\\\Z') is none %}", "regex_match('^.*$') is none %}"),
     # \Z, not $, which also matches before a trailing newline.
     ("dom0-webcam-bdf-anchor", S, "[0-7]\\\\Z') is none %}", "[0-7]$') is none %}"),
+    ("dom0-webcam-dedicated-strict", S, "{% elif webcam_mode == 'dedicated' and webcam_strict_reset is sameas false %}", "{% elif false %}"),
+    ("dom0-webcam-skip-reset", S, "{%   elif not webcam_strict_reset and methods %}", "{%   elif false %}"),
+    ("dom0-webcam-reset-methods", S, "['flr', 'af_flr', 'pm', 'bus']", "['flr', 'af_flr', 'bus']"),
     ("dom0-ext-id-anchor", S, "exts[en] | regex_match('^[a-p]{32}\\\\Z')", "exts[en] | regex_match('^[a-p]{32}$')"),
     ("dom0-firewall-anchor", S, "(:[0-9]{1,5})?\\\\Z')", "(:[0-9]{1,5})?$')"),
     ("dom0-cleanup-anchor", S, "(p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z')", "(p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$')"),

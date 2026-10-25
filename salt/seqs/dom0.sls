@@ -19,7 +19,7 @@
 {% set tiling_keys = seqs.get('window_tiling_keys', {}) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
-{% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
+{% set webcam_strict_reset = seqs.get('webcam_usb_strict_reset', true) %}
 {% set webcam_usb_qube = seqs.get('webcam_usb_qube', 'sys-usb-webcam') %}
 {% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', '') %}
 {% set webcam_normal_usb_qube = seqs.get('webcam_normal_usb_qube', 'sys-usb') %}
@@ -157,10 +157,29 @@ print("END")'{% endset %}
 {% if webcam_mode in ['dedicated', 'sequential'] and not webcam_controller %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' requires webcam_usb_controller") %}
 {% endif %}
+{% set strict_reset_ok = webcam_strict_reset is sameas true or webcam_strict_reset is sameas false %}
+{% if not strict_reset_ok %}
+{%   do errors.append("webcam_usb_strict_reset '" ~ webcam_strict_reset ~ "' must be True or False") %}
+{% endif %}
 {# Lowercase only: qvm-pci lists and matches BDFs in lowercase, and the
    ownership checks below compare them as strings. #}
 {% if webcam_controller and webcam_controller | regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]\\Z') is none %}
 {%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a lowercase BDF as listed by qvm-pci, such as 03_00.0)") %}
+{% elif webcam_mode == 'dedicated' and webcam_strict_reset is sameas false %}
+{%   do errors.append("dedicated webcam mode requires webcam_usb_strict_reset = True -- without a power-off between transfers, only a strict reset clears the controller") %}
+{% elif webcam_controller and strict_reset_ok %}
+{#   The reset methods that Qubes (through libvirt) can use for a strict
+     reset; the kernel lists them only for a device that has one. #}
+{%   set pci_dir = '/sys/bus/pci/devices/0000:' ~ webcam_controller | replace('_', ':') %}
+{%   set reset = salt['cmd.shell']('[ -d ' ~ pci_dir ~ ' ] && echo "reset: $(cat ' ~ pci_dir ~ '/reset_method 2>/dev/null)"') %}
+{%   set methods = reset[6:].split() | select('in', ['flr', 'af_flr', 'pm', 'bus']) | list %}
+{%   if not reset.startswith('reset:') %}
+{%     do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is not a PCI device of this computer") %}
+{%   elif webcam_strict_reset and not methods %}
+{%     do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' has no strict reset, so the webcam qube could not start" ~ (": set webcam_usb_strict_reset = False" if webcam_mode == 'sequential' else "; dedicated mode needs a controller with one")) %}
+{%   elif not webcam_strict_reset and methods %}
+{%     do errors.append("webcam_usb_strict_reset is False, but webcam_usb_controller '" ~ webcam_controller ~ "' supports a strict reset (" ~ methods | join(' ') ~ "): set it to True") %}
+{%   endif %}
 {% endif %}
 {% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube), ('webcam_staging_qube', webcam_staging_qube)] %}
 {%   if value | regex_match(name_re) is none %}
@@ -178,9 +197,6 @@ print("END")'{% endset %}
 {% endif %}
 {% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
 {%   do errors.append("sequential webcam mode requires qr-staging to be offline with preserve_incoming enabled") %}
-{% endif %}
-{% if webcam_mode == 'dedicated' and webcam_no_strict_reset %}
-{%   do errors.append("dedicated webcam mode forbids webcam_usb_no_strict_reset -- without a power-off between transfers, only a strict reset clears the controller") %}
 {% endif %}
 {% if webcam_mode == 'sequential' and (webcam_normal_usb_qube not in inventory) %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
@@ -1218,13 +1234,13 @@ seqs-webcam-usb-backend:
         qvm-pci unassign --port {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
         qvm-pci detach {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
 {% if webcam_mode == 'sequential' %}
-        # Strict reset by default, or no-strict-reset only when
-        # webcam_usb_no_strict_reset is set for a controller without a reset
-        # method. Either way the ceremony ends in a power-off, so sys-usb
-        # receives the controller back only after a cold boot. The normal
-        # sys-usb assignment remains; only one owner may run at a time.
+        # Strict reset, or no-strict-reset only for a controller that the
+        # pre-flight found to have no reset method. Either way the ceremony
+        # ends in a power-off, so sys-usb receives the controller back only
+        # after a cold boot. The normal sys-usb assignment remains; only one
+        # owner may run at a time.
 {% endif %}
-        qvm-pci attach --persistent{% if webcam_no_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
+        qvm-pci attach --persistent{% if not webcam_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
 {% if webcam_mode == 'dedicated' %}
     # Skipped only while the webcam backend is the controller's sole owner,
     # assigned or attached: a qube listed before "(attached" or "(required".
