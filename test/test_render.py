@@ -733,6 +733,50 @@ def test_dom0_qr_strict_reset_matches_controller():
               "webcam_usb_strict_reset %r must fail pre-flight" % (value,))
 
 
+def test_dom0_qr_backend_holds_only_the_configured_controller():
+    case("dom0.sls: each build leaves the webcam backend only the configured controller")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({"webcam_usb_mode": "sequential", "webcam_usb_controller": "00_14.0"})
+    _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+    backend = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "name")
+    # A fake qvm-pci over a file of "<device> <owner>" assignments, printed
+    # as qvm-pci list --assignments does: owner marked * before "(required".
+    fake = r"""
+qvm-check() { return 0; }; qvm-prefs() { :; }; qvm-features() { :; }
+qvm-shutdown() { :; }; qvm-create() { :; }
+qvm-pci() {
+  case "$1 $2" in
+    "list --assignments") awk '{ print $1 "  USB controller  *" $2 " (required: )" }' "$A" ;;
+    "list sys-usb") awk '$2 == "sys-usb" { print $1 "  USB controller  sys-usb (attached: )" }' "$A" ;;
+    "unassign --port"|"detach "*) ;;
+    unassign*) [ "$3" = "$KEEP" ] || { grep -vxF "$3 $2" "$A" > "$A.n" || true; mv "$A.n" "$A"; } ;;
+    "attach --persistent") echo "${*: -1} ${*: -2:1}" >> "$A" ;;
+  esac
+}
+"""
+    def run(assigned, keep=""):
+        with tempfile.TemporaryDirectory() as d:
+            a = os.path.join(d, "assignments")
+            with open(a, "w") as f:
+                f.write("".join("%s %s\n" % pair for pair in assigned))
+            r = subprocess.run(["bash", "-c", fake + backend], capture_output=True, text=True,
+                               env={"PATH": "/usr/bin:/bin", "A": a, "KEEP": keep})
+            with open(a) as f:
+                return r, sorted(f.read().split("\n"))
+    usb = [("dom0:00_14.0", "sys-usb"), ("dom0:00_0d.0", "sys-usb")]
+    r, left = run(usb + [("dom0:00_0d.0", "sys-usb-webcam"), ("dom0:00_14.0", "sys-usb-webcam")])
+    check(r.returncode == 0 and left == sorted(["", "dom0:00_14.0 sys-usb", "dom0:00_0d.0 sys-usb",
+                                                "dom0:00_14.0 sys-usb-webcam"]),
+          "a controller configured earlier must lose its webcam assignment, and only it: %r %r"
+          % (left, r.stderr))
+    r, _ = run(usb + [("dom0:00_0d.0", "sys-usb-webcam")], keep="dom0:00_0d.0")
+    check(r.returncode != 0 and "ERROR: sys-usb-webcam must have exactly dom0:00_14.0 assigned" in r.stderr,
+          "an assignment that does not go away must stop the build: %r" % r.stderr)
+    r, _ = run(usb + [("dom0:00_0d.0;x", "sys-usb-webcam")])
+    check(r.returncode != 0 and "has a PCI assignment that is not a BDF" in r.stderr,
+          "an unexpected device name must stop the build: %r" % r.stderr)
+
+
 def test_dom0_dedicated_qr_rejects_weak_reset():
     case("dom0.sls: dedicated QR mode rejects webcam_usb_strict_reset = False")
     pillar = copy.deepcopy(render_pillar("dom0"))
@@ -788,8 +832,9 @@ def test_dom0_dedicated_qr_uses_device_api():
               "dedicated mode must stop when qvm-ls %s" %
               ("fails" if fake == "exit 1" else "lists nothing"))
     unless = state_arg(parsed, "seqs-webcam-usb-backend", "cmd.run", "unless")
-    check("exit !(mine && !other)" in unless,
-          "the backend state may be skipped only while the webcam qube is the controller's sole owner")
+    check("exit !(mine && !other && !extra)" in unless,
+          "the backend state may be skipped only while the webcam qube is the controller's sole owner"
+          " and holds nothing else")
     for vm in ("sys-usb-webcam", "seqs-qr-scanner"):
         check("add seqs-no-handoff" in state_arg(parsed, "seqs-handoff-tag-" + vm, "cmd.run", "name"),
               "the webcam qube %s must be tagged" % vm)

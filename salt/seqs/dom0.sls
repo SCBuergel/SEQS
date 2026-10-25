@@ -1233,6 +1233,21 @@ seqs-webcam-usb-backend:
         qvm-pci unassign {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
         qvm-pci unassign --port {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
         qvm-pci detach {{ webcam_usb_qube }} dom0:{{ webcam_controller }} 2>/dev/null || true
+        # Drop every other PCI device assigned to the webcam backend, such as
+        # a controller configured earlier: the camera side may hold only the
+        # configured one. An owner is the name before "(attached"/"(required";
+        # a device can be listed twice, held now and assigned.
+        owned='{ for (i = 2; i < NF; i++) if ($(i + 1) ~ /^\((attached|required)/) { o = $i; sub(/^\*/, "", o); if (o == vm) print $1 } }'
+        listing="$(qvm-pci list --assignments)"
+        for dev in $(printf '%s\n' "$listing" | awk -v vm="{{ webcam_usb_qube }}" "$owned"); do
+          printf '%s\n' "$dev" | grep -Eq '^dom0:[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]$' || {
+            echo 'ERROR: {{ webcam_usb_qube }} has a PCI assignment that is not a BDF' >&2
+            exit 1
+          }
+          qvm-pci unassign {{ webcam_usb_qube }} "$dev" 2>/dev/null || true
+          qvm-pci unassign --port {{ webcam_usb_qube }} "$dev" 2>/dev/null || true
+          qvm-pci detach {{ webcam_usb_qube }} "$dev" 2>/dev/null || true
+        done
 {% if webcam_mode == 'sequential' %}
         # Strict reset, or no-strict-reset only for a controller that the
         # pre-flight found to have no reset method. Either way the ceremony
@@ -1241,10 +1256,16 @@ seqs-webcam-usb-backend:
         # owner may run at a time.
 {% endif %}
         qvm-pci attach --persistent{% if not webcam_strict_reset %} --option no-strict-reset=true{% endif %} {{ webcam_usb_qube }} dom0:{{ webcam_controller }}
+        listing="$(qvm-pci list --assignments)"
+        [ "$(printf '%s\n' "$listing" | awk -v vm="{{ webcam_usb_qube }}" "$owned" | sort -u)" = "dom0:{{ webcam_controller }}" ] || {
+          echo 'ERROR: {{ webcam_usb_qube }} must have exactly dom0:{{ webcam_controller }} assigned; check qvm-pci list --assignments' >&2
+          exit 1
+        }
 {% if webcam_mode == 'dedicated' %}
     # Skipped only while the webcam backend is the controller's sole owner,
-    # assigned or attached: a qube listed before "(attached" or "(required".
-    - unless: qvm-check -q -- {{ webcam_usb_qube }} && qvm-prefs -- {{ webcam_usb_qube }} | {{ explicitly_offline }} && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '$1 == "dom0:{{ webcam_controller }}" { for (i = 2; i < NF; i++) if ($(i + 1) ~ /^\((attached|required)/) { o = $i; sub(/^\*/, "", o); if (o == vm) mine = 1; else other = 1 } } END { exit !(mine && !other) }'
+    # assigned or attached (a qube listed before "(attached" or "(required"),
+    # and holds no other PCI device.
+    - unless: qvm-check -q -- {{ webcam_usb_qube }} && qvm-prefs -- {{ webcam_usb_qube }} | {{ explicitly_offline }} && qvm-pci list --assignments 2>/dev/null | awk -v vm="{{ webcam_usb_qube }}" '{ for (i = 2; i < NF; i++) if ($(i + 1) ~ /^\((attached|required)/) { o = $i; sub(/^\*/, "", o); if ($1 != "dom0:{{ webcam_controller }}") { if (o == vm) extra = 1 } else if (o == vm) mine = 1; else other = 1 } } END { exit !(mine && !other && !extra) }'
 {% endif %}
 {# qr-camera is built in this run or was verified to exist in the pre-flight;
    a requisite on a state that this run does not render would fail. #}

@@ -774,8 +774,8 @@ qvm-pci list --assignments
 
 The controller can appear on two lines: one with the qubes that hold it right
 now, if any, and one with the assigned qubes, marked with `*`. On both paths,
-no other controller may be assigned to `sys-usb-webcam`: a build with a
-different BDF leaves that controller assigned to it.
+no other controller may be assigned to `sys-usb-webcam`; each build removes
+any other one and stops if one remains.
 
 On the dedicated-controller path, your controller must be assigned only to
 `sys-usb-webcam`. Give a wrongly assigned controller back to `sys-usb` with
