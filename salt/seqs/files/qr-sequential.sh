@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SEQS sequential-path QR scan on a USB controller shared with the keyboard.
-# Installed in dom0 and configured by /etc/seqs/qr-sequential.conf.
+# Managed by SEQS. Sequential-path QR scan on a USB controller shared with
+# the keyboard; installed in dom0 and configured by /etc/seqs/qr-sequential.conf.
 set -Eeuo pipefail
 
 CONF=/etc/seqs/qr-sequential.conf

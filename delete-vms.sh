@@ -214,13 +214,14 @@ fi
 # and the reset reports it, in the preview as in the run.
 MARKED_FILES=("${QR_SCRIPT}" "${VPN_MONITOR}" "${NUC11_FW}" "${NUC11_CONF}")
 for p in "${POLICIES[@]}"; do MARKED_FILES+=("${POLICY_DIR}/${p}.policy"); done
-# isSeqsFile FILE -- SEQS wrote FILE: its first line is a SEQS marker comment,
-# or a shebang followed by one (the helpers). A marker further down, as in an
-# operator's comment, does not count.
+# isSeqsFile FILE -- SEQS wrote FILE: its first line starts with the marker
+# that the runner and the dom0 state honour, or a shebang precedes it (the
+# helpers). The marker further down, as in an operator's comment, or a mere
+# mention of SEQS does not count.
 isSeqsFile() {
 	local l1='' l2=''
 	{ read -r l1; read -r l2; } < <(sudo head -n 2 -- "$1" 2>/dev/null) || true
-	[[ "${l1}" == "# "*SEQS* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# "*SEQS* ]]
+	[[ "${l1}" == "# Managed by SEQS"* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# Managed by SEQS"* ]]
 }
 removable=()
 unmarked=()

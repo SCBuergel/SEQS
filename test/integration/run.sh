@@ -711,13 +711,16 @@ printf '# Managed by SEQS (salt state seqs.dom0)\n[codec]\n' > "${SEQS_NUC11_FW}
 printf 'options snd-hda-intel patch=mine.fw\n' > "${SEQS_NUC11_CONF}"
 touch "${SEQS_STATE_DIR}/intents/A-orphan" "${SEQS_SALT_TREE}/dom0.sls" "${SEQS_ETC_DIR}/qr-sequential.conf" \
 	"${SBX}/config/xfce4/panel/seqs-dom0-launchers"
-printf '#!/bin/sh\n# SEQS sequential-path QR scan\n' > "${SEQS_QR_SCRIPT}"
-printf '#!/bin/sh\n# Managed by SEQS\n' > "${SEQS_VPN_MONITOR}"
+printf '#!/bin/sh\n# Managed by SEQS. Sequential-path QR scan\n' > "${SEQS_QR_SCRIPT}"
+# A hand-written wrapper that mentions SEQS is not SEQS's file.
+printf '#!/bin/sh\n# wrapper around the SEQS monitor\n' > "${SEQS_VPN_MONITOR}"
 for p in 00-seqs-qr-input-deny 28-browser-suppress 29-browser 50-seqs-audiovm; do
 	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"
 done
 printf '%s\n' "qubes.InputKeyboard * sys-usb @adminvm allow" "# Managed by SEQS? No, by hand." \
 	> "${SEQS_POLICY_DIR}/30-user-input.policy"
+printf '%s\n' "# SEQS keyboard rule, replaced by hand" "qubes.Filecopy * seqs-qr-scanner @anyvm deny" \
+	> "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy"
 echo "# mine" > "${SEQS_POLICY_DIR}/40-mine.policy"
 printf '%s\n' "seqs-gnosisvpn-update-proxy seqs-gnosisvpn-temporary-proxy 1" \
 	"sys-usb-webcam seqs-managed 1" "seqs-qr-scanner seqs-managed 1" > "${SBX}/features"
@@ -747,10 +750,12 @@ grep -q "would set personal netvm to none" <<<"$out" && ok || bad "the dry run m
 grep -q "^  ${SEQS_SALT_TREE}$" <<<"$out" && grep -q "^  ${SEQS_POLICY_DIR}/29-browser.policy$" <<<"$out" \
 	&& grep -q "^  ${SEQS_NUC11_FW}$" <<<"$out" && ok || bad "the dry run must list the dom0 files: ${out}"
 # What the run keeps, the preview already shows as kept, never as removed.
-grep -A2 "^not written by SEQS, left in place:" <<<"$out" | grep -q "^  ${SEQS_POLICY_DIR}/30-user-input.policy$" \
-	&& grep -A2 "^not written by SEQS, left in place:" <<<"$out" | grep -q "^  ${SEQS_NUC11_CONF}$" \
-	&& ! grep -B9 "^not written by SEQS" <<<"$out" | grep -q "30-user-input" && ok \
-	|| bad "the dry run must show unmarked files as kept: ${out}"
+to_remove="$(awk '/^SEQS files in dom0 to remove:/ { p = 1; next } /^[^ ]/ { p = 0 } p' <<<"$out")"
+kept="$(awk '/^not written by SEQS, left in place:/ { p = 1; next } /^[^ ]/ { p = 0 } p' <<<"$out")"
+for f in "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy" "${SEQS_NUC11_CONF}" "${SEQS_VPN_MONITOR}"; do
+	grep -qxF "  ${f}" <<<"$kept" && ! grep -qxF "  ${f}" <<<"$to_remove" && ok \
+		|| bad "the dry run must show ${f} as kept, not removed: ${out}"
+done
 [ "$(reset_vms)" = "${before}" ] && [ -e "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "a reset dry run must change nothing"
 # Only the typed word RESET confirms.
 out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="y" python3 "${REPO}/test/lib/pty_run.py" \
@@ -766,19 +771,23 @@ out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_SUDO_LOG="$
 	|| bad "reset left the wrong qubes: $(reset_vms); ${out}"
 [ "$(awk '$1 == "personal" { print $2 }' "${SBX}/netvm")" = "none" ] && ok || bad "the NetVM user must be disconnected"
 for f in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_ETC_DIR}" "${SEQS_QR_SCRIPT}" \
-		"${SEQS_VPN_MONITOR}" "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" \
+		"${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" \
 		"${SBX}/config/xfce4/panel/seqs-dom0-launchers" "${SEQS_NUC11_FW}"; do
 	[ ! -e "${f}" ] && ok || bad "reset left ${f}"
 done
-[ -e "${SEQS_POLICY_DIR}/30-user-input.policy" ] && [ -e "${SEQS_POLICY_DIR}/40-mine.policy" ] && [ -e "${SEQS_NUC11_CONF}" ] && ok \
-	|| bad "reset must keep an unmarked policy under a SEQS name, the user's own, and a hand-written headset file"
+# Files under SEQS names that only mention SEQS, or carry the marker below
+# the first line, were written by hand and stay.
+for f in "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy" \
+		"${SEQS_POLICY_DIR}/40-mine.policy" "${SEQS_NUC11_CONF}" "${SEQS_VPN_MONITOR}"; do
+	[ -e "${f}" ] && ok || bad "reset must keep the hand-written ${f}"
+done
 [ "$rc" -ne 0 ] && grep -q "30-user-input.policy was not written by SEQS; left in place" <<<"$out" \
 	&& grep -q "finished with the files reported above left in place" <<<"$out" && ok \
 	|| bad "reset must report the unmarked policy it kept and exit non-zero: rc=$rc ${out}"
 grep -q "qubesctl top.disable seqs.config pillar=true" "${SBX}/sudo.log" && ok || bad "reset must disable the SEQS pillar"
 grep -q "webcam's USB controller now belongs to no qube" <<<"$out" && ok || bad "reset must say what the webcam controller needs"
 # With nothing of SEQS left, a reset finds nothing to do and succeeds.
-rm -f "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_NUC11_CONF}"
+rm -f "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy" "${SEQS_NUC11_CONF}" "${SEQS_VPN_MONITOR}"
 out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
 	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" && [ "$(reset_vms)" = "A-notes debian-13-xfce personal sys-firewall sys-net vault " ] && ok \
