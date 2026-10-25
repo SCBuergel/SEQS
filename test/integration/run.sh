@@ -524,6 +524,21 @@ grep -q '^template Z-brave brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 ! grep -q "Step 1/3" <<<"$out" && ok || bad "install should not show the old 3-step prompts"
 rm -rf "${SBX}"
 
+# ── Scenario 6b2: a second usb_keyboard_prompt assignment keeps the prompt ──
+echo "== scenario: the 30-user-input takeover prompt survives a reassigned False =="
+new_sandbox
+run_setup --fetch-only >/dev/null 2>&1
+run_setup --stage-only >/dev/null 2>&1
+sed -i 's/^{%- set usb_keyboard_prompt = True %}$/{%- set usb_keyboard_prompt = False %}\n  {%- set usb_keyboard_prompt = True %}/' \
+	"${SEQS_PILLAR_TREE}/config.sls"
+mkdir -p "${SEQS_POLICY_DIR}"
+printf '%s\n' 'qubes.InputKeyboard * sys-usb @adminvm deny' > "${SEQS_POLICY_DIR}/30-user-input.policy"
+out="$(PTY_RUN_ANSWERS=n run_setup --build-only --qubes brave 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "##  ${SEQS_POLICY_DIR}/30-user-input.policy:" <<<"$out" \
+	&& grep -qF "##      qubes.InputKeyboard * sys-usb @adminvm deny" <<<"$out" && ok \
+	|| bad "a False line reassigned below must keep the 30-user-input takeover prompt: rc=$rc"
+rm -rf "${SBX}"
+
 # ── Scenario 6c: confirmation and ownership gates ──────────────────────────
 echo "== scenario: only y confirms; unowned or incomplete trees are refused =="
 new_sandbox
