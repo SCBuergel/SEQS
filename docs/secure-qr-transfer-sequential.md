@@ -297,9 +297,10 @@ The script checks the camera qubes and lists the USB devices in `sys-usb`.
 Type `START` in capital letters only if it reports no error and lists nothing
 but your keyboard and mouse. Otherwise:
 
-- Anything else listed means an internal device has been switched back on,
-  for example by a firmware update. Press `Enter` instead of typing `START`,
-  switch it off as in setup step 1, and run the script again.
+- Anything else listed is an external device still plugged in, or an
+  internal device switched back on, for example by a firmware update. Press
+  `Enter` instead of typing `START`, unplug it or switch it off as in setup
+  step 1, and run the script again.
 - An old `key.asc` in `A-qr-staging`: delete `~/QubesIncoming/seqs-qr-scanner`
   in that qube, shut it down, and run the script again.
 - `sys-usb-webcam` already running: the script powers off, because that qube
