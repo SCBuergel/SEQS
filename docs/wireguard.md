@@ -131,8 +131,9 @@ sudo journalctl -b
 
 While the tunnel is up, the two nftables chains should translate Qubes'
 synthetic DNS addresses to the IPv4 DNS server from the imported
-configuration. If IP traffic works but names do not resolve, do not replace `/etc/resolv.conf`; inspect these chains and the
-provider configuration's `DNS=` value.
+configuration. If IP traffic works but names do not resolve, do not replace
+`/etc/resolv.conf`; inspect these chains and the provider configuration's
+`DNS=` value.
 
 For repository upgrades to an already-provisioned WireGuard qube, rerun
 `--build-only --qubes wireguard`: a changed WireGuard component runs again
