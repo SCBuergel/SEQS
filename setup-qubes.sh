@@ -277,12 +277,22 @@ fetchSaltTree() {
 	# Export the resolved Git object, never the source qube's live working tree.
 	# source_commit is restricted to a full hexadecimal object ID above, so it
 	# is safe to interpolate into this fixed remote command.
-	qvm-run -p "${REPO_VM}" \
-		"git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit} && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts" \
+	# git archive applies the commit's own .gitattributes: export-subst writes
+	# commit-message text into a file, export-ignore drops one, and filters
+	# rewrite one, so the exported bytes would not be the reviewed blobs. A
+	# commit holding one, at any depth, is refused with exit code 3 before the
+	# export (ls-tree -z: an unusual name is not quoted, so the match holds).
+	local remote
+	remote="git -C ${REPO_PATH} cat-file -e ${source_commit}^{commit}"
+	remote+=" && { git -C ${REPO_PATH} ls-tree -r -z --name-only ${source_commit} | grep -qzE '(^|/)\.gitattributes\$'; [ \$? -eq 1 ] || exit 3; }"
+	remote+=" && git -C ${REPO_PATH} archive --format=tar ${source_commit} -- salt install-scripts"
+	qvm-run -p "${REPO_VM}" "${remote}" \
 		2>/dev/null </dev/null | head -c "${MAX_ARCHIVE}" > "${tarball}"
 	rc=$?
 	[ "$(stat -c %s -- "${tarball}")" -lt "${MAX_ARCHIVE}" ] \
 		|| die "the archive from ${REPO_VM} reached the ${MAX_ARCHIVE}-byte limit -- refusing it"
+	[ "${rc}" -ne 3 ] \
+		|| die "refusing source HEAD commit ${source_commit}: its tree holds a .gitattributes file, which would make git archive export other bytes than the reviewed files"
 	[ "${rc}" -eq 0 ] \
 		|| die "could not export salt/ + install-scripts/ from source HEAD commit ${source_commit} in ${REPO_VM}:${REPO_PATH} -- check --repo-vm and the repository path"
 

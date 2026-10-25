@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Mock qvm-run: the installer's ONLY VM->dom0 dataflow is
 #   qvm-run -p REPO_VM "git ... rev-parse ... HEAD^{commit}"
-#   qvm-run -p REPO_VM "git ... cat-file ... && git ... archive ..."
-# Emit the requested result. SEQS_MOCK_TAR overrides the archive payload so a
+#   qvm-run -p REPO_VM "git ... cat-file ... && ... && git ... archive ..."
+# Emit the requested result. The export command runs as sent, against
+# SEQS_REPO_ROOT in place of the repository path, so that its checks are the
+# runner's own. SEQS_MOCK_TAR overrides the archive payload so a
 # scenario can feed a hostile archive; SEQS_MOCK_ENDLESS=commit|archive makes
 # that answer a 20 MB stream, more than either limit, and the mock appends
 # "commit" or "archive" to SEQS_MOCK_ENDLESS_LOG only if the reader took it
@@ -27,6 +29,6 @@ esac
 if [ -n "${SEQS_MOCK_TAR:-}" ]; then
   cat "${SEQS_MOCK_TAR}"
 else
-  git -C "${SEQS_REPO_ROOT:?SEQS_REPO_ROOT unset}" archive --format=tar \
-    "${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}" -- salt install-scripts
+  [[ "$3" =~ ^git\ -C\ ([^\ ]+)\  ]]
+  exec bash -c "${3//"git -C ${BASH_REMATCH[1]} "/"git -C ${SEQS_REPO_ROOT:?SEQS_REPO_ROOT unset} "}"
 fi

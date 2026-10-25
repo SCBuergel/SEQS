@@ -378,9 +378,26 @@ out="$(SEQS_MOCK_ENDLESS=commit run_setup --fetch-only 2>&1)"; rc=$?
 [ ! -e "${SEQS_MOCK_ENDLESS_LOG}" ] && ok \
 	|| bad "the runner read a whole oversized answer instead of stopping at its limit: $(cat "${SEQS_MOCK_ENDLESS_LOG}")"
 unset SEQS_MOCK_ENDLESS_LOG
+# git archive applies the commit's own .gitattributes: with export-subst, a
+# file's $Format:%b$ becomes the commit message body, so the staged bytes are
+# not the reviewed blobs. A commit holding one anywhere is refused unexported.
+attr="$(mktemp -d)"
+git -C "${REPO}" archive HEAD salt install-scripts | tar -C "${attr}" -xf -
+git -C "${attr}" init -q -b main
+for where in . install-scripts/lib; do
+	echo '* export-subst' > "${attr}/${where}/.gitattributes"
+	git -C "${attr}" add -A && git -C "${attr}" -c user.name=t -c user.email=t@example.invalid \
+		-c commit.gpgsign=false commit -q -m attributes
+	SEQS_EXPECTED_COMMIT="$(git -C "${attr}" rev-parse HEAD)"
+	out="$(SEQS_REPO_ROOT="${attr}" run_setup --fetch-only 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF "refusing source HEAD commit ${SEQS_EXPECTED_COMMIT}: its tree holds a .gitattributes file" <<<"$out" \
+		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+		|| bad "a commit with ${where}/.gitattributes must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+	rm "${attr}/${where}/.gitattributes"
+done
 [ -z "$(ls -A "${SBX}/tmp")" ] && ok \
 	|| bad "a refused fetch must leave no temporary files"
-rm -rf "${SBX}" "${evil}"
+rm -rf "${SBX}" "${evil}" "${attr}"
 
 # ── Scenario 3b: fetch never replaces a fetched area SEQS does not own ──────
 echo "== scenario: fetch refuses to replace an unmarked fetched area =="

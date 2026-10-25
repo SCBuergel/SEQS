@@ -66,6 +66,7 @@ MUTATIONS = [
     ("fetch-commit-limit", R, "2>/dev/null </dev/null | head -c 100", "2>/dev/null </dev/null"),
     ("tar-whitespace", R, '[ -n "${extra}" ] && die', '[ -n "${extra}" ] && true'),
     ("tar-valid", R, 'tar -tf - < "${tarball}" > /dev/null 2>&1 || die', 'tar -tf - < "${tarball}" > /dev/null 2>&1 || true'),
+    ("fetch-gitattributes", R, "; [ \\$? -eq 1 ] || exit 3; }", "; }"),
     ("tar-stdin", R, 'tar -tf - < "${tarball}"', 'tar -tf "${tarball}"'),
     ("tar-listed-size", R, "total=$((total + 10#${f_size}))", "total=0"),
     ("fetch-bidi", R, '[ "${rc}" -eq 1 ] || die "refusing archive', '[ "${rc}" -ge 0 ] || die "refusing archive'),

@@ -12,7 +12,9 @@ data flow and controls. For the per-component trust analysis see
    accepts only a full 40- or 64-hex object ID, and then runs `git archive` for
    that exact commit's `salt/` + `install-scripts/` paths, never the live
    working tree. Resolving first avoids a moving-HEAD race between selection
-   and export. Every archive entry is validated before extraction
+   and export. A commit holding a `.gitattributes` file is refused before the
+   export, as Git would apply it to the exported files. Every archive entry
+   is validated before extraction
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths),
    and a file holding a terminal control, Unicode bidirectional control, or

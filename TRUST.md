@@ -70,7 +70,8 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
   resolved object. Stage-only and build-only never contact it.
 - **Residual risk:** Fetch asks `REPO_VM` to resolve its checked-out `HEAD`,
   validates only that the answer has the shape of a full Git object ID, and
-  exports that exact object. This excludes modified and untracked working-tree
+  exports that exact object (a commit holding a `.gitattributes` file is
+  refused, since Git would apply it while exporting). This excludes modified and untracked working-tree
   files and avoids a moving-HEAD race when the source is honest, but dom0 does
   not compare the answer to the independently reviewed ID. A compromised
   source can return any ID, runner, or archive and falsely report success.
@@ -106,7 +107,10 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 - **Trust assumption:** The tree staged under `/srv` is the fetched tree you reviewed.
 - **Established by:** 📝 Fetch resolves the repository qube's `HEAD`, validates
   the returned full object-ID shape, exports `salt/` and `install-scripts/`
-  from that exact Git object rather than the live working tree, validates the
+  from that exact Git object rather than the live working tree (refusing a
+  commit with a `.gitattributes` file anywhere in its tree: Git applies it
+  while exporting, so an `export-subst` or `export-ignore` attribute would
+  make the exported bytes differ from the reviewed files), validates the
   archive (under 16,000,000 bytes transferred, and the files' listed sizes
   must add up to less too, since a sparse entry lists its full size but takes
   little archive space; tar reads it from stdin, where it refuses compressed
