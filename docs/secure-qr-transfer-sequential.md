@@ -196,9 +196,9 @@ and no default disposable. The scan script repeats that check for
 `sys-usb-webcam`, `seqs-qr-scanner`, and `A-qr-staging` before every scan.
 Then run the checks for both computers under the full guide's
 [Check the setup](secure-qr-transfer.md#check-the-setup). They verify the
-controller assignment and the dom0 policies that keep the camera qubes from
-typing into dom0 or copying files anywhere else, which the build output does
-not show.
+controller assignment and the dom0 policies that keep the webcam and scanner
+qubes from typing into dom0 or copying files anywhere else, which the build
+does not verify.
 
 ### 5. Rehearse with a throwaway file
 
