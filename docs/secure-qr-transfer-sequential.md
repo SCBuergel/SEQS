@@ -103,9 +103,8 @@ when the sequential path still works.
 
 While in the firmware settings of a laptop whose battery you cannot remove,
 also switch off every option that keeps USB powered while the computer is
-off, often called `Always On USB` or `USB charging`, and use a
-battery-disconnect setting if there is one. This guide has not tested
-whether they cut all power.
+off, often called `Always On USB` or `USB charging`. This guide has not
+tested whether that cuts all power.
 
 ### 2. Find the USB controller
 
@@ -354,9 +353,9 @@ If any character differs, do not decrypt. A bad scan is unlikely, because QR
 codes carry error correction; assume that the camera side changed the file
 on purpose and is hostile. Delete the received `key.asc` and any other
 received file without opening them. Retry only once you know the cause: that
-side has also had the controller that `sys-usb` uses again, so the receiving
-computer itself is now in doubt. To retry, shut down `D-qr-display` and
-repeat from step 2 with the kept `key.asc`.
+side has also had the controller that `sys-usb` uses again, so with a USB
+keyboard or mouse the receiving computer itself is now in doubt. To retry,
+shut down `D-qr-display` and repeat from step 2 with the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
