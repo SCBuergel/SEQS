@@ -48,7 +48,9 @@ back at the next boot. Accept these limits before you set anything up:
   ([TRUST.md](../TRUST.md#usb-keyboard-policy-override-qubesinputkeyboard-from-sys-usb--dom0-));
   accepting such a prompt, even for your own device, opens the same channel.
   Only on that computer can you shrink the worst case to a compromised
-  `sys-usb`: use no USB keyboard or mouse on it, deny every such prompt, and
+  `sys-usb`: use no USB keyboard or mouse on it, deny every such prompt (or
+  keep Qubes' refusal of USB keyboards by setting `usb_keyboard_prompt` to
+  `False`, see [configuration](configuration.md#usb_keyboard_prompt)), and
   type the passphrase on the built-in keyboard. A built-in keyboard or
   touchpad that is itself USB fails setup step 1.
 - **Internal USB devices stay switched off in the firmware**, for every

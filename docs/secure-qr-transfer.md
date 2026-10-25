@@ -47,10 +47,10 @@ The procedure protects the secret only if these parts behave correctly:
 - dom0 (the Qubes administrative domain that controls all other qubes) on both
   computers;
 - Qubes OS itself;
-- on a computer where you type on a USB keyboard, `sys-usb` (the qube that
-  Qubes creates to own the computer's USB controllers) and that keyboard,
-  and likewise a USB mouse, because they can type or click in dom0, as
-  explained below; and
+- `sys-usb` (the qube that Qubes creates to own the computer's USB
+  controllers), together with any USB keyboard or mouse, wherever dom0
+  accepts keyboard or mouse input from it, because it can then type or click
+  in dom0, as explained below; and
 - you, following the steps in order.
 
 Everything else is treated as possibly hostile, and it falls into two sides:
@@ -70,20 +70,31 @@ procedure will tell you. No second layer of encryption protects against this:
 the split holds only because you perform the steps in the order given, so that
 nothing on the camera side is running when the passphrase is typed.
 
-A keyboard side that goes through a USB qube can do more than watch. With a USB
-keyboard, `sys-usb` passes each key press to dom0, and dom0 cannot tell a real
+A keyboard side that goes through a USB qube can do more than watch. `sys-usb`
+passes each key press of a USB keyboard to dom0, and dom0 cannot tell a real
 key press from one that `sys-usb` invents. A compromised `sys-usb`, or a
 malicious USB keyboard, can therefore type into dom0 or a key qube on either
 computer, for example a command that copies `master.key` to a qube with network
 access, without the camera side or the passphrase. A USB mouse lets it click,
-for example on dialogs. The QR transfer does not create this risk, which exists
-whenever you use a USB keyboard on Qubes, but it makes `sys-usb` a single point
-of failure rather than an independent second side.
+for example on dialogs. What decides is whether dom0 accepts such input from
+`sys-usb`, not which keyboard you type on. A computer installed with a USB
+keyboard accepts it by policy. One installed with its built-in keyboard
+accepts it only through a prompt: Qubes refuses USB keyboards there, and SEQS
+makes dom0 ask before one works, as Qubes asks before a mouse works
+([TRUST.md](../TRUST.md#usb-keyboard-policy-override-qubesinputkeyboard-from-sys-usb--dom0-));
+a compromised `sys-usb` can raise the same prompt, and accepting it, even for
+your own device, opens the channel. The QR transfer does not create this risk,
+which exists whenever dom0 accepts input from `sys-usb`, but it makes
+`sys-usb` a single point of failure rather than an independent second side.
 
-The two-side protection therefore holds in full only if you type on a keyboard
-that does not go through a USB qube, such as a built-in laptop keyboard that is
-not internally USB ([check this](#check-whether-the-built-in-keyboard-uses-usb));
-its key presses reach dom0 directly. With a USB keyboard, the split still
+The two-side protection therefore holds in full only on a computer installed
+with a built-in keyboard that is not internally USB
+([check this](#check-whether-the-built-in-keyboard-uses-usb)), on which you
+use no USB keyboard or mouse and deny every prompt for one; setting
+`usb_keyboard_prompt` to `False` in the
+[configuration](configuration.md#usb_keyboard_prompt) keeps Qubes' refusal of
+USB keyboards instead of a prompt. The built-in keyboard's key presses reach
+dom0 directly. Wherever dom0 accepts input from `sys-usb`, the split still
 protects against parts that can only watch, such as a camera that sees the
 paper but never the encrypted file.
 
@@ -221,9 +232,11 @@ escapes through Qubes itself or
 [qrexec](https://doc.qubes-os.org/en/latest/developer/services/qrexec.html)
 (the Qubes service through which qubes copy files, open links, and send input
 to each other), a compromised dom0, or a webcam left
-plugged in at the next boot. Anything the webcam leaves behind that survives
-the power-off reaches `sys-usb`, which with a USB keyboard can type into dom0,
-as described under [What you must trust](#what-you-must-trust). The worst case
+plugged in at the next boot. During the scan the webcam qube drives the
+controller directly, so anything the camera side leaves in it that survives
+the power-off reaches `sys-usb`, which can type into dom0 wherever dom0
+accepts keyboard or mouse input from it, as described under
+[What you must trust](#what-you-must-trust). The worst case
 is therefore control of the whole receiving computer, not only a leaked
 passphrase.
 
@@ -793,12 +806,15 @@ it, shut the receiving computer down, and remove all power as described for
 the sequential path under
 [Choose the hardware-isolation path](#choose-the-hardware-isolation-path); a
 restart is not enough. Then start the computer with only the keyboard
-attached. If `sys-usb` is a disposable (in dom0, `qvm-prefs sys-usb klass`
-prints `DispVM`), this discards its state, and what remains is the residual
-risk the sequential path accepts. Continue only if you accept that; otherwise
-replace the keyboard. If `sys-usb` is not a disposable, treat it, and with a
-USB keyboard the whole receiving computer, as compromised, and do not
-continue. The same rule applies whenever this happens during a transfer.
+attached. If dom0 accepts keyboard or mouse input from `sys-usb`
+([What you must trust](#what-you-must-trust)), `sys-usb` could have typed or
+clicked there in the meantime: treat the whole receiving computer as
+compromised, and do not continue. Otherwise, if `sys-usb` is a disposable (in
+dom0, `qvm-prefs sys-usb klass` prints `DispVM`), the restart discards its
+state, and what remains is the residual risk the sequential path accepts.
+Continue only if you accept that; otherwise replace the keyboard. If `sys-usb`
+is not a disposable, treat it as compromised, and do not continue. The same
+rule applies whenever this happens during a transfer.
 
 ### Rehearse with a throwaway file
 
@@ -1024,9 +1040,9 @@ Otherwise, type `START` in capital letters. After that:
    plugged in when the script starts `sys-usb-webcam`, it ends up in that qube
    together with the webcam. The script then finds more than one USB device,
    refuses to scan, and powers off. Treat that keyboard or mouse as exposed to
-   the webcam: use it again only if you accept that its firmware may have been
-   compromised, the same residual risk this path already accepts for the
-   controller; otherwise replace it.
+   the camera side: use it again only if you accept that its firmware may
+   have been compromised, the same residual risk this path already accepts
+   for the controller; otherwise replace it.
 2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the webcam,
    into the socket you chose for it during setup. You have 30 seconds.
 3. The script starts `sys-usb-webcam` and `seqs-qr-scanner`, checks that exactly
@@ -1037,7 +1053,9 @@ Otherwise, type `START` in capital letters. After that:
    Point the webcam at the QR code.
 4. Unplug the webcam when the script reports that the copy completed, or
    when it reports an error. Do not reconnect the keyboard or mouse.
-5. The computer powers off, whether the scan worked or not.
+5. The computer powers off, whether the scan worked or not. If it is still
+   running two minutes after you unplugged the webcam, hold the power button
+   until it is off.
 
 Once the computer is off, remove every power source you can: unplug the power
 cable, and take out the battery if it is removable. The limits of this step are
