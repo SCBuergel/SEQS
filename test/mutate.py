@@ -32,6 +32,7 @@ Q = "salt/seqs/qube.sls"
 G = "install-scripts/lib/verify-gpg.sh"
 QR = "salt/seqs/files/qr-sequential.sh"
 VM = "salt/seqs/files/seqs-vpn-monitor"
+L = "install-scripts/components/ledger/template-vm.sh"
 
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
@@ -194,6 +195,9 @@ MUTATIONS = [
     ("gpg-sha256", G, "| sha256sum --check --strict --quiet \\\n", "| true \\\n"),
     ("gpg-apt-pin", G, "Pin-Priority: -1\\n\\nPackage", "Pin-Priority: 1\\n\\nPackage"),
     ("gpg-signed-by", G, "signed-by=${keyring}]", "]"),
+    ("ledger-sha512", L, "| sha512sum --check --strict --quiet \\\n", "| true \\\n"),
+    ("ledger-signature", L, "openssl dgst -sha256 -verify", "true || openssl dgst -sha256 -verify"),
+    ("ledger-listed", L, "'$1 == h && $2 == f { ok = 1 }", "'{ ok = 1 }"),
     ("qube-component-name", Q, "{%   if comp | regex_match(name_re) is none %}", "{%   if false %}"),
     ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}$') is none %}", "{%     if false %}"),
     ("qube-browser-vm", Q, "{% if browser_vm | regex_match(name_re) is none %}", "{% if false %}"),

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+. "$(dirname "$0")/verify-gpg.sh"
 
 echo "Adding Ledger udev rules..."
 
@@ -36,24 +37,47 @@ else
 	sudo apt-get install -y libfuse2
 fi
 
-# curl is needed for the download below.
-sudo apt-get install -y curl
+# curl downloads, openssl checks Ledger's signature below.
+sudo apt-get install -y curl openssl
 
 # ─── Ledger Live AppImage ────────────────────────────────────────────────────
-# Ledger publishes no GPG signature for the Linux AppImage and the URL is
-# unversioned ("latest"), so the download cannot be cryptographically
-# verified or version-pinned -- see TRUST.md, "Ledger Live ❌".
+# Ledger signs a SHA-512 list of each release's files with an ECDSA key
+# (secp256k1), which Ledger Live's own updater embeds: LEDGER_PUBKEY below is
+# apps/ledger-live-desktop/src/main/updater/ledger-pubkey.ts in
+# github.com/LedgerHQ/ledger-live, and the Whonix wiki's "Ledger Live
+# Installation with Verification" shows the same key. On 2026-10-25 the 4.24.1
+# list verified against it and named LEDGER_SHA512, the hash of the AppImage
+# then served. The pin fixes the release; the signature lets a reviewer trust
+# the key instead of the hash.
 #
-# Install it root-owned in the template: the app qube then gets it from the
+# Installed root-owned in the template: the app qube then gets it from the
 # template's root volume at every start, so a swap takes root and a hook under
 # /rw rather than a write to the home directory (see TRUST.md).
-#
-# Templates have no direct network; route the curl through the Qubes
-# apt proxy. -f makes curl fail on an HTTP error instead of saving an
-# error page as the AppImage.
-echo "downloading Ledger Live..."
-TMP=$(mktemp)
-trap 'rm -f "${TMP}"' EXIT
-curl --proxy 127.0.0.1:8082 -fsSL https://download.live.ledger.com/latest/linux -o "${TMP}"
-sudo install -m 0755 -o root -g root "${TMP}" /usr/bin/LedgerLive.AppImage
-echo "installed /usr/bin/LedgerLive.AppImage (root-owned)"
+LEDGER_VERSION="4.24.1"
+LEDGER_SHA512="8563680f38dc59f023f79a1e86037e39fea8b7c2fbf6158987b197f5b04e13b456cf387f55f76ec8b35faddd3fdb4802e1648e0e064285e2c217b81964e096cc"
+APPIMAGE="ledger-live-desktop-${LEDGER_VERSION}-linux-x86_64.AppImage"
+SUMS="ledger-live-desktop-${LEDGER_VERSION}.sha512sum"
+LEDGER_PUBKEY='-----BEGIN PUBLIC KEY-----
+MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEN7qcsG6bogi1nkD3jnMWS813wWguYEcI
+CRcijSvFskSFjHB5la4xUt+Omb2t6iUwop+JRy+EUhy0UQ9p/cPsQA==
+-----END PUBLIC KEY-----'
+
+# Templates have no direct network; route the downloads through the Qubes
+# update proxy. -f makes curl fail on an HTTP error instead of saving the page.
+echo "downloading ${APPIMAGE}..."
+TMP="$(mktemp -d)"
+trap 'rm -rf "${TMP}"' EXIT
+curl --proxy "${UPDATES_PROXY}" -fsSL -o "${TMP}/${APPIMAGE}" "https://download.live.ledger.com/${APPIMAGE}"
+for f in "${SUMS}" "${SUMS}.sig"; do
+	curl --proxy "${UPDATES_PROXY}" -fsSL -o "${TMP}/${f}" \
+		"https://resources.live.ledger.app/public_resources/signatures/${f}"
+done
+printf '%s  %s\n' "${LEDGER_SHA512}" "${TMP}/${APPIMAGE}" | sha512sum --check --strict --quiet \
+	|| { echo "ERROR: ${APPIMAGE} does not have the pinned SHA-512 -- not installing." >&2; exit 1; }
+printf '%s\n' "${LEDGER_PUBKEY}" > "${TMP}/ledger.pem"
+openssl dgst -sha256 -verify "${TMP}/ledger.pem" -signature "${TMP}/${SUMS}.sig" "${TMP}/${SUMS}" \
+	&& awk -v h="${LEDGER_SHA512}" -v f="${APPIMAGE}" '$1 == h && $2 == f { ok = 1 } END { exit !ok }' "${TMP}/${SUMS}" \
+	|| { echo "ERROR: Ledger's signed hash list does not vouch for ${APPIMAGE} -- not installing." >&2; exit 1; }
+echo "sha512 and Ledger signature OK -- ${APPIMAGE}"
+sudo install -m 0755 -o root -g root "${TMP}/${APPIMAGE}" /usr/bin/LedgerLive.AppImage
+echo "installed /usr/bin/LedgerLive.AppImage (Ledger Live ${LEDGER_VERSION}, root-owned)"

@@ -740,6 +740,56 @@ grep -q "'Nowhere' in ${ab}/exit is not a GnosisVPN destination" <<< "${out}" &&
 	|| bad "an unknown exit must be refused before the worker starts: ${out}"
 rm -rf "${ab}"
 
+echo "== ledger installer: only the pinned AppImage, vouched for by Ledger's key =="
+# A copy of the installer with a disposable test key and AppImage in place of
+# Ledger's, and stubs, called by absolute path, for sudo (logs) and curl
+# (copies from the test directory).
+lg="$(mktemp -d)"; mkdir -p "${lg}/bin" "${lg}/src" "${lg}/run"
+if openssl ecparam -name secp256k1 -genkey -noout -out "${lg}/key.pem" 2>/dev/null; then
+	openssl ec -in "${lg}/key.pem" -pubout -out "${lg}/pub.pem" 2>/dev/null
+	openssl ecparam -name secp256k1 -genkey -noout -out "${lg}/other.pem" 2>/dev/null
+	printf '#!/bin/sh\necho "$*" >> "%s/sudo.log"\ncat > /dev/null\n' "${lg}" > "${lg}/bin/sudo"
+	printf '#!/bin/sh\nfor a; do case "$prev" in -o) out="$a" ;; esac; prev="$a"; done\ncp "%s/src/${a##*/}" "$out"\n' "${lg}" > "${lg}/bin/curl"
+	chmod +x "${lg}/bin/sudo" "${lg}/bin/curl"
+	cp install-scripts/lib/verify-gpg.sh "${lg}/run/"
+	A=ledger-live-desktop-4.24.1-linux-x86_64.AppImage S=ledger-live-desktop-4.24.1.sha512sum
+	echo app > "${lg}/src/${A}"
+	h="$(sha512sum "${lg}/src/${A}" | cut -d' ' -f1)"
+	python3 - install-scripts/components/ledger/template-vm.sh "${lg}" "${h}" > "${lg}/run/t.sh" <<'EOF'
+import re, sys
+s, d, h = open(sys.argv[1]).read(), sys.argv[2], sys.argv[3]
+s = re.sub(r"LEDGER_PUBKEY='[^']*'", "LEDGER_PUBKEY='" + open(d + "/pub.pem").read().strip() + "'", s)
+s = re.sub(r'LEDGER_SHA512="[0-9a-f]*"', 'LEDGER_SHA512="' + h + '"', s)
+s = re.sub(r"(^|[^-/A-Za-z_])(sudo|curl) ", lambda m: m.group(1) + d + "/bin/" + m.group(2) + " ", s, flags=re.M)
+print(s)
+EOF
+	signlist() {  # KEY LINE... -- the signed hash list
+		printf '%s\n' "${@:2}" > "${lg}/src/${S}"
+		openssl dgst -sha256 -sign "${lg}/$1" -out "${lg}/src/${S}.sig" "${lg}/src/${S}"
+	}
+	ledger() { rm -f "${lg}/sudo.log"; apt-cache() { :; }; export -f apt-cache; bash "${lg}/run/t.sh" < /dev/null 2>&1; }
+	installed() { grep -q "install -m 0755 -o root -g root .*/${A} /usr/bin/LedgerLive.AppImage" "${lg}/sudo.log"; }
+	signlist key.pem "${h}  ${A}" "$(printf '%0128d' 0)  other.dmg"
+	out="$(ledger)" && installed && grep -q "sha512 and Ledger signature OK -- ${A}" <<< "${out}" && ok \
+		|| bad "the signed, pinned AppImage was refused: ${out}"
+	signlist other.pem "${h}  ${A}"
+	out="$(ledger)" && bad "the installer accepted a list signed by another key"
+	grep -q "Ledger's signed hash list does not vouch for ${A}" <<< "${out}" && ! installed && ok \
+		|| bad "another key: wrong message or installed anyway [${out}]"
+	signlist key.pem "$(printf '%0128d' 0)  ${A}"
+	out="$(ledger)" && bad "the installer accepted a signed list that names another hash"
+	grep -q "Ledger's signed hash list does not vouch for ${A}" <<< "${out}" && ! installed && ok \
+		|| bad "other listed hash: wrong message or installed anyway [${out}]"
+	signlist key.pem "${h}  ${A}"
+	echo other app > "${lg}/src/${A}"
+	out="$(ledger)" && bad "the installer accepted an AppImage with another hash"
+	grep -q "${A} does not have the pinned SHA-512" <<< "${out}" && ! installed && ok \
+		|| bad "other AppImage: wrong message or installed anyway [${out}]"
+else
+	echo "  SKIP: this openssl cannot make a secp256k1 key"
+fi
+rm -rf "${lg}"
+
 echo "== seqs-bluetooth-bredr: dual-mode devices connect over classic Bluetooth =="
 # Three paired devices, with the script's /var/lib/bluetooth moved into the
 # test directory: dual-mode with BlueZ's default, Low Energy only, and

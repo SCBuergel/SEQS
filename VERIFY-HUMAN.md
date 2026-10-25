@@ -73,6 +73,7 @@ For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (
 | Element | `12D4CD600C2240A9F4A82071D7B0B66941D01538` | `curl -fsSL https://packages.element.io/debian/element-io-archive-keyring.gpg \| gpg --show-keys` then check both keyservers by-fingerprint |
 | Proton VPN | `84B0D3492C76C9C6F5873C18EDA3E22630349F1C` | `curl -fsSL https://keys.openpgp.org/vks/v1/by-fingerprint/84B0D3492C76C9C6F5873C18EDA3E22630349F1C \| gpg --show-keys`; also download `protonvpn-stable-release_1.0.8_all.deb` as <https://protonvpn.com/support/official-linux-vpn-debian> describes, compare its `sha256sum` with the hash published there, and run `gpg --show-keys` on `usr/share/keyrings/protonvpn-stable-archive-keyring.gpg` inside it (`dpkg-deb -x`) |
 | GnosisVPN | `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, and SHA-256 `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb` for `gnosisvpn_0.95.2_amd64.deb` | `gpg --show-keys install-scripts/components/gnosisvpn/gnosisvpn-public-key.asc`, and `curl -fsSL https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb \| sha256sum`; the key comes only from the GnosisVPN project, so confirm the fingerprint through a channel of your own |
+| Ledger Live (ECDSA, not OpenPGP) | the `LEDGER_PUBKEY` block and `LEDGER_SHA512` in `install-scripts/components/ledger/template-vm.sh` | compare the key with `apps/ledger-live-desktop/src/main/updater/ledger-pubkey.ts` in <https://github.com/LedgerHQ/ledger-live>; then, with the key saved as `ledger.pem` and `F=ledger-live-desktop-4.24.1.sha512sum`, `curl -fsSL --remote-name-all https://resources.live.ledger.app/public_resources/signatures/$F{,.sig}` and `openssl dgst -sha256 -verify ledger.pem -signature $F.sig $F` must print `Verified OK`, and `$F` must list `LEDGER_SHA512` for the AppImage |
 
 KeePassXC, BitBox, and OpenOffice also pin the SHA-256 of their release file (`*_SHA256` in the script); after you have checked a download's signature yourself, compare its `sha256sum` with the pin.
 
@@ -107,7 +108,7 @@ When you run `setup-qubes.sh`:
 5. To see each qube's own output, add `--verbose` to the setup command; then watch for the verification lines:
     - `Brave keyring verified -- <the three pinned fingerprints>`
     - `key verified: <pinned fingerprint>` for each imported repository or signing key (KeePassXC, Signal, Docker, VS Code, Element, BitBox, OpenOffice, GnosisVPN, Proton VPN, and Brave next to its keyring line); compare it with the table above
-    - `sha256 OK -- <file>`, then `signature OK -- <file> signed by <pinned fingerprint>`, for each signed download, such as `KeePassXC-2.7.12-x86_64.AppImage`, `bitbox_4.51.0_amd64.deb`, the OpenOffice archive, and the GnosisVPN package
+    - `sha256 OK -- <file>`, then `signature OK -- <file> signed by <pinned fingerprint>`, for each signed download, such as `KeePassXC-2.7.12-x86_64.AppImage`, `bitbox_4.51.0_amd64.deb`, the OpenOffice archive, and the GnosisVPN package; for Ledger Live, `Verified OK` and then `sha512 and Ledger signature OK -- <AppImage>`
     - `installing extension <id>` for each `brave-extension-*`
 
 6. Watch for verifier-rejection diagnostics. If `verify_detached_sig` ever fails, `--verbose` output shows **one** of the following root-cause lines before that component's state fails (when gpg names several problems, the line names the last one it reported), followed by `ERROR: <file> signature verification FAILED (gpg exit N, pin: ...)`; that ERROR line alone means gpg failed without naming a cause:
@@ -195,7 +196,7 @@ What this whole pipeline does **not** verify:
 - That Brave / Signal / KeePassXC / Element / BitBox / etc. (the upstreams) build clean binaries from clean source. The pin proves you got *their* key; it does not vouch for what they sign. The apt-`preferences.d` pins narrow this to "they can sign the *named* package set" but a hostile build of *those* packages still gets through.
 - That `REPO_VM` hasn't been tampered with between repo checkout and install.
 - That dom0 hasn't been tampered with.
-- That **Ledger Live**, **pyenv**, **nvm**, **Claude Code**, the snap-installed **Telegram**, or the Brave **wallet extensions** match anything beyond what their upstream (and, for Telegram, Canonical's snap assertion chain) chose to publish. See `TRUST.md` §3 for the per-component trust level.
+- That **pyenv**, **nvm**, **Claude Code**, the snap-installed **Telegram**, or the Brave **wallet extensions** match anything beyond what their upstream (and, for Telegram, Canonical's snap assertion chain) chose to publish. See `TRUST.md` §3 for the per-component trust level.
 - That a hostile **wallet extension** update, once on the wallet qube, is contained by network rules. By default the wallet qubes have no `qvm-firewall` allow-list — see §6 above and TRUST.md §4 "Wallet qube egress is unrestricted ⚠️".
 - That a `trezor` qube can independently cross-check a transaction outside the browser-extension UX — SEQS does **not** install Trezor Suite. The hardware-wallet on-device confirmation screen is the *only* non-extension source of truth in that qube.
 
