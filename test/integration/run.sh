@@ -726,11 +726,12 @@ new_sandbox
 export SEQS_MOCK_STATE="${SBX}/qubes.state"
 # Listed so that plain list order would remove a NetVM before its user and a
 # template before its app qube. A-notes is the user's own qube under a SEQS
-# name; A-orphan was created by an interrupted build that never marked it.
+# name; A-orphan was created by an interrupted build that never marked it;
+# my-wallet-backup is the user's clone of a SEQS qube, with its features.
 printf '%s\n' "sys-net running" "sys-firewall running" "debian-13-xfce halted" "personal halted" "vault halted" \
 	"Z-keepass halted" "A-keepass running" "A-gnosisvpn running" "A-signal running" "Z-gnosisvpn halted" "Z-signal halted" \
 	"A-qr-camera halted" "Z-qr-camera halted" "sys-usb-webcam halted" "seqs-qr-scanner halted" \
-	"seqs-gnosisvpn-update-proxy halted" "A-notes halted" "A-orphan halted" > "${SEQS_MOCK_STATE}"
+	"seqs-gnosisvpn-update-proxy halted" "A-notes halted" "A-orphan halted" "my-wallet-backup halted" > "${SEQS_MOCK_STATE}"
 export SEQS_MOCK_UNMANAGED="A-notes A-orphan"
 export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d" SEQS_ETC_DIR="${SBX}/etc/seqs"
 export SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequential" SEQS_VPN_MONITOR="${SBX}/bin/seqs-vpn-monitor"
@@ -754,7 +755,7 @@ printf '%s\n' "# SEQS keyboard rule, replaced by hand" "qubes.Filecopy * seqs-qr
 	> "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy"
 echo "# mine" > "${SEQS_POLICY_DIR}/40-mine.policy"
 printf '%s\n' "seqs-gnosisvpn-update-proxy seqs-gnosisvpn-temporary-proxy 1" \
-	"sys-usb-webcam seqs-managed 1" "seqs-qr-scanner seqs-managed 1" > "${SBX}/features"
+	"sys-usb-webcam seqs-managed 1" "seqs-qr-scanner seqs-managed 1" "my-wallet-backup seqs-managed 1" > "${SBX}/features"
 export SEQS_MOCK_FEATURES="${SBX}/features"
 printf '%s\n' "sys-usb-webcam template A-qr-camera" "seqs-qr-scanner template A-qr-camera" > "${SBX}/prefs"
 export SEQS_MOCK_PREFS="${SBX}/prefs"
@@ -774,9 +775,11 @@ out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
 for vm in A-keepass Z-keepass A-gnosisvpn A-signal sys-usb-webcam seqs-qr-scanner seqs-gnosisvpn-update-proxy A-orphan; do
 	grep -q "^  ${vm}$" <<<"$out" && ok || bad "the dry run must list ${vm}: ${out}"
 done
-for vm in A-notes personal vault debian-13-xfce sys-net; do
+for vm in A-notes personal vault debian-13-xfce sys-net my-wallet-backup; do
 	grep -q "^  ${vm}$" <<<"$out" && bad "the dry run must not list ${vm}" || ok
 done
+grep -qxF "  my-wallet-backup: carries a SEQS feature but is not a SEQS name (a clone?): left in place" <<<"$out" && ok \
+	|| bad "the dry run must report the clone it leaves in place: ${out}"
 grep -q "would set personal netvm to none" <<<"$out" && ok || bad "the dry run must name the NetVM user: ${out}"
 grep -q "^  ${SEQS_SALT_TREE}$" <<<"$out" && grep -q "^  ${SEQS_POLICY_DIR}/29-browser.policy$" <<<"$out" \
 	&& grep -q "^  ${SEQS_NUC11_FW}$" <<<"$out" && ok || bad "the dry run must list the dom0 files: ${out}"
@@ -798,7 +801,7 @@ out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="y" python3 "${REPO}/test/lib
 # NetVM user is disconnected, marked dom0 files go, unmarked ones stay.
 out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log" \
 	XDG_CONFIG_HOME="${SBX}/config" python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
-[ "$(reset_vms)" = "A-notes debian-13-xfce personal sys-firewall sys-net vault " ] && ok \
+[ "$(reset_vms)" = "A-notes debian-13-xfce my-wallet-backup personal sys-firewall sys-net vault " ] && ok \
 	|| bad "reset left the wrong qubes: $(reset_vms); ${out}"
 [ "$(awk '$1 == "personal" { print $2 }' "${SBX}/netvm")" = "none" ] && ok || bad "the NetVM user must be disconnected"
 for f in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_ETC_DIR}" "${SEQS_QR_SCRIPT}" \
@@ -821,7 +824,8 @@ grep -q "webcam's USB controller now belongs to no qube" <<<"$out" && ok || bad 
 rm -f "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy" "${SEQS_NUC11_CONF}" "${SEQS_VPN_MONITOR}"
 out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
 	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" && [ "$(reset_vms)" = "A-notes debian-13-xfce personal sys-firewall sys-net vault " ] && ok \
+[ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" \
+	&& [ "$(reset_vms)" = "A-notes debian-13-xfce my-wallet-backup personal sys-firewall sys-net vault " ] && ok \
 	|| bad "a second reset must succeed and change nothing: rc=$rc ${out}"
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_NUC11_FW SEQS_NUC11_CONF SEQS_MOCK_UNMANAGED
 unset SEQS_MOCK_FEATURES SEQS_MOCK_PREFS SEQS_MOCK_NETVM_STATE

@@ -57,7 +57,7 @@ only when the reviewed repository tree itself changed.
 ## Resetting SEQS
 
 `--reset` takes SEQS off the machine without reinstalling Qubes OS: every
-qube SEQS built, whatever its name, and the files SEQS wrote in dom0. Use it
+qube SEQS built, under any of its names, and the files SEQS wrote in dom0. Use it
 before a first install from scratch after extensive changes, when converging
 or rebuilding single qubes is not enough. It does not undo what only a Qubes
 reinstall undoes: a dom0 that ran a revision you no longer trust stays that
@@ -72,9 +72,15 @@ for example with `qvm-backup`, then review what would go:
 
 The output lists the qubes, the qubes whose network would be disconnected,
 the dom0 files that would go, and the files under SEQS names that stay
-because SEQS did not write them. Qubes that SEQS did not mark as its own,
-such as a same-named qube you created, are not listed and stay. Then run the
-reset and type `RESET` when asked:
+because SEQS did not write them. A qube goes only if SEQS marked it as its
+own and it has a name SEQS gives: `D-`, `A-` or `Z-` followed by a base name,
+the QR camera qubes `sys-usb-webcam` and `seqs-qr-scanner`, or the GnosisVPN
+update proxy `seqs-gnosisvpn-update-proxy`. A same-named qube you created
+yourself is not listed and stays. A qube you cloned from a SEQS qube carries
+the `seqs-managed` feature of its source; under another name, such as
+`my-wallet-backup`, it is reported and stays, but under a SEQS name, such as
+`A-wallet-backup`, it goes with the rest. Then run the reset and type `RESET`
+when asked:
 
 ```bash
 ~/d.sh --reset

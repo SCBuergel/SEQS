@@ -13,6 +13,11 @@ shopt -s inherit_errexit
 # qube (A-) it derives from, and A- before the template (Z-) it is based on.
 PREFIXES=(D A Z)
 
+# The names SEQS gives the qubes it creates: the D-/A-/Z- catalogue qubes,
+# the QR camera qubes, and the temporary GnosisVPN update proxy. A clone of a
+# SEQS qube inherits its features, so --reset requires one of these names too.
+SEQS_NAMES='^([DAZ]-|(sys-usb-webcam|seqs-qr-scanner|seqs-gnosisvpn-update-proxy)$)'
+
 # How long to wait, in seconds, for a killed qube to actually leave the
 # "running" state before we give up and try qvm-remove anyway.
 SHUTDOWN_TIMEOUT=30
@@ -53,11 +58,14 @@ NetVM are preserved but disconnected (netvm set to none). If another qube uses
 a match in any other setting (template, default or management disposable,
 audio or GUI qube), or a match is a global default, nothing is changed.
 
---reset instead removes every qube SEQS built, whatever its name, and then
-the files SEQS wrote in dom0: the staged Salt trees, its state directory, the
-policy files, helpers, and NUC 11 headset files it marked, and its panel
-launchers. It asks you to type RESET first. sys-usb's memory setting, the
-window-manager shortcuts, and your copies of the runner and this helper stay.
+--reset instead removes every qube SEQS built, under any of its names (D-,
+A-, Z-, the QR camera qubes, the GnosisVPN update proxy), and then the files
+SEQS wrote in dom0: the staged Salt trees, its state directory, the policy
+files, helpers, and NUC 11 headset files it marked, and its panel launchers.
+A qube under another name stays even if it carries the seqs-managed feature,
+as a clone of a SEQS qube does. It asks you to type RESET first. sys-usb's
+memory setting, the window-manager shortcuts, and your copies of the runner
+and this helper stay.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -133,7 +141,7 @@ findUsers() {
 # leaves the others untouched too.
 found=()
 if [ "${RESET}" -eq 1 ]; then
-	# Every qube SEQS marked as its own, whatever its name: the catalogue
+	# Every qube SEQS marked as its own under a name SEQS gives: the catalogue
 	# qubes, the QR camera qubes, and a GnosisVPN proxy a run left behind. A
 	# qube without a marker is never touched, so an unreadable list must not
 	# read as an empty one.
@@ -144,7 +152,11 @@ if [ "${RESET}" -eq 1 ]; then
 		[[ "${vm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || { echo "  skipping '${vm}': unsafe name"; continue; }
 		if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \
 			|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then
-			found+=("${vm}")
+			if [[ "${vm}" =~ ${SEQS_NAMES} ]]; then
+				found+=("${vm}")
+			else
+				echo "  ${vm}: carries a SEQS feature but is not a SEQS name (a clone?): left in place"
+			fi
 		elif sudo test -e "${INTENTS_DIR}/${vm}"; then
 			echo "  ${vm}: no seqs-managed feature, but an interrupted SEQS build left its creation marker"
 			found+=("${vm}")

@@ -182,6 +182,7 @@ MUTATIONS = [
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
     # delete-vms.sh --reset: only marked qubes and files, in order, after RESET.
     ("reset-unmarked-qube", D, 'if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \\\n\t\t\t|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then', "if true; then"),
+    ("reset-clone-name", D, 'if [[ "${vm}" =~ ${SEQS_NAMES} ]]; then', 'if true; then'),
     ("reset-file-marker", D, '[[ "${l1}" == "# Managed by SEQS"* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# Managed by SEQS"* ]]', '[[ "${l1}" == "# "*SEQS* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# "*SEQS* ]]'),
     ("reset-remove-order", D, """\t\tif awk -F'|' -v r=" ${remaining[*]} " -v t="${vm}" \\\n\t\t\t\t'$1 != t && index(r, " " $1 " ") { for (i = 2; i <= 7; i++) if ($i == t) exit 1 }' <<< "${rows}"; then""", "\t\tif true; then"),
     ("reset-confirm-word", D, '[ "${answer}" = RESET ] ||', '[ -n "${answer}" ] ||'),
