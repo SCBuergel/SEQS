@@ -139,6 +139,14 @@ export SEQS_MOCK_FAIL_RC=0 SEQS_MOCK_FAIL_OUTPUT='          Result: False\nZ-sig
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
 	|| bad "a forged ERROR line must not narrow an unattributed failure"
+# With --verbose the output holds the templates' own lines, so a forged ERROR
+# line must not narrow a non-zero exit either.
+export SEQS_MOCK_FAIL_RC=20 SEQS_MOCK_FAIL_OUTPUT='Z-signal: ERROR forged by a template'
+: > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(run_setup --build-only --verbose --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" \
+	&& ! grep -q -- "--targets=A-keepass\|--targets=.*,A-keepass" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "with --verbose a forged ERROR line must not narrow an unattributed failure"
 # An app qube whose template cannot be read might be based on the failed one.
 unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT; export SEQS_MOCK_FAIL_RC=20
 echo "A-signal template " > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"

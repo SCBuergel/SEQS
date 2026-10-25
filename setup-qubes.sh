@@ -117,6 +117,9 @@ runQubesctl() {
 	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
 	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
 	[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1
+	# With --show-output the stream holds the targets' own output, so a target
+	# could forge an ERROR line: then no qube is singled out as the failed one.
+	[[ " $* " != *" --show-output "* ]] || UNATTRIBUTED_FAILURE=1
 	local vm
 	for vm in "${FAILED_QUBES[@]}"; do
 		echo "${vm}: last error lines of this run in /var/log/qubes/mgmt-${vm}.log:" >&2
@@ -1049,8 +1052,9 @@ buildQubes() {
 		echo "         with --verbose for full per-state output)." >&2
 		echo "         Re-run to converge -- finished components are skipped." >&2
 		FAILED=1
-		# Without a per-qube ERROR line from qubesctl, any template may be the
-		# failed one; ERROR lines then may come from a template's own output.
+		# qubesctl's own per-qube ERROR lines name the failed templates. Without
+		# them, or when a template's output could have forged one, every
+		# template counts as failed.
 		[ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ] \
 			|| FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
 	fi
