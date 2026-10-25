@@ -23,6 +23,15 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {#- Ask in dom0 before a USB keyboard from sys-usb works where Qubes 4.3 would
     refuse it (True/False); see docs/configuration.md. #}
 {%- set usb_keyboard_prompt = True %}
+{#- Dom0 desktop: panel launchers for dom0 programs, placed right after the
+    Qubes menu button, and window-tiling shortcuts; see docs/configuration.md. #}
+{%- set dom0_launchers = ['qubes-qube-manager.desktop', 'qubes-update-gui.desktop',
+                          'xfce4-screenshooter.desktop', 'xfce4-terminal.desktop'] %}
+{%- set window_tiling_keys = {
+  '<Super>Up': 'tile_up_key', '<Super>Down': 'tile_down_key',
+  '<Super>Left': 'tile_left_key', '<Super>Right': 'tile_right_key',
+  '<Super>Page_Up': 'tile_up_left_key', '<Super>Page_Down': 'tile_up_right_key',
+  '<Alt>Left': 'tile_down_left_key', '<Alt>Right': 'tile_down_right_key'} %}
 
 {#- Keep disabled until completing docs/secure-qr-transfer.md. #}
 {%- set webcam_usb_mode = 'disabled' %}
@@ -119,6 +128,8 @@ seqs:
   sys_usb_memory: {{ sys_usb_memory | tojson }}
   nuc11_headset_fix: {{ nuc11_headset_fix | tojson }}
   usb_keyboard_prompt: {{ usb_keyboard_prompt | tojson }}
+  dom0_launchers: {{ dom0_launchers | tojson }}
+  window_tiling_keys: {{ window_tiling_keys | tojson }}
   webcam_usb_controller: '{{ webcam_usb_controller }}'
   webcam_usb_mode: '{{ webcam_usb_mode }}'
   webcam_usb_no_strict_reset: {{ webcam_usb_no_strict_reset | tojson }}

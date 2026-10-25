@@ -152,6 +152,11 @@ MUTATIONS = [
     ("vpn-monitor-name", VM, '[[ "${vm}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]', '[[ -n "${vm}" ]]'),
     ("vpn-monitor-four-numbers", VM, "^[0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}$ ]]", "^.*$ ]]"),
     ("dom0-main-app-anchor", S, "[.]desktop\\\\Z') is none) %}", "[.]desktop$') is none) %}"),
+    # Dom0 desktop settings: names in the runner's file paths and xfconf properties.
+    ("dom0-launcher-name", S, "d | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop\\\\Z') is none %}", "false %}"),
+    ("dom0-tiling-shortcut", S, "or action is not string or action | regex_match('^[a-z][a-z_]*_key\\\\Z') is none %}", "%}"),
+    ("desktop-launcher-name", R, '[[ "${a}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$ && -z "${b}" ]] \\', 'true \\'),
+    ("desktop-shortcut", R, '[[ "${a}" =~ ${shortcut_re} && "${b}" =~ ^[a-z][a-z_]*_key$ ]] \\', 'true \\'),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "{%           if e not in ['dns', 'icmp'] and ((es", "{%           if false and ((es"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),

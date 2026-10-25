@@ -634,6 +634,66 @@ unset -f qvm-features xfconf-query pgrep xfce4-panel qvm-appmenus xf
 unset FEAT SEQS_FAKE_XFCONF
 rm -rf "${px}"
 
+echo "== addPanelPlugins() adds dom0 launchers after the menu button and binds tiling keys =="
+# A panel whose first plugin is the menu; two dom0 programs, one missing from
+# dom0; xfwm4 with a default key theme only.
+px="$(mktemp -d)"
+export SEQS_FAKE_XFCONF="${px}/xfconf.json"
+DESKTOP_FILE="${px}/desktop"
+DOM0_APPS="${px}/apps"
+echo '{"/panels": ["1"], "/panels/panel-1/plugin-ids": ["1", "15", "2"], "/plugins/plugin-1": "applicationsmenu",
+  "/plugins/plugin-15": "separator", "/plugins/plugin-15/expand": "true", "/plugins/plugin-2": "clock",
+  "/xfwm4/default/<Alt>F4": "close_window_key", "/xfwm4/default/<Super>Up": "maximize_window_key"}' > "${SEQS_FAKE_XFCONF}"
+mkdir -p "${px}/apps" && touch "${px}/apps/qubes-qube-manager.desktop" "${px}/apps/xfce4-terminal.desktop"
+printf '%s\n' "launcher qubes-qube-manager.desktop" "launcher no-such.desktop" "launcher xfce4-terminal.desktop" \
+	"key <Super>Up tile_up_key" "key <Super>Page_Up tile_up_left_key" > "${DESKTOP_FILE}"
+qvm-features() { true; }
+xfconf-query() { python3 test/lib/fake_xfconf.py "$@"; }
+pgrep() { echo "$$"; }
+xfce4-panel() { echo restarted >> "${px}/panel.log"; }
+xf() { xfconf-query -c xfce4-panel -p "$1" | tr '\n' ' '; }
+out="$(XDG_CONFIG_HOME="${px}/config" addPanelPlugins 2>&1)"
+eq "launchers in order, right after the first plugin" "$(xf /panels/panel-1/plugin-ids)" "Value is an array with 5 items:  1 16 17 15 2 "
+eq "a launcher is marked with its program" "$(xf /plugins/plugin-16/seqs-dom0)" "qubes-qube-manager.desktop "
+eq "a launcher starts dom0's own menu entry" "$(xf /plugins/plugin-17/items)" "Value is an array with 1 items:  ${px}/apps/xfce4-terminal.desktop "
+grep -q "dom0 has no menu entry no-such.desktop" <<< "${out}" && ok || bad "a missing dom0 menu entry must be named: ${out}"
+eq "the panel restarts to show them" "$(cat "${px}/panel.log")" "restarted"
+eq "the default key theme is copied before it is overridden" "$(xf '/xfwm4/custom/<Alt>F4')" "close_window_key "
+eq "the custom key theme overrides the default" "$(xf /xfwm4/custom/override)" "true "
+eq "a shortcut bound to another action is rebound" "$(xf '/xfwm4/custom/<Super>Up')" "tile_up_key "
+eq "a new shortcut is bound" "$(xf '/xfwm4/custom/<Super>Page_Up')" "tile_up_left_key "
+XDG_CONFIG_HOME="${px}/config" addPanelPlugins >/dev/null 2>&1
+eq "a rerun adds nothing" "$(xf /panels/panel-1/plugin-ids)" "Value is an array with 5 items:  1 16 17 15 2 "
+# The user removes one from the panel: the next build leaves it removed.
+xfconf-query -c xfce4-panel -p /plugins/plugin-17 -r -R
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids -n -a -t int -s 1 -t int -s 16 -t int -s 15 -t int -s 2
+XDG_CONFIG_HOME="${px}/config" addPanelPlugins >/dev/null 2>&1
+eq "a launcher the user removed is not added again" "$(xf /panels/panel-1/plugin-ids)" "Value is an array with 4 items:  1 16 15 2 "
+# A program that leaves the list loses its launcher, and is added again when
+# it returns, even after the user had removed it.
+printf '%s\n' "launcher xfce4-screenshooter.desktop" > "${DESKTOP_FILE}"
+touch "${px}/apps/xfce4-screenshooter.desktop"
+XDG_CONFIG_HOME="${px}/config" addPanelPlugins >/dev/null 2>&1
+# The freed plugin number is reused, so the markers tell the launchers apart.
+eq "a launcher whose program left the list goes, the new one takes its place" \
+	"$(xfconf-query -c xfce4-panel -l | grep -c '/seqs-dom0$') $(xf /plugins/plugin-16/seqs-dom0)$(xf /panels/panel-1/plugin-ids)" \
+	"1 xfce4-screenshooter.desktop Value is an array with 4 items:  1 16 15 2 "
+printf '%s\n' "launcher xfce4-terminal.desktop" > "${DESKTOP_FILE}"
+XDG_CONFIG_HOME="${px}/config" addPanelPlugins >/dev/null 2>&1
+panelPluginOf seqs-dom0 xfce4-terminal.desktop >/dev/null && ok \
+	|| bad "a program that returns to the list must get its launcher back"
+# A desktop file the state did not write this way is refused before anything is used.
+printf '%s\n' "launcher ../etc/x.desktop" > "${DESKTOP_FILE}"
+out="$(XDG_CONFIG_HOME="${px}/config" addPanelPlugins 2>&1)"; rc=$?
+[ "${rc}" -ne 0 ] && grep -q "unsafe launcher in" <<< "${out}" && ok || bad "an unsafe launcher name must stop the build: ${out}"
+printf '%s\n' "key <Super>Up;x tile_up_key" > "${DESKTOP_FILE}"
+out="$(XDG_CONFIG_HOME="${px}/config" addPanelPlugins 2>&1)"; rc=$?
+[ "${rc}" -ne 0 ] && grep -q "unsafe shortcut in" <<< "${out}" && ok || bad "an unsafe shortcut must stop the build: ${out}"
+unset -f qvm-features xfconf-query pgrep xfce4-panel xf
+unset SEQS_FAKE_XFCONF
+DESKTOP_FILE=/nonexistent
+rm -rf "${px}"
+
 echo "== seqs-vpn-monitor shows only four numbers from the VPN qube =="
 # The panel interprets markup in what the monitor prints: anything but four
 # numbers from the qube must show n/a. qvm-run is a fake that prints $OUT.

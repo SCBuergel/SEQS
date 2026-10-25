@@ -1581,6 +1581,37 @@ def test_cleanup_paths_never_name_home():
         check("seqs-validation-failed" not in parsed, "dom0 must accept cleanup path %r" % path)
 
 
+def test_dom0_desktop_settings():
+    case("dom0.sls: dom0 launchers and tiling keys are validated and handed to the runner")
+    _, parsed = render_state("dom0", "dom0")
+    contents = state_arg(parsed, "seqs-desktop", "file.managed", "contents")
+    check(state_arg(parsed, "seqs-desktop", "file.managed", "name") == "/var/lib/seqs/desktop"
+          and "launcher qubes-qube-manager.desktop\n" in contents
+          and "key <Super>Up tile_up_key\n" in contents
+          and "key <Alt>Right tile_down_right_key\n" in contents,
+          "the shipped launchers and tiling keys must reach the desktop file")
+    check(contents.index("launcher qubes-qube-manager.desktop") < contents.index("launcher xfce4-terminal.desktop"),
+          "launchers keep their configured order")
+    for bad in ("../x.desktop", "x.desktop y", "qubes-qube-manager", "a;b.desktop", "x.desktop\n"):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["dom0_launchers"] = [bad]
+        _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+        check("dom0_launchers entry" in _errors(parsed), "a launcher %r must be rejected" % bad)
+    for shortcut, action in (("<Super>Up;x", "tile_up_key"), ("Up", "tile_up_key"),
+                             ("<Super>Up", "rm -rf"), ("<Super>Up", "tile_up_key\n"), ("<Win>Up", "tile_up_key")):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["window_tiling_keys"] = {shortcut: action}
+        _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+        check("window_tiling_keys entry" in _errors(parsed), "a shortcut %r: %r must be rejected" % (shortcut, action))
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["dom0_launchers"] = []
+    pillar["window_tiling_keys"] = {}
+    _, parsed = render_state("dom0", "dom0", pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed
+          and "\nlauncher " not in state_arg(parsed, "seqs-desktop", "file.managed", "contents"),
+          "empty settings render an empty desktop file")
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

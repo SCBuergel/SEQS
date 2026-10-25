@@ -71,6 +71,8 @@ The top of `config.sls` sets values that apply to every qube:
 | `sys_usb_memory` | `600` | Minimum memory of `sys-usb` in MiB; see [below](#sys_usb_memory). |
 | `nuc11_headset_fix` | `False` | Makes the headset jack of an Intel NUC 11 Pro work; see [below](#nuc11_headset_fix). |
 | `usb_keyboard_prompt` | `True` | Makes dom0 ask before a USB keyboard works where Qubes 4.3 refuses it; see [below](#usb_keyboard_prompt). |
+| `dom0_launchers` | Qube Manager, Qubes Update, Screenshot, Terminal | Dom0 programs that get a launcher in the panel; see [Panel launchers](#panel-launchers). |
+| `window_tiling_keys` | eight `Super` and `Alt` shortcuts | Keyboard shortcuts that tile the focused window; see [below](#window_tiling_keys). |
 | `webcam_*` | QR transfer disabled | See [Secure QR USB modes](#secure-qr-usb-modes). |
 
 ## Components
@@ -226,6 +228,38 @@ no launchers and says so.
 A rebuild refreshes the launcher's entries. A launcher removed from the panel
 (right-click, **Remove**) stays removed; deleting the qube with
 [`delete-vms.sh`](deleting-vms.md) removes its launcher too.
+
+`dom0_launchers` lists dom0 programs by their menu entry under
+`/usr/share/applications` in dom0, such as `qubes-qube-manager.desktop`. Each
+gets a launcher of its own, in the listed order, right after the panel's
+first item, the Qubes menu button. A build names an entry that dom0 does not
+have and adds no launcher for it. A launcher removed from the panel stays
+removed; an entry removed from the list loses its launcher at the next build,
+and gets it back if it returns to the list.
+
+## `window_tiling_keys`
+
+This setting binds keyboard shortcuts that move the focused window to a half
+or a quarter of the screen, as the **Keyboard** tab of dom0's **Window
+Manager** settings does. It maps each shortcut, in the form that tab shows
+with the modifier in angle brackets, to the xfwm4 action:
+
+```jinja
+{%- set window_tiling_keys = {
+  '<Super>Up': 'tile_up_key', '<Super>Down': 'tile_down_key',
+  '<Super>Left': 'tile_left_key', '<Super>Right': 'tile_right_key',
+  '<Super>Page_Up': 'tile_up_left_key', '<Super>Page_Down': 'tile_up_right_key',
+  '<Alt>Left': 'tile_down_left_key', '<Alt>Right': 'tile_down_right_key'} %}
+```
+
+A build binds each shortcut in the custom key theme, copying xfwm4's default
+theme into it first if the computer still uses the default; a shortcut that
+was bound to another action is rebound. The window manager grabs these keys
+before any window sees them, so `Alt+Left` and `Alt+Right` no longer reach
+the programs in qubes, where browsers use them to go back and forward; choose
+other shortcuts if you need those. An empty map binds nothing and leaves
+earlier bindings in place. Like the panel launchers, this needs a running
+XFCE session of the user who runs the build.
 
 ## WireGuard NetVM
 

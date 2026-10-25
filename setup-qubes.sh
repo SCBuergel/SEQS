@@ -30,6 +30,8 @@ PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
 TARGETS_FILE="${SEQS_TARGETS_FILE:-/var/lib/seqs/targets}"  # written by seqs.dom0
 SELECTION_FILE="${SEQS_SELECTION_FILE:-/var/lib/seqs/selection}"
 RUN_MANIFEST="${SEQS_RUN_MANIFEST:-/var/lib/seqs/last-run}"
+DESKTOP_FILE="${SEQS_DESKTOP_FILE:-/var/lib/seqs/desktop}"  # written by seqs.dom0
+DOM0_APPS="${SEQS_DOM0_APPS:-/usr/share/applications}"
 FETCH_ROOT="${SEQS_FETCH_ROOT:-/var/lib/seqs/fetched}"
 FETCH_SALT_TREE="${FETCH_ROOT}/salt"
 FETCH_PILLAR_TREE="${FETCH_ROOT}/pillar"
@@ -559,7 +561,7 @@ shutdownAll() {
 	done
 }
 
-# ---- Panel launchers and monitors -------------------------------------------
+# ---- Panel launchers, monitors, and keyboard shortcuts ----------------------
 # Each app qube and named disposable that the seqs.dom0 state gave the
 # seqs-launcher-items feature (its main app, a terminal, a file manager) gets
 # one launcher in the dom0 XFCE panel: the button starts the first item, its
@@ -569,8 +571,12 @@ shutdownAll() {
 # removes it with the qube. The seqs-launcher-added and seqs-monitor-added
 # features record that a plugin was added: one the user removed from the
 # panel is not added again.
+# The dom0 programs listed in the desktop file (dom0_launchers) get one
+# launcher each, right after the panel's first plugin, the Qubes menu, marked
+# seqs-dom0; the file also carries xfwm4 shortcuts (window_tiling_keys).
 
 xfpanel() { xfconf-query -c xfce4-panel "$@"; }
+xfkeys() { xfconf-query -c xfce4-keyboard-shortcuts "$@"; }
 # xfArray PROPERTY -- the values of an xfconf array, one per line.
 xfArray() { xfpanel -p "$1" | tail -n +3; }
 
@@ -597,9 +603,10 @@ panelPluginOf() {
 	return 1
 }
 
-# newPanelPlugin TYPE MARK VM BEFORE -- add a TYPE plugin whose MARK property
-# is VM to the first panel, before its first BEFORE plugin (for a separator,
-# an expanding one) or at its end, and print its number.
+# newPanelPlugin TYPE MARK VM WHERE -- add a TYPE plugin whose MARK property
+# is VM to the first panel and print its number. WHERE is a plugin type: before
+# the first plugin of that type (for a separator, an expanding one); or
+# after:<number>: right after that plugin; or at the end if neither is found.
 newPanelPlugin() {
 	local panel id p args=() placed=0
 	panel="$(xfArray /panels | head -n 1)"
@@ -607,12 +614,17 @@ newPanelPlugin() {
 	[[ "${panel}" =~ ^[0-9]+$ && "${id}" =~ ^[0-9]+$ ]] || return 1
 	id=$((id + 1))
 	for p in $(xfArray "/panels/panel-${panel}/plugin-ids"); do
-		if [ "${placed}" -eq 0 ] && [ "$(xfpanel -p "/plugins/plugin-${p}" 2>/dev/null)" = "$4" ] \
+		if [ "${placed}" -eq 0 ] && [[ "$4" != after:* ]] \
+			&& [ "$(xfpanel -p "/plugins/plugin-${p}" 2>/dev/null)" = "$4" ] \
 			&& { [ "$4" != separator ] || [ "$(xfpanel -p "/plugins/plugin-${p}/expand" 2>/dev/null)" = true ]; }; then
 			args+=(-t int -s "${id}")
 			placed=1
 		fi
 		args+=(-t int -s "${p}")
+		if [ "${placed}" -eq 0 ] && [ "$4" = "after:${p}" ]; then
+			args+=(-t int -s "${id}")
+			placed=1
+		fi
 	done
 	[ "${placed}" -eq 1 ] || args+=(-t int -s "${id}")
 	xfpanel -p "/plugins/plugin-${id}" -n -t string -s "$1" \
@@ -679,13 +691,122 @@ panelMonitor() {
 		&& qvm-features -- "${vm}" seqs-monitor-added 1
 }
 
+# dropPanelPlugin N -- take panel plugin N off every panel and delete its
+# settings and files.
+dropPanelPlugin() {
+	local panel i ids
+	for panel in $(xfArray /panels); do
+		ids=()
+		for i in $(xfArray "/panels/panel-${panel}/plugin-ids"); do
+			[ "${i}" = "$1" ] || ids+=(-t int -s "${i}")
+		done
+		if [ "${#ids[@]}" -gt 0 ]; then
+			xfpanel -p "/panels/panel-${panel}/plugin-ids" -n -a "${ids[@]}"
+		else
+			xfpanel -p "/panels/panel-${panel}/plugin-ids" -r
+		fi
+	done
+	xfpanel -p "/plugins/plugin-$1" -r -R
+	rm -rf -- "${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/launcher-$1"
+}
+
+# readDesktop -- the dom0 desktop settings that the seqs.dom0 state validated:
+# DESKTOP_LAUNCHERS (desktop file names) and DESKTOP_KEYS ("shortcut action").
+readDesktop() {
+	DESKTOP_LAUNCHERS=()
+	DESKTOP_KEYS=()
+	[ -r "${DESKTOP_FILE}" ] || return 0
+	local kind a b
+	local shortcut_re='^(<(Super|Alt|Control|Shift|Primary|Meta|Hyper)>)+[A-Za-z0-9_]+$'
+	while read -r kind a b; do
+		case "${kind}" in ''|\#*) continue ;; esac
+		# Re-validated (root-written, but used in file paths and xfconf properties).
+		case "${kind}" in
+			launcher)
+				[[ "${a}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop$ && -z "${b}" ]] \
+					|| die "unsafe launcher in ${DESKTOP_FILE}: '${a} ${b}'"
+				DESKTOP_LAUNCHERS+=("${a}") ;;
+			key)
+				[[ "${a}" =~ ${shortcut_re} && "${b}" =~ ^[a-z][a-z_]*_key$ ]] \
+					|| die "unsafe shortcut in ${DESKTOP_FILE}: '${a} ${b}'"
+				DESKTOP_KEYS+=("${a} ${b}") ;;
+			*) die "unknown entry in ${DESKTOP_FILE}: '${kind}'" ;;
+		esac
+	done < "${DESKTOP_FILE}"
+}
+
+# dom0Launchers -- one launcher per configured dom0 program, in order, right
+# after the panel's first plugin; a launcher whose program left the list
+# goes, and one the user removed from the panel is not added again (the
+# seqs-dom0-launchers file in the panel's directory records additions).
+# Returns 0 if the panel changed.
+dom0Launchers() {
+	local added="${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/seqs-dom0-launchers"
+	local panel p prop entry id anchor="" changed=1
+	for prop in $(xfpanel -l | grep -E '^/plugins/plugin-[0-9]+/seqs-dom0$'); do
+		entry="$(xfpanel -p "${prop}")"
+		[[ " ${DESKTOP_LAUNCHERS[*]} " == *" ${entry} "* ]] && continue
+		p="${prop#/plugins/plugin-}"
+		dropPanelPlugin "${p%/seqs-dom0}"
+		changed=0
+	done
+	panel="$(xfArray /panels | head -n 1)"
+	[[ "${panel}" =~ ^[0-9]+$ ]] || return 1
+	# New launchers go after the last current one, or after the first plugin.
+	for p in $(xfArray "/panels/panel-${panel}/plugin-ids"); do
+		[ -n "${anchor}" ] || anchor="${p}"
+		xfpanel -p "/plugins/plugin-${p}/seqs-dom0" >/dev/null 2>&1 && anchor="${p}"
+	done
+	for entry in "${DESKTOP_LAUNCHERS[@]}"; do
+		panelPluginOf seqs-dom0 "${entry}" >/dev/null && continue
+		! grep -qxF -- "${entry}" "${added}" 2>/dev/null || continue
+		[ -f "${DOM0_APPS}/${entry}" ] \
+			|| { echo "WARNING: dom0 has no menu entry ${entry}; no panel launcher" >&2; continue; }
+		id="$(newPanelPlugin launcher seqs-dom0 "${entry}" "after:${anchor}")" \
+			|| { echo "WARNING: could not add a panel launcher for ${entry}" >&2; continue; }
+		xfpanel -p "/plugins/plugin-${id}/items" -n -a -t string -s "${DOM0_APPS}/${entry}"
+		mkdir -p -- "$(dirname "${added}")" && echo "${entry}" >> "${added}"
+		anchor="${id}"
+		changed=0
+	done
+	# Forget removals of programs that left the list, so a later return adds them.
+	if [ -e "${added}" ]; then
+		grep -xF -f <(printf '%s\n' "${DESKTOP_LAUNCHERS[@]}") -- "${added}" > "${added}.new" || true
+		mv -f -- "${added}.new" "${added}"
+	fi
+	return "${changed}"
+}
+
+# tilingKeys -- bind the configured window-tiling shortcuts in xfwm4's custom
+# key theme; a shortcut bound to another action is rebound.
+tilingKeys() {
+	local entry shortcut action prop
+	[ "${#DESKTOP_KEYS[@]}" -gt 0 ] || return 0
+	# xfwm4 reads the custom theme only once it overrides the default one; the
+	# keyboard settings dialog copies every default into it first, and so does this.
+	if [ "$(xfkeys -p /xfwm4/custom/override 2>/dev/null)" != true ]; then
+		for prop in $(xfkeys -l | grep '^/xfwm4/default/'); do
+			xfkeys -p "/xfwm4/custom/${prop#/xfwm4/default/}" -n -t string -s "$(xfkeys -p "${prop}")"
+		done
+		xfkeys -p /xfwm4/custom/override -n -t bool -s true
+	fi
+	for entry in "${DESKTOP_KEYS[@]}"; do
+		read -r shortcut action <<< "${entry}"
+		[ "$(xfkeys -p "/xfwm4/custom/${shortcut}" 2>/dev/null)" = "${action}" ] \
+			|| xfkeys -p "/xfwm4/custom/${shortcut}" -n -t string -s "${action}"
+	done
+}
+
 addPanelPlugins() {
 	local vm changed=0
-	panelReady || { echo "    No XFCE panel in this session: no panel launchers added."; return 0; }
+	panelReady || { echo "    No XFCE panel in this session: no panel launchers or shortcuts added."; return 0; }
+	readDesktop
 	for vm in "$@"; do
 		panelLauncher "${vm}" && changed=1
 		panelMonitor "${vm}" && changed=1
 	done
+	dom0Launchers && changed=1
+	tilingKeys
 	# The panel reads new plugins only when it starts.
 	[ "${changed}" -eq 0 ] || xfce4-panel -r >/dev/null 2>&1 \
 		|| echo "WARNING: could not restart the panel; the launchers appear at the next login" >&2

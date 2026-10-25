@@ -15,6 +15,8 @@
 {% set sys_usb_memory = seqs.get('sys_usb_memory', 0) %}
 {% set nuc11_headset_fix = seqs.get('nuc11_headset_fix', false) %}
 {% set usb_keyboard_prompt = seqs.get('usb_keyboard_prompt', true) %}
+{% set dom0_launchers = seqs.get('dom0_launchers', []) %}
+{% set tiling_keys = seqs.get('window_tiling_keys', {}) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
@@ -117,6 +119,18 @@ print("END")'{% endset %}
 {% endif %}
 
 {# Interpolated into a shell command; the integer test rejects booleans. #}
+{# The runner puts these into file paths and xfconf properties in dom0. #}
+{% for d in dom0_launchers %}
+{%   if d is not string or d | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop\\Z') is none %}
+{%     do errors.append("dom0_launchers entry '" ~ d ~ "' must be a desktop file name such as qubes-qube-manager.desktop") %}
+{%   endif %}
+{% endfor %}
+{% for shortcut, action in tiling_keys.items() %}
+{%   if shortcut | regex_match('^(<(Super|Alt|Control|Shift|Primary|Meta|Hyper)>)+[A-Za-z0-9_]+\\Z') is none
+      or action is not string or action | regex_match('^[a-z][a-z_]*_key\\Z') is none %}
+{%     do errors.append("window_tiling_keys entry '" ~ shortcut ~ "': '" ~ action ~ "' must map a modifier shortcut such as <Super>Up to an xfwm4 action ending in _key") %}
+{%   endif %}
+{% endfor %}
 {% if sys_usb_memory is not integer or sys_usb_memory < 0 %}
 {%   do errors.append("sys_usb_memory '" ~ sys_usb_memory ~ "' must be a whole number of MiB (0 leaves sys-usb unchanged)") %}
 {% endif %}
@@ -1290,6 +1304,26 @@ seqs-qr-sequential-config:
     - name: rm -f /etc/seqs/qr-sequential.conf /usr/local/sbin/seqs-qr-sequential
     - onlyif: test -e /etc/seqs/qr-sequential.conf -o -e /usr/local/sbin/seqs-qr-sequential
 {% endif %}
+
+# ── Dom0 desktop settings for the runner ───────────────────────────────────
+# Panel launchers and keyboard shortcuts live in the dom0 user's session, which
+# this root state cannot reach; setup-qubes.sh applies them from this file.
+seqs-desktop:
+  file.managed:
+    - name: /var/lib/seqs/desktop
+    - user: root
+    - group: root
+    - mode: '0644'
+    - makedirs: True
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
+        # Format: launcher <file in /usr/share/applications> | key <shortcut> <xfwm4 action>
+        {%- for d in dom0_launchers %}
+        launcher {{ d }}
+        {%- endfor %}
+        {%- for shortcut, action in tiling_keys.items() %}
+        key {{ shortcut }} {{ action }}
+        {%- endfor %}
 
 # ── Target list for the runner ─────────────────────────────────────────────
 # setup-qubes.sh reads this to know which qubes to provision (templates
