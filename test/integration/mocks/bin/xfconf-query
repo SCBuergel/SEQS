@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Tripwire, not a mock: no test may change the host's XFCE panel. Record the
+# call; fail.
+echo "xfconf-query $*" >> "${SEQS_TRIPWIRE_LOG:-/dev/null}"
+exit 1

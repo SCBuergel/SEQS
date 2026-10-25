@@ -20,6 +20,7 @@ eq()  { [ "$2" = "$3" ] && ok || bad "$1: expected [$3], got [$2]"; }
 
 # mocks/bin/systemctl records any call that reached systemctl through PATH;
 # without it, such a call could power off the machine running the tests.
+# The xfconf-query and xfce4-panel tripwires do the same for the host's panel.
 export SEQS_TRIPWIRE_LOG
 SEQS_TRIPWIRE_LOG="$(mktemp)"
 
@@ -34,6 +35,7 @@ new_sandbox() {
 	export SEQS_RUN_MANIFEST="${SBX}/var/lib/seqs/last-run"
 	export SEQS_FETCH_ROOT="${SBX}/var/lib/seqs/fetched"
 	export SEQS_POLICY_DIR="${SBX}/etc/qubes/policy.d"
+	export SEQS_DESKTOP_FILE="${SBX}/var/lib/seqs/desktop" XDG_CONFIG_HOME="${SBX}/config"
 	export SEQS_REPO_ROOT="${REPO}"
 	export SEQS_EXPECTED_COMMIT
 	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
@@ -1037,7 +1039,7 @@ grep -qx -- "poweroff --force --force" "${SBX}/systemctl.log" && ok || bad "a re
 rm -rf "${SBX}"
 
 [ ! -s "${SEQS_TRIPWIRE_LOG}" ] && ok \
-	|| bad "a test reached systemctl through PATH: $(head -n 3 "${SEQS_TRIPWIRE_LOG}")"
+	|| bad "a test reached systemctl, xfconf-query or xfce4-panel through PATH: $(head -n 3 "${SEQS_TRIPWIRE_LOG}")"
 rm -f "${SEQS_TRIPWIRE_LOG}"
 
 echo

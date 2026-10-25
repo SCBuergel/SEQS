@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# No test may see the host's processes, such as a running xfce4-panel whose
+# session the runner would then edit: nothing matches.
+exit 1
