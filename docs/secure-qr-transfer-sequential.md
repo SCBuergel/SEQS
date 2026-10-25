@@ -22,7 +22,9 @@ The secret travels in two pieces that must never meet on the camera side:
 
 The webcam, the QR data, and every qube that handles them are treated as
 possibly hostile. The procedure holds only while you do the steps in order,
-so that nothing on the camera side runs when you type the passphrase.
+so that nothing on the camera side runs when you type the passphrase. If the
+camera side is hostile and the passphrase reaches it anyway, the secret is
+lost and nothing in this procedure will tell you.
 
 On the sequential path the webcam borrows the USB controller that normally
 belongs to `sys-usb` (the qube that owns the computer's USB hardware, through
@@ -135,7 +137,9 @@ cat /sys/bus/pci/devices/0000:00:14.0/reset_method
 
 If it prints one or more words, such as `flr` or `pm`, note `False` for the
 setting below. If it prints nothing or reports `No such file or directory`,
-note `True`.
+note `True`: the controller then moves to the webcam qube without a reset,
+and whatever `sys-usb` left in it, possibly traces of earlier keyboard input,
+reaches the camera side.
 
 ### 4. Configure and build
 
@@ -163,11 +167,12 @@ Then run SEQS from dom0 as for a [first install](../README.md) or an
 computer and `qr-display` on the sending computer. The build stops with
 `Configured controller is not attached to sys-usb` if the BDF is wrong, and
 it prints a line starting with `Air gap verified:` naming `A-qr-camera` and
-`A-qr-staging`, which it checked to have no NetVM and no default disposable.
-The scan script repeats that check for all camera qubes before every scan.
-To verify the policies and the controller assignment without relying on the
-build output, run the receiving-computer checks under the full guide's
-[Check the setup](secure-qr-transfer.md#check-the-setup).
+`A-qr-staging` on the receiving computer, and `A-qr-display` and
+`D-qr-display` on the sending computer, which it checked to have no NetVM
+and no default disposable. The scan script repeats that check for all camera
+qubes before every scan. To verify the policies and the controller assignment
+without relying on the build output, run the checks for both computers under
+the full guide's [Check the setup](secure-qr-transfer.md#check-the-setup).
 
 ### 5. Rehearse with a throwaway file
 
@@ -283,8 +288,9 @@ device has been switched back on, for example by a firmware update: press
 the script again. If the script reports an old `key.asc` in `A-qr-staging`,
 delete `~/QubesIncoming/seqs-qr-scanner` in that qube, shut it down, and run
 the script again. If it reports that `sys-usb-webcam` is already running, it
-powers off, because that qube has had the shared controller; run it again
-after the restart. Otherwise type `START` in capital letters, then:
+powers off, because that qube has had the shared controller: remove all power
+as in item 4 below, start the computer, and run the script again. Otherwise
+type `START` in capital letters, then:
 
 1. Unplug the keyboard and mouse at once; the script stops `sys-usb` after
    10 seconds. If you are too slow, press `Ctrl+C` within those seconds and
@@ -352,10 +358,10 @@ character; do not copy, retype, or photograph the code.
 If any character differs, do not decrypt. A bad scan is unlikely, because QR
 codes carry error correction; assume that the camera side changed the file
 on purpose and is hostile. Delete the received `key.asc` and any other
-received file without opening them. Retry only once you know the cause: that
-side has also had the controller that `sys-usb` uses again, so with a USB
-keyboard or mouse the receiving computer itself is now in doubt. To retry,
-shut down `D-qr-display` and repeat from step 2 with the kept `key.asc`.
+received file without opening them. Retry only once you know the cause. The
+hostile side has also held the controller that `sys-usb` got back at boot, so
+with a USB keyboard or mouse the receiving computer itself is now in doubt. To
+retry, shut down `D-qr-display` and repeat from step 2 with the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
