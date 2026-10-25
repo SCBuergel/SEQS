@@ -62,10 +62,11 @@ audio or GUI qube), or a match is a global default, nothing is changed.
 A-, Z-, the QR camera qubes, the GnosisVPN update proxy), and then the files
 SEQS wrote in dom0: the staged Salt trees, its state directory, the policy
 files, helpers, and NUC 11 headset files it marked, and its panel launchers.
-A qube under another name stays even if it carries the seqs-managed feature,
-as a clone of a SEQS qube does. It asks you to type RESET first. sys-usb's
-memory setting, the window-manager shortcuts, and your copies of the runner
-and this helper stay.
+A qube under another name is not selected even if it carries the
+seqs-managed feature, as a clone of a SEQS qube does; while it uses a SEQS
+template, it blocks the reset like any other reference. It asks you to type
+RESET first. sys-usb's memory setting, the window-manager shortcuts, and your
+copies of the runner and this helper stay.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -155,7 +156,7 @@ if [ "${RESET}" -eq 1 ]; then
 			if [[ "${vm}" =~ ${SEQS_NAMES} ]]; then
 				found+=("${vm}")
 			else
-				echo "  ${vm}: carries a SEQS feature but is not a SEQS name (a clone?): left in place"
+				echo "  ${vm}: carries a SEQS feature but is not a SEQS name (a clone?): not selected"
 			fi
 		elif sudo test -e "${INTENTS_DIR}/${vm}"; then
 			echo "  ${vm}: no seqs-managed feature, but an interrupted SEQS build left its creation marker"

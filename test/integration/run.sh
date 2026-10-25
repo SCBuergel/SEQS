@@ -757,7 +757,8 @@ echo "# mine" > "${SEQS_POLICY_DIR}/40-mine.policy"
 printf '%s\n' "seqs-gnosisvpn-update-proxy seqs-gnosisvpn-temporary-proxy 1" \
 	"sys-usb-webcam seqs-managed 1" "seqs-qr-scanner seqs-managed 1" "my-wallet-backup seqs-managed 1" > "${SBX}/features"
 export SEQS_MOCK_FEATURES="${SBX}/features"
-printf '%s\n' "sys-usb-webcam template A-qr-camera" "seqs-qr-scanner template A-qr-camera" > "${SBX}/prefs"
+printf '%s\n' "sys-usb-webcam template A-qr-camera" "seqs-qr-scanner template A-qr-camera" \
+	"my-wallet-backup template Z-keepass" > "${SBX}/prefs"
 export SEQS_MOCK_PREFS="${SBX}/prefs"
 printf '%s\n' "A-signal A-gnosisvpn" "personal A-gnosisvpn" "sys-firewall sys-net" > "${SBX}/netvm"
 export SEQS_MOCK_NETVM_STATE="${SBX}/netvm"
@@ -769,6 +770,15 @@ before="$(reset_vms)"
 out="$(bash "${REPO}/delete-vms.sh" --reset keepass 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "takes no name" <<<"$out" && [ "$(reset_vms)" = "${before}" ] && ok \
 	|| bad "--reset with a name must be refused: ${out}"
+# The clone of an app qube still uses its SEQS template: it is not selected,
+# and that reference stops the reset before anything changes.
+out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qxF "  my-wallet-backup: carries a SEQS feature but is not a SEQS name (a clone?): not selected" <<<"$out" \
+	&& grep -q "^ERROR: nothing was changed; these use a target" <<<"$out" \
+	&& grep -qxF "  my-wallet-backup has template Z-keepass" <<<"$out" && [ "$(reset_vms)" = "${before}" ] && ok \
+	|| bad "a clone on a SEQS template must stop the reset: rc=$rc ${out}"
+# Moved to a template SEQS did not build, the clone no longer blocks anything.
+sed -i 's/^my-wallet-backup template .*/my-wallet-backup template debian-13-xfce/' "${SBX}/prefs"
 # Dry run: names every SEQS qube and dom0 file, not the user's, and changes nothing.
 out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -q "dry-run: not killing" <<<"$out" && ok || bad "a reset dry run must exit 0: ${out}"
@@ -778,8 +788,8 @@ done
 for vm in A-notes personal vault debian-13-xfce sys-net my-wallet-backup; do
 	grep -q "^  ${vm}$" <<<"$out" && bad "the dry run must not list ${vm}" || ok
 done
-grep -qxF "  my-wallet-backup: carries a SEQS feature but is not a SEQS name (a clone?): left in place" <<<"$out" && ok \
-	|| bad "the dry run must report the clone it leaves in place: ${out}"
+grep -qxF "  my-wallet-backup: carries a SEQS feature but is not a SEQS name (a clone?): not selected" <<<"$out" && ok \
+	|| bad "the dry run must report the clone it does not select: ${out}"
 grep -q "would set personal netvm to none" <<<"$out" && ok || bad "the dry run must name the NetVM user: ${out}"
 grep -q "^  ${SEQS_SALT_TREE}$" <<<"$out" && grep -q "^  ${SEQS_POLICY_DIR}/29-browser.policy$" <<<"$out" \
 	&& grep -q "^  ${SEQS_NUC11_FW}$" <<<"$out" && ok || bad "the dry run must list the dom0 files: ${out}"

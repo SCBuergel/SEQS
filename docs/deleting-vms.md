@@ -78,9 +78,13 @@ the QR camera qubes `sys-usb-webcam` and `seqs-qr-scanner`, or the GnosisVPN
 update proxy `seqs-gnosisvpn-update-proxy`. A same-named qube you created
 yourself is not listed and stays. A qube you cloned from a SEQS qube carries
 the `seqs-managed` feature of its source; under another name, such as
-`my-wallet-backup`, it is reported and stays, but under a SEQS name, such as
-`A-wallet-backup`, it goes with the rest. Then run the reset and type `RESET`
-when asked:
+`my-wallet-backup`, it is reported as not selected, but under a SEQS name,
+such as `A-wallet-backup`, it goes with the rest. A clone of an app qube
+still uses its SEQS template, which the reset would remove, so the reset
+stops with `my-wallet-backup has template Z-wallet` and changes nothing:
+delete the clone, or move it to a template SEQS did not build with
+`qvm-prefs my-wallet-backup template <template>`, then run the dry run
+again. Then run the reset and type `RESET` when asked:
 
 ```bash
 ~/d.sh --reset
