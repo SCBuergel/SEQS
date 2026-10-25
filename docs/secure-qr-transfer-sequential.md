@@ -1,8 +1,8 @@
 # Secure QR transfer, short form
 
 This is the short form of [Reasonably secure air-gapped data transfer](secure-qr-transfer.md)
-for the common hardware case: a receiving computer whose USB sockets all
-belong to one USB controller, on the sequential path. It copies one small
+for the sequential path on the common hardware: a receiving computer whose
+USB sockets all belong to one USB controller. It copies one small
 secret file, such as a key, from one Qubes OS computer to another with no
 network or USB stick between them: the sending computer shows the encrypted
 file as a QR code, and a webcam on the receiving computer reads it. The
@@ -180,10 +180,11 @@ sending computer. The build stops with
 it prints a line starting with `Air gap verified:` naming `A-qr-camera` and
 `A-qr-staging` on the receiving computer, and `A-qr-display` and
 `D-qr-display` on the sending computer, which it checked to have no NetVM
-and no default disposable. The scan script repeats that check for all camera
-qubes before every scan. To verify the policies and the controller assignment
-without relying on the build output, run the checks for both computers under
-the full guide's [Check the setup](secure-qr-transfer.md#check-the-setup).
+and no default disposable. The scan script repeats that check for
+`sys-usb-webcam`, `seqs-qr-scanner`, and `A-qr-staging` before every scan.
+To verify the policies and the controller assignment without relying on the
+build output, run the checks for both computers under the full guide's
+[Check the setup](secure-qr-transfer.md#check-the-setup).
 
 ### 5. Rehearse with a throwaway file
 
@@ -293,15 +294,19 @@ sudo /usr/local/sbin/seqs-qr-sequential
 ```
 
 The script checks the camera qubes and lists the USB devices in `sys-usb`.
-Only your keyboard and mouse may be listed. If anything else is, an internal
-device has been switched back on, for example by a firmware update: press
-`Enter` instead of typing `START`, switch it off as in setup step 1, and run
-the script again. If the script reports an old `key.asc` in `A-qr-staging`,
-delete `~/QubesIncoming/seqs-qr-scanner` in that qube, shut it down, and run
-the script again. If it reports that `sys-usb-webcam` is already running, it
-powers off, because that qube has had the shared controller: remove all power
-as in item 4 below, start the computer, and run the script again. Otherwise
-type `START` in capital letters, then:
+Type `START` in capital letters only if it reports no error and lists nothing
+but your keyboard and mouse. Otherwise:
+
+- Anything else listed means an internal device has been switched back on,
+  for example by a firmware update. Press `Enter` instead of typing `START`,
+  switch it off as in setup step 1, and run the script again.
+- An old `key.asc` in `A-qr-staging`: delete `~/QubesIncoming/seqs-qr-scanner`
+  in that qube, shut it down, and run the script again.
+- `sys-usb-webcam` already running: the script powers off, because that qube
+  has had the shared controller. Remove all power as in item 4 below, start
+  the computer, and run the script again.
+
+After `START`:
 
 1. Unplug the keyboard and mouse at once; the script stops `sys-usb` after
    10 seconds. If you are too slow, press `Ctrl+C` within those seconds and
@@ -366,19 +371,20 @@ sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' 
 Each prints four groups of five characters, such as
 `7A91C-24D8E-6F032-B5A10`: the first 80 bits of the file's SHA-256 hash.
 Forging a file that matches costs about 2^80 hash computations; the short
-length trades that margin for a comparison you can do by eye. Put the
-screens side by side and compare every character; do not copy, retype, or
-photograph the code.
+length trades that margin for a comparison you can do by eye. If that margin
+is too small for your secret, run `sha256sum -- key.asc` alone on both sides
+and compare all 64 characters instead. Put the screens side by side and
+compare every character; do not copy, retype, or photograph the code.
 
 If any character differs, do not decrypt: the comparison is what keeps GnuPG
 in the key qube from reading a file the camera side altered. A bad scan is
 unlikely, because QR codes carry error correction; assume that the camera
 side changed the file on purpose and is hostile. Delete the received
-`key.asc` and any other received file without opening them. Retry only once
-you know the cause. The hostile side has also held the controller that
-`sys-usb` got back at boot, so with a USB keyboard or mouse the receiving
-computer itself is now in doubt. To retry, shut down `D-qr-display` and
-repeat from step 2 with the kept `key.asc`.
+`key.asc` and any other received file without opening them. That side has
+also held the controller that `sys-usb` got back at boot, so with a USB
+keyboard or mouse the receiving computer itself is now in doubt. Retry only
+once you know the cause: shut down `D-qr-display` and repeat from step 2 with
+the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
