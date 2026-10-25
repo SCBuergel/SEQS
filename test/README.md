@@ -52,7 +52,9 @@ and a gate that fails on style gets bypassed), a smoke render of every Salt
 template, and `test/doc_coherence.py`, which fails when the docs do not name a catalogue
 flag, setting, component, option, pinned fingerprint, or guarded policy file
 that the code defines, a `--qubes` example names no catalogue entry, or a
-relative Markdown link does not resolve.
+relative Markdown link does not resolve, and `test/mutate.py --check`, which
+fails when a mutation's original text no longer occurs exactly once in its
+file, so a stale entry cannot hide an unguarded check.
 Catches shell-syntax errors, "does it even compile" breakage, and docs that
 fell behind the code instantly.
 

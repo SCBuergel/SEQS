@@ -131,8 +131,9 @@ the Makefile provides equivalent short aliases, without the REV and NAME
 arguments, through `make help`.
 
 - `./test/run-tests.sh lint`: shell syntax, optional ShellCheck, Salt render
-  smoke tests, the expiry of embedded signing keys, and whether the docs name
-  what the code defines (`test/doc_coherence.py`).
+  smoke tests, the expiry of embedded signing keys, whether the docs name
+  what the code defines (`test/doc_coherence.py`), and whether every
+  `test/mutate.py` entry still matches its file.
 - `./test/run-tests.sh render`: detailed pillar and Salt render assertions.
 - `./test/run-tests.sh unit`: bash helper tests.
 - `./test/run-tests.sh integration`: end-to-end orchestration against mock

@@ -12,6 +12,7 @@ check. The tests must pass without a mutation first.
 
     python3 test/mutate.py            run every mutation
     python3 test/mutate.py tar gpg    run the mutations whose name contains one
+    python3 test/mutate.py --check    only check that each original occurs once
 
 Exit status: 0 if every mutation was caught, 1 if one survived, 2 on error.
 """
@@ -89,13 +90,13 @@ MUTATIONS = [
     ("airgap-one", R, '{ n++ } END { exit n != 2 }\' <<<', '{ n++ } END { exit n < 1 }\' <<<'),
     # delete-vms.sh: only SEQS qubes, only safe names, blockers stop everything.
     ("delete-name", D, '=~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then', '=~ ^.*$ ]]; then'),
-    ("delete-unmanaged", D, 'seqs-managed 2>/dev/null)" = "1" ]', 'seqs-managed 2>/dev/null)" != "x" ]'),
+    ("delete-unmanaged", D, '"${candidate}" seqs-managed 2>/dev/null)" = "1" ]', '"${candidate}" seqs-managed 2>/dev/null)" != "x" ]'),
     ("delete-blockers", D, 'if [ "${#blockers[@]}" -gt 0 ]; then', 'if false; then'),
     ("delete-intent-marker", D, 'elif sudo test -e "${INTENTS_DIR}/${candidate}"; then', 'elif false; then'),
     ("delete-qvm-ls-fail", D, """}' || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; return 1; }""", "}' || true"),
     ("delete-pin-sudo", D, "	if sudo head -n 1 --", "	if head -n 1 --"),
     ("delete-pin-unmarked", D, "| grep -q 'Managed by SEQS'; then", "| true; then"),
-    ("delete-users-fields", D, "for (i = 2; i <= 7; i++)", "for (i = 2; i <= 4; i++)"),
+    ("delete-users-fields", D, '" ")\n\t\t\tfor (i = 2; i <= 7; i++)', '" ")\n\t\t\tfor (i = 2; i <= 4; i++)'),
     ("delete-panel-entry-other-qube", D, 'if [ -n "${vm}" ] && [[ " ${found[*]} " == *" ${vm} "* ]]; then', 'if [ -n "${vm}" ]; then'),
     ("panel-items-name", R, '[[ "${items}" =~ ^${name_re}( ${name_re})*$ ]] \\', '[[ -n "${items}" ]] \\'),
     # Runner: the temporary GnosisVPN download proxy and its policy.
@@ -214,11 +215,11 @@ MUTATIONS = [
     ("ledger-signature", L, "openssl dgst -sha256 -verify", "true || openssl dgst -sha256 -verify"),
     ("ledger-listed", L, "'$1 == h && $2 == f { ok = 1 }", "'{ ok = 1 }"),
     ("qube-component-name", Q, "{%   if comp | regex_match(name_re) is none %}", "{%   if false %}"),
-    ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}$') is none %}", "{%     if false %}"),
+    ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}\\\\Z') is none %}", "{%     if false %}"),
     ("qube-browser-vm", Q, "{% if browser_vm | regex_match(name_re) is none %}", "{% if false %}"),
-    ("qube-browser-desktop", Q, "{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\\\.desktop$') is none %}", "{% if false %}"),
+    ("qube-browser-desktop", Q, "{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\\\.desktop\\\\Z') is none %}", "{% if false %}"),
     ("qube-timeout-number", Q, "{% if timeout is not number %}", "{% if false %}"),
-    ("qube-cleanup-path", Q, "          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none\n", "\n"),
+    ("qube-cleanup-path", Q, "          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z') is none\n", "\n"),
     ("qube-cleanup-template", Q, "          rw-only|none) ;;", "          rw-only|none|full) ;;"),
     ("qube-install-brave", Q, "install_brave; install_brave_extension", "install_brave_extension"),
 ]
@@ -273,11 +274,13 @@ def check_one(tree, mutation):
         return name, "BROKEN", "the mutated %s does not parse" % path
     run(["git", "-c", "user.name=mutate", "-c", "user.email=mutate@invalid",
          "commit", "-q", "-am", name], tree)
+    # Lint checks that every original text is present; that would catch any mutation.
+    env = dict(os.environ, SEQS_MUTATING="1")
     try:
         for layer in LAYERS:
-            if run(["bash", "test/run-tests.sh", layer], tree).returncode:
+            if run(["bash", "test/run-tests.sh", layer], tree, env=env).returncode:
                 # A failure under load could be a timeout, not a catch.
-                if run(["bash", "test/run-tests.sh", layer], tree).returncode:
+                if run(["bash", "test/run-tests.sh", layer], tree, env=env).returncode:
                     return name, "caught", layer
                 return name, "FLAKY", layer
         return name, "SURVIVED", ""
@@ -285,7 +288,23 @@ def check_one(tree, mutation):
         run(["git", "reset", "-q", "--hard", "HEAD~1"], tree)
 
 
+def stale():
+    """The entries whose original text does not occur exactly once."""
+    out = []
+    for name, path, old, _ in MUTATIONS:
+        with open(os.path.join(REPO, path)) as f:
+            n = f.read().count(old)
+        if n != 1:
+            out.append("%s: original text found %d times in %s" % (name, n, path))
+    return out
+
+
 def main():
+    if sys.argv[1:] == ["--check"]:
+        bad = stale()
+        for line in bad:
+            print("FAIL: mutation " + line)
+        return 1 if bad else 0
     wanted = [m for m in MUTATIONS if len(sys.argv) < 2 or any(a in m[0] for a in sys.argv[1:])]
     if not wanted:
         print("ERROR: no mutation name contains %s" % " or ".join(sys.argv[1:]))

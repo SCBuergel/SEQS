@@ -13,6 +13,7 @@
 #   * the docs name every catalogue flag, setting, component, option, pinned
 #     fingerprint, and guarded policy file the code defines, and relative
 #     Markdown links resolve (test/doc_coherence.py)
+#   * each test/mutate.py entry's original text occurs once in its file
 #
 # Exit non-zero if any hard check fails. shellcheck being absent is a skip,
 # not a failure -- install it (apt-get install shellcheck) for full coverage.
@@ -82,6 +83,16 @@ echo
 echo "== docs name what the code defines; relative links resolve =="
 if python3 test/doc_coherence.py; then
 	note "ok   docs match the code's flags, settings, components, options, keys"
+else
+	fail=1
+fi
+
+echo
+echo "== every mutation in test/mutate.py still applies =="
+if [ -n "${SEQS_MUTATING:-}" ]; then
+	note "SKIP: a mutation is being tested"
+elif python3 test/mutate.py --check; then
+	note "ok   each mutation's original text occurs once in its file"
 else
 	fail=1
 fi
