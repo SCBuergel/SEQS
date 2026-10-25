@@ -70,6 +70,7 @@ The top of `config.sls` sets values that apply to every qube:
 | `component_timeout` | `900` | Seconds one component may run before Salt stops it. |
 | `sys_usb_memory` | `600` | Minimum memory of `sys-usb` in MiB; see [below](#sys_usb_memory). |
 | `nuc11_headset_fix` | `False` | Makes the headset jack of an Intel NUC 11 Pro work; see [below](#nuc11_headset_fix). |
+| `usb_keyboard_prompt` | `True` | Makes dom0 ask before a USB keyboard works where Qubes 4.3 refuses it; see [below](#usb_keyboard_prompt). |
 | `webcam_*` | QR transfer disabled | See [Secure QR USB modes](#secure-qr-usb-modes). |
 
 ## Components
@@ -303,6 +304,27 @@ change removes both files again.
 
 After the next boot, the headset should appear as the output and input in the
 dom0 volume control while it is plugged in.
+
+## `usb_keyboard_prompt`
+
+On a Qubes 4.3 computer installed with its built-in keyboard, Qubes refuses
+keyboard input from `sys-usb` (the qube that owns the USB controllers) to
+dom0, so a USB keyboard plugged in later does not work. With
+`usb_keyboard_prompt` at `True`, each build writes
+`/etc/qubes/policy.d/30-user-input.policy`, which makes dom0 ask before such a
+keyboard works, as Qubes asks before a USB mouse works. A compromised
+`sys-usb` can raise the same prompt, and once a keyboard or mouse prompt is
+accepted it can type or click in dom0;
+[TRUST.md](../TRUST.md#usb-keyboard-policy-override-qubesinputkeyboard-from-sys-usb--dom0-)
+describes that risk. On a computer installed with a USB keyboard, the Qubes
+installer allows the keyboard by policy, and this setting changes nothing.
+
+Set it to `False`, as described in [Changing a setting](#changing-a-setting),
+to keep Qubes' refusal, for example on the receiving computer of a
+[sequential QR transfer](secure-qr-transfer-sequential.md) of a high-value
+secret. Each build then removes the file it wrote earlier and writes no new
+one, and no USB keyboard works in dom0. A build from a revision with `True`
+writes the file again.
 
 ## Secure QR USB modes
 

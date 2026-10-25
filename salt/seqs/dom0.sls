@@ -14,6 +14,7 @@
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set sys_usb_memory = seqs.get('sys_usb_memory', 0) %}
 {% set nuc11_headset_fix = seqs.get('nuc11_headset_fix', false) %}
+{% set usb_keyboard_prompt = seqs.get('usb_keyboard_prompt', true) %}
 {% set webcam_mode = seqs.get('webcam_usb_mode', 'disabled') %}
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_no_strict_reset = seqs.get('webcam_usb_no_strict_reset', false) %}
@@ -129,6 +130,9 @@ print("END")'{% endset %}
 {%   if '0x10ec0256 0x80863004' not in codecs.splitlines() %}
 {%     do errors.append("nuc11_headset_fix is True, but this computer has no Intel NUC 11 audio codec (Realtek ALC256, subsystem 0x80863004)") %}
 {%   endif %}
+{% endif %}
+{% if usb_keyboard_prompt is not sameas true and usb_keyboard_prompt is not sameas false %}
+{%   do errors.append("usb_keyboard_prompt '" ~ usb_keyboard_prompt ~ "' must be True or False") %}
 {% endif %}
 {% if webcam_mode not in ['disabled', 'dedicated', 'sequential'] %}
 {%   do errors.append("webcam_usb_mode '" ~ webcam_mode ~ "' is invalid (expected disabled, dedicated, or sequential)") %}
@@ -556,8 +560,9 @@ seqs-policy-browser-suppress:
    Qubes answers an 'ask' rule only inside a logged-in session, so on a
    computer whose only keyboard is USB the override would lock the login
    screen. The installer and Qubes Global Config write their keyboard rule
-   to 50-config-input.policy: when that file already allows or asks, SEQS
-   writes no override and removes one it wrote earlier. #}
+   to 50-config-input.policy: when that file already allows or asks, or
+   usb_keyboard_prompt is False to keep Qubes' refusal, SEQS writes no
+   override and removes one it wrote earlier. #}
 {% set release = salt['cmd.shell']("grep -oE '[0-9]+\\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1") | trim %}
 {% set input_policy = '/etc/qubes/policy.d/50-config-input.policy' %}
 {% set keyboard_rule_re = '\\s*qubes\\.InputKeyboard\\s+\\*\\s+sys-usb\\s+(@adminvm|dom0)\\s+(allow|ask)(\\s|$)' %}
@@ -569,7 +574,7 @@ seqs-policy-browser-suppress:
 {%     endif %}
 {%   endfor %}
 {% endif %}
-{% if release == '4.3' and ('sys-usb' in inventory) and keyboard_handled.value %}
+{% if release == '4.3' and ('sys-usb' in inventory) and (keyboard_handled.value or not usb_keyboard_prompt) %}
 seqs-policy-usb-keyboard-unneeded:
   file.absent:
     - name: /etc/qubes/policy.d/30-user-input.policy

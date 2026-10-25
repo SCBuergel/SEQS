@@ -490,6 +490,34 @@ def test_dom0_usb_policy_defers_to_qubes_rule():
               "content %r is not a keyboard allow/ask for dom0, the override must be written" % content)
 
 
+def test_dom0_usb_policy_setting():
+    case("dom0.sls: usb_keyboard_prompt False keeps Qubes' refusal of USB keyboards")
+    check(render_pillar("dom0").get("usb_keyboard_prompt") is True,
+          "the shipped configuration should make dom0 ask for a USB keyboard")
+    # A high-value receiving computer with a built-in keyboard keeps the
+    # shipped deny: no override is written, and one written earlier goes.
+    path = "/etc/qubes/policy.d/50-config-input.policy"
+    deny = Scenario(release="4.3", sys_usb=True,
+                    file_contents={path: "qubes.InputKeyboard * sys-usb @adminvm deny\n"})
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["usb_keyboard_prompt"] = False
+    _, parsed = render_state("dom0", "dom0", deny, pillar_seqs=pillar)
+    check("seqs-validation-failed" not in parsed and "seqs-policy-usb-keyboard" not in parsed,
+          "usb_keyboard_prompt False must not write the override")
+    absent = parsed.get("seqs-policy-usb-keyboard-unneeded", {})
+    check(absent.get("file.absent", [{}])[0].get("name") == "/etc/qubes/policy.d/30-user-input.policy",
+          "usb_keyboard_prompt False must remove a SEQS-written 30-user-input.policy, got %r" % absent)
+    guard = [d["onlyif"] for d in absent.get("file.absent", []) if "onlyif" in d]
+    check(guard and "'^# Managed by SEQS'" in guard[0],
+          "the removal must be guarded by the SEQS marker, got %r" % guard)
+    for value in ("False", 0, None):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar["usb_keyboard_prompt"] = value
+        _, parsed = render_state("dom0", "dom0", deny, pillar_seqs=pillar)
+        check("usb_keyboard_prompt '%s' must be True or False" % value in _errors(parsed),
+              "usb_keyboard_prompt %r must fail pre-flight" % (value,))
+
+
 def test_dom0_sys_usb_memory():
     case("dom0.sls: sys_usb_memory only raises sys-usb's memory, and only to a whole number")
     check(render_pillar("dom0").get("sys_usb_memory") == 600,

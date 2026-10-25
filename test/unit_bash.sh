@@ -62,12 +62,15 @@ unset -f sudo
 echo "== confirmPolicyTakeover() skips the USB keyboard policy only when sys-usb is known absent =="
 # On Qubes 4.3, an operator's 30-user-input.policy needs confirmation unless
 # qvm-ls positively lists no sys-usb; a failed qvm-ls must keep the prompt.
-takeover() { # QVM_LS_OUTPUT QVM_LS_RC [50-CONFIG-INPUT LINE] -> "prompt" or "skip"
+takeover() { # QVM_LS_OUTPUT QVM_LS_RC [50-CONFIG-INPUT LINE] [PILLAR LINE] -> "prompt" or "skip"
 	(
 		tmpd="$(mktemp -d)"
-		POLICY_DIR="${tmpd}" POLICY_FILES=("${tmpd}/30-user-input.policy")
+		POLICY_DIR="${tmpd}" POLICY_FILES=("${tmpd}/30-user-input.policy") PILLAR_TREE="${tmpd}"
 		echo 'qubes.InputKeyboard * sys-usb @adminvm allow' > "${POLICY_FILES[0]}"
-		[ $# -ge 3 ] && echo "$3" > "${tmpd}/50-config-input.policy"
+		[ $# -ge 3 ] && [ -n "$3" ] && echo "$3" > "${tmpd}/50-config-input.policy"
+		pillar_line='{%- set usb_keyboard_prompt = True %}'
+		[ $# -ge 4 ] && pillar_line="$4"
+		echo "${pillar_line}" > "${tmpd}/config.sls"
 		sudo() { "$@"; }
 		grep() { if [ "${*: -1}" = /etc/qubes-release ]; then echo 4.3; else command grep "$@"; fi; }
 		qvm-ls() { printf '%b' "${QLS_OUT}"; return "${QLS_RC}"; }
@@ -87,6 +90,11 @@ eq "50- allows" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard * sys-usb @
 eq "50- asks" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard  *  sys-usb  dom0  ask default_target=dom0')" skip
 eq "50- denies" "$(takeover 'dom0\nsys-usb\n' 0 'qubes.InputKeyboard * sys-usb @adminvm deny')" prompt
 eq "50- comment" "$(takeover 'dom0\nsys-usb\n' 0 '# qubes.InputKeyboard * sys-usb @adminvm allow')" prompt
+# With usb_keyboard_prompt False the state writes nothing either; only the
+# documented spelling of that line counts, any other keeps the prompt.
+eq "pillar False" "$(takeover 'dom0\nsys-usb\n' 0 '' '{%- set usb_keyboard_prompt = False %}')" skip
+eq "pillar false" "$(takeover 'dom0\nsys-usb\n' 0 '' '{%- set usb_keyboard_prompt = false %}')" prompt
+eq "pillar commented" "$(takeover 'dom0\nsys-usb\n' 0 '' '{#- set usb_keyboard_prompt = False #}')" prompt
 
 echo "== adb-pull treats the device's answers as data =="
 # A hostile phone answers stat with a bash arithmetic payload; adb-pull must
