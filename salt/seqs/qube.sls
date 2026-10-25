@@ -100,7 +100,7 @@ seqs-stage-lib:
 {%   if comp.startswith('brave-extension-') %}
 {%     if role == 'template' %}
 {%       set eid = exts[comp[16:]] %}
-# Extension IDs were validated against ^[a-p]{32}$ above, so the
+# Extension IDs were validated against ^[a-p]{32}\Z above, so the
 # interpolation below cannot break out of the quoted command.
 # brave.sh documents that its caller must run under `set -Eeuo pipefail`,
 # so the inner shell sets it too -- a failure inside a lib function must
