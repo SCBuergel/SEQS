@@ -34,6 +34,8 @@ G = "install-scripts/lib/verify-gpg.sh"
 QR = "salt/seqs/files/qr-sequential.sh"
 VM = "salt/seqs/files/seqs-vpn-monitor"
 L = "install-scripts/components/ledger/template-vm.sh"
+B = "install-scripts/lib/brave.sh"
+GV = "install-scripts/components/gnosisvpn/template-vm.sh"
 
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
@@ -219,6 +221,12 @@ MUTATIONS = [
     ("gpg-sha256", G, "| sha256sum --check --strict --quiet \\\n", "| true \\\n"),
     ("gpg-apt-pin", G, "Pin-Priority: -1\\n\\nPackage", "Pin-Priority: 1\\n\\nPackage"),
     ("gpg-signed-by", G, "signed-by=${keyring}]", "]"),
+    ("brave-exact-keys", B, '|| { rm -rf "${tmp}" "${gh}"; exit 1; }', "|| true"),
+    ("brave-apt-pin", B, "Pin-Priority: -1\n", "Pin-Priority: 1\n"),
+    ("brave-signed-by", B, "signed-by=${keyring}]", "]"),
+    ("brave-keyring-restore", B, 'sudo install -m 0644 "${tmp}" "${keyring}"\n\trm -f', "rm -f"),
+    ("gnosisvpn-apt-pin", GV, 'gnosis.eth.limo"\nPin-Priority: -1', 'gnosis.eth.limo"\nPin-Priority: 1'),
+    ("gnosisvpn-apt-pin-mirror", GV, 'gnosisvpn.io"\nPin-Priority: -1', 'gnosisvpn.io"\nPin-Priority: 1'),
     ("ledger-sha512", L, "| sha512sum --check --strict --quiet \\\n", "| true \\\n"),
     ("ledger-signature", L, "openssl dgst -sha256 -verify", "true || openssl dgst -sha256 -verify"),
     ("ledger-listed", L, "'$1 == h && $2 == f { ok = 1 }", "'{ ok = 1 }"),

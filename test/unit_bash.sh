@@ -495,6 +495,10 @@ qctl 'Succeeded: 2\nFailed:    1' && bad "runQubesctl passed 'Failed: 1'" || ok
 qctl 'Z-brave: ERROR (exit code 20)' && bad "runQubesctl passed a qube reported as ERROR" || ok
 
 echo "== lib/verify-gpg.sh: pinned keys, signed downloads, pinned apt repos =="
+# An apt origin pin: only PACKAGES may come from ORIGIN.
+pin() { printf 'Package: *\nPin: origin "%s"\nPin-Priority: -1\n\nPackage: %s\nPin: origin "%s"\nPin-Priority: 500\n' "$1" "$2" "$1"; }
+eq "GnosisVPN pin file" "$(sed -n '/gnosisvpn.pref/,/^EOF/{//!p}' install-scripts/components/gnosisvpn/template-vm.sh)" \
+	"$(pin download.vpn.gnosis.eth.limo gnosisvpn; echo; pin download.gnosisvpn.io gnosisvpn)"
 # require_exact_keys reads gpg --with-colons output: only primary keys count,
 # in any order, and the set must match exactly.
 colons() { for f in "$@"; do printf 'pub:u:255:22:X:1::::::scESC:\nfpr:::::::::%s:\nsub:u:255:18:Y:1::::::e:\nfpr:::::::::SUB%s:\n' "$f" "$f"; done; }
@@ -566,6 +570,38 @@ if command -v gpg >/dev/null 2>&1; then
 	out="$(lock "${g}/two.gpg")" && bad "lock_keyring accepted a keyring with a second key"
 	grep -q "must hold exactly the pinned key" <<< "${out}" && ! grep -q chattr <<< "${out}" && ok \
 		|| bad "a second key must stop lock_keyring before chattr: ${out}"
+	echo "== lib/brave.sh: Brave's own keyring check, origin pin and keyring restore =="
+	# The stub sudo logs each command; tee and install write below ${g}/root,
+	# and apt-get install overwrites the keyring as brave-keyring's postinst may.
+	K=/usr/share/keyrings/brave-browser-archive-keyring.gpg
+	GNUPGHOME="${g}/home" gpg --export "${fprs[1]}" > "${g}/other.gpg"
+	brave() {  # KEYRING -- install_brave with KEYRING as the download
+		rm -rf "${g}/root" "${g}/brave.log"; cp "$1" "${g}/src/${K##*/}"
+		( set -Eeuo pipefail
+		sudo() { echo "$*" >> "${g}/brave.log"; case "$1 $2" in
+			tee\ *) mkdir -p "${g}/root${2%/*}"; command tee "${g}/root$2" ;;
+			install\ *) mkdir -p "${g}/root${5%/*}"; cp "$4" "${g}/root$5" ;;
+			"apt-get install") cp "${g}/two.gpg" "${g}/root${K}" ;; esac; }
+		curl() { local url="${*: -1}"; cp "${g}/src/${url##*/}" "$5"; }
+		. install-scripts/lib/brave.sh
+		BRAVE_KEY_FPRS="${fprs[0]}"
+		install_brave ) 2>&1
+	}
+	out="$(brave "${g}/one.gpg")" || bad "install_brave refused the pinned key: ${out}"
+	eq "brave commands" "$(sed -E 's#[^ ]*/tmp\.[A-Za-z0-9]{10}#TMP#' "${g}/brave.log")" "$(printf '%s\n' "chattr -i ${K}" \
+		"install -m 0644 TMP ${K}" tee\ /etc/apt/sources.list.d/brave-browser-release.list tee\ /etc/apt/preferences.d/brave-browser.pref \
+		"apt-get update" "apt-mark unhold brave-keyring" "apt-get install -y brave-browser" "install -m 0644 TMP ${K}" \
+		"chattr +i ${K}" "apt-mark hold brave-keyring")"
+	eq "brave sources line" "$(cat "${g}/root/etc/apt/sources.list.d/brave-browser-release.list")" \
+		"deb [arch=amd64 signed-by=${K}] https://brave-browser-apt-release.s3.brave.com/ stable main"
+	eq "brave pin file" "$(cat "${g}/root/etc/apt/preferences.d/brave-browser.pref")" \
+		"$(pin brave-browser-apt-release.s3.brave.com "brave-browser brave-browser-beta brave-browser-nightly brave-browser-dev brave-keyring")"
+	eq "brave keyring after apt" "$(gpg --show-keys --with-colons "${g}/root${K}" 2>/dev/null | awk -F: '$1=="fpr"{print $10}')" "${fprs[0]}"
+	for k in two other; do
+		out="$(brave "${g}/${k}.gpg")" && bad "install_brave accepted the ${k} keyring"
+		grep -q "Brave keyring https://.* must hold exactly the pinned key" <<< "${out}" && ! grep -qs apt-get "${g}/brave.log" && ok \
+			|| bad "the ${k} keyring must stop install_brave before apt-get: ${out}"
+	done
 	gpgconf --homedir "${g}/home" --kill all 2>/dev/null
 	rm -rf "${g}"
 else
