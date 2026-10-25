@@ -38,9 +38,8 @@ back at the next boot. Accept these limits before you set anything up:
   reaches `sys-usb` at the next boot, and `sys-usb` can type or click in dom0
   as your USB keyboard or mouse would. The worst case is control of the whole
   receiving computer, not only a lost passphrase. A built-in laptop keyboard
-  that is not internally USB at least keeps the passphrase away from
-  `sys-usb`; the full guide has a
-  [check for that](secure-qr-transfer.md#check-whether-the-built-in-keyboard-uses-usb).
+  at least keeps the passphrase away from `sys-usb`; one that is itself USB
+  would fail setup step 1.
 - **Internal USB devices stay switched off in the firmware**, for every
   later transfer: a built-in webcam, Bluetooth, a fingerprint or card reader.
   Only the webcam may be on the controller during the scan.
@@ -70,9 +69,19 @@ qubes: `sys-usb-webcam`, which owns the controller during a scan,
 disposable started from it that runs the scanner, and `A-qr-staging`, which
 keeps the encrypted file while the computer is off.
 
-A key qube is offline when it has no NetVM and no default disposable. The
-`vault` qube that the Qubes installer creates qualifies on either computer.
-SEQS does not create key qubes.
+A key qube is offline when its NetVM and its default disposable (the qube in
+which it opens files, normally a networked one) are both explicitly none. In
+a dom0 terminal on each computer, run this with the name of its key qube:
+
+```bash
+qvm-prefs <key-qube> | grep -E '^(netvm|default_dispvm) '
+```
+
+Both lines must show `-` and then `None`; a `D` means the value is only
+inherited and changes with the global default. Set a line that differs with
+`qvm-prefs <key-qube> netvm none` or `default_dispvm none`. The `vault` qube
+that the Qubes installer creates needs the second: it has no NetVM but
+inherits the default disposable. SEQS does not create key qubes.
 
 On both computers, cover the lens of every built-in camera, or switch it off
 with a hardware switch, for the whole transfer. Disabling a camera in
@@ -143,7 +152,8 @@ reaches the camera side.
 
 ### 4. Configure and build
 
-In a terminal in the repository qube (the qube holding your SEQS checkout),
+The sending computer needs no configuration change. In a terminal in the
+receiving computer's repository qube (the qube holding your SEQS checkout),
 edit `salt/pillar/seqs/config.sls` so that these three lines hold your BDF
 and the reset result:
 
@@ -162,9 +172,10 @@ cd ~/SEQS && git diff salt/pillar/seqs/config.sls && git commit -m 'Configure QR
 The diff must show only those lines. If the repository qube is a disposable,
 repeat the edit before every later SEQS run on this computer.
 
-Then run SEQS from dom0 as for a [first install](../README.md) or an
-[upgrade](upgrading.md), selecting `qr-camera,qr-staging` on the receiving
-computer and `qr-display` on the sending computer. The build stops with
+Then run SEQS from dom0 on each computer as for a
+[first install](../README.md) or an [upgrade](upgrading.md), selecting
+`qr-camera,qr-staging` on the receiving computer and `qr-display` on the
+sending computer. The build stops with
 `Configured controller is not attached to sys-usb` if the BDF is wrong, and
 it prints a line starting with `Air gap verified:` naming `A-qr-camera` and
 `A-qr-staging` on the receiving computer, and `A-qr-display` and
@@ -302,9 +313,10 @@ type `START` in capital letters, then:
 2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the
    webcam, within 30 seconds, and point it at the QR code. The script scans
    for up to 3 minutes. If it reports that `sys-usb-webcam` did not start
-   because the controller cannot be reset, it powers off after 60 seconds;
-   set `webcam_usb_no_strict_reset = True`, commit, build again, and repeat
-   from step 2.
+   because the controller cannot be reset, it powers off after 60 seconds:
+   do items 3 and 4, then set `webcam_usb_no_strict_reset = True` (setup
+   step 3 says what that gives up), commit, build again, and repeat from
+   step 2.
 3. Unplug the webcam when the script reports a completed copy or an error.
    Do not reconnect the keyboard or mouse.
 4. The computer powers off either way. Unplug the power cable and remove the
@@ -352,16 +364,20 @@ sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' 
 ```
 
 Each prints four groups of five characters, such as
-`7A91C-24D8E-6F032-B5A10`. Put the screens side by side and compare every
-character; do not copy, retype, or photograph the code.
+`7A91C-24D8E-6F032-B5A10`: the first 80 bits of the file's SHA-256 hash, too
+many for anyone to forge a matching file and few enough to compare by eye.
+Put the screens side by side and compare every character; do not copy,
+retype, or photograph the code.
 
-If any character differs, do not decrypt. A bad scan is unlikely, because QR
-codes carry error correction; assume that the camera side changed the file
-on purpose and is hostile. Delete the received `key.asc` and any other
-received file without opening them. Retry only once you know the cause. The
-hostile side has also held the controller that `sys-usb` got back at boot, so
-with a USB keyboard or mouse the receiving computer itself is now in doubt. To
-retry, shut down `D-qr-display` and repeat from step 2 with the kept `key.asc`.
+If any character differs, do not decrypt: the comparison is what keeps GnuPG
+in the key qube from reading a file the camera side altered. A bad scan is
+unlikely, because QR codes carry error correction; assume that the camera
+side changed the file on purpose and is hostile. Delete the received
+`key.asc` and any other received file without opening them. Retry only once
+you know the cause. The hostile side has also held the controller that
+`sys-usb` got back at boot, so with a USB keyboard or mouse the receiving
+computer itself is now in doubt. To retry, shut down `D-qr-display` and
+repeat from step 2 with the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
@@ -391,10 +407,9 @@ stat --format='%a %n' master.key
 
 When GnuPG asks for the passphrase, check that the prompt window has the
 target key qube's colour border; dom0 draws it, so no other qube can fake it.
-Type the passphrase from the paper, on the built-in keyboard if the full
-guide's check showed that it does not use USB. The last line must show
-`600 master.key`. A wrong passphrase gives an `ERROR` line and no
-`master.key`; run the block again.
+Type the passphrase from the paper, on the built-in keyboard if the computer
+has one. The last line must show `600 master.key`. A wrong passphrase gives
+an `ERROR` line and no `master.key`; run the block again.
 
 ### Step 7: Clean up
 
