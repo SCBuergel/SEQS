@@ -91,11 +91,12 @@ against. Use the QR webcam for nothing else, and plug it in only when step 4
 of the transfer says so; at any other time it, too, lands in `sys-usb`. If
 that ever happens, including at a boot, unplug it, shut the computer down,
 and remove all power as in step 4 of the transfer. A hostile webcam has then
-reached `sys-usb` itself, not only the controller, with the consequences of
-the first limit above; and unless `sys-usb` is a disposable (in a dom0
-terminal, `qvm-prefs sys-usb klass` prints `DispVM`), what it left there
-survives the restart, so treat `sys-usb`, and with a USB keyboard or mouse
-the receiving computer, as compromised.
+reached `sys-usb` itself, not only the controller. If you use a USB keyboard
+or mouse, `sys-usb` could type or click in dom0 at once (the first limit
+above), so treat the receiving computer as compromised. Treat `sys-usb` as
+compromised too, unless it is a disposable (in a dom0 terminal,
+`qvm-prefs sys-usb klass` prints `DispVM`), which discards what the webcam
+left in it when it restarts.
 
 ## Set up the receiving computer once
 
