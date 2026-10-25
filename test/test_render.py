@@ -1314,10 +1314,11 @@ def test_qube_gnosisvpn_component():
         runner_text = f.read()
     check("openresolv wireguard-tools" in runner_text,
           "GnosisVPN preflight must include wg-quick and resolvconf prerequisites")
-    check("download.vpn.gnosis.eth.limo proto=tcp dstports=443" in runner_text and
+    check("dsthost=download.gnosisvpn.io proto=tcp dstports=443" in runner_text and
           "printf 'qubes.UpdatesProxy * %s @anyvm deny" in runner_text,
           "temporary proxy must be host-restricted and exact-source scoped")
-    check("gnosisvpn_0.95.2_amd64.deb" in installer_text,
+    check('GNOSISVPN_URL="https://download.gnosisvpn.io/linux/apt/pool/main/g/'
+          'gnosisvpn/gnosisvpn_0.95.2_amd64.deb"' in installer_text,
           "GnosisVPN installer must pin the requested stable release")
     check("87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
           in installer_text,

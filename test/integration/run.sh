@@ -82,7 +82,7 @@ grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out"
 # GnosisVPN template may use it, for its updates proxy service alone.
 p=seqs-gnosisvpn-update-proxy
 eq "the proxy's firewall" "$(cat "${SEQS_MOCK_FIREWALL_LOG}")" "$(printf '%s\n' "-- $p reset" "-- $p del --rule-no 0" \
-	"-- $p add accept specialtarget=dns" "-- $p add accept dsthost=download.vpn.gnosis.eth.limo proto=tcp dstports=443" \
+	"-- $p add accept specialtarget=dns" "-- $p add accept dsthost=download.gnosisvpn.io proto=tcp dstports=443" \
 	"-- $p add drop")"
 eq "the temporary policy" "$(cat "${SEQS_MOCK_POLICY_COPY}")" "$(printf '%s\n' "# Managed by SEQS" \
 	"qubes.UpdatesProxy * Z-gnosisvpn @default allow target=$p" "qubes.UpdatesProxy * Z-gnosisvpn @anyvm deny")"

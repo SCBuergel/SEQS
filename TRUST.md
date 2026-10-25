@@ -293,7 +293,7 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton V
   `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`. The key fingerprint is published
   in GnosisVPN's `SECURITY.md`; the operator should cross-check it
   independently. Download uses a temporary update-proxy AppVM whose firewall
-  allows only DNS and `download.vpn.gnosis.eth.limo:443`, with qrexec policy
+  allows only DNS and `download.gnosisvpn.io:443`, with qrexec policy
   (`20-seqs-gnosisvpn-updates.policy`) scoped to the selected GnosisVPN
   template instance(s); the proxy is based on the TemplateVM of dom0's
   UpdateVM (`qubes-prefs updatevm`, resolved through the template chain of a
@@ -308,9 +308,12 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton V
   upstream `download.vpn.gnosis.eth.limo/linux/install.sh` is mutable; SEQS
   deliberately does not pipe it to root and instead pins the package its
   stable channel listed when reviewed. A later upstream stable release requires
-  a reviewed SEQS update rather than being installed automatically, and
-  upstream deletes superseded packages, so a stale pin fails closed with
-  HTTP 404 until updated. Only dom0's UpdateVM is checked for Whonix: if the
+  a reviewed SEQS update rather than being installed automatically. The
+  `download.vpn.gnosis.eth.limo` mirror keeps only the latest release, so
+  SEQS downloads from `download.gnosisvpn.io`, which still served superseded
+  releases on 2026-10-25; once upstream stops serving the pinned release, the
+  build fails closed with HTTP 404 until the pin is updated. Only dom0's
+  UpdateVM is checked for Whonix: if the
   `qubes.UpdatesProxy` policy routes template updates over Tor while dom0's
   UpdateVM is not a Whonix gateway, the `.deb` download still leaves without
   Tor. The

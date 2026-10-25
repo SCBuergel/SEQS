@@ -57,7 +57,7 @@ through the template's normal update route (the qube that the
 `qubes.UpdatesProxy` qrexec policy names for it). It then creates a temporary
 AppVM named `seqs-gnosisvpn-update-proxy`, enables `qubes-updates-proxy`, and
 applies a default-deny firewall allowing only DNS and TCP 443 to
-`download.vpn.gnosis.eth.limo`. A temporary exact-source qrexec rule directs only
+`download.gnosisvpn.io`. A temporary exact-source qrexec rule directs only
 the selected GnosisVPN templates (such as `Z-gnosisvpn`) to that proxy. The temporary AppVM is based on the TemplateVM
 of dom0's UpdateVM (`qubes-prefs updatevm`, the qube dom0 itself updates
 through), found through a validated DispVM-to-AppVM template chain if the
@@ -77,9 +77,10 @@ installer downloads the repository keyring, writes a stable or snapshot APT
 source, refreshes APT metadata, and installs the channel's current candidate.
 SEQS does not execute that mutable root script. Instead, it downloads the
 package that the stable channel's signed APT index listed when the pin was
-last reviewed, retaining an exact version and content pin. Upstream removes
-superseded packages from that repository, so an old pin stops downloading
-(HTTP 404) and the SEQS pin must then be reviewed and updated.
+last reviewed, retaining an exact version and content pin. It downloads from
+the mirror `download.gnosisvpn.io`, because `download.vpn.gnosis.eth.limo`
+keeps only the latest release. Once upstream stops serving the pinned release,
+the build fails (HTTP 404) until the SEQS pin is reviewed and updated.
 
 The template downloads the pinned `.deb` and detached signature through
 `127.0.0.1:8082`, checks the embedded signing-key fingerprint

@@ -10,7 +10,9 @@ ASSET_DIR="$(dirname "$0")"
 # signed by the key below; the hash matches that signed index. Fetch the
 # reviewed package directly instead of piping upstream's mutable install.sh to
 # root. This preserves SEQS's version/hash pin and detached-signature check.
-GNOSISVPN_URL="https://download.vpn.gnosis.eth.limo/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb"
+# The eth.limo mirror keeps only the latest release; download.gnosisvpn.io
+# also keeps superseded ones.
+GNOSISVPN_URL="https://download.gnosisvpn.io/linux/apt/pool/main/g/gnosisvpn/gnosisvpn_0.95.2_amd64.deb"
 GNOSISVPN_SHA256="87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
 GNOSISVPN_KEY_FPR="9A308031FD3BFE8EDBF5076D84F73FEA46D10972"
 DEB="${GNOSISVPN_URL##*/}"
