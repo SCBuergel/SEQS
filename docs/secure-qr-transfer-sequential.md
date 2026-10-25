@@ -315,8 +315,8 @@ type `START` in capital letters, then:
    for up to 3 minutes. If it reports that `sys-usb-webcam` did not start
    because the controller cannot be reset, it powers off after 60 seconds:
    do items 3 and 4, then set `webcam_usb_no_strict_reset = True` (setup
-   step 3 says what that gives up), commit, build again, and repeat from
-   step 2.
+   step 3 says what that gives up), commit, build again, shut down
+   `D-qr-display`, and repeat from step 2.
 3. Unplug the webcam when the script reports a completed copy or an error.
    Do not reconnect the keyboard or mouse.
 4. The computer powers off either way. Unplug the power cable and remove the
@@ -364,10 +364,11 @@ sha256sum -- key.asc | cut -c1-20 | sed 's/...../&-/g; s/-$//' | tr '[:lower:]' 
 ```
 
 Each prints four groups of five characters, such as
-`7A91C-24D8E-6F032-B5A10`: the first 80 bits of the file's SHA-256 hash, too
-many for anyone to forge a matching file and few enough to compare by eye.
-Put the screens side by side and compare every character; do not copy,
-retype, or photograph the code.
+`7A91C-24D8E-6F032-B5A10`: the first 80 bits of the file's SHA-256 hash.
+Forging a file that matches costs about 2^80 hash computations; the short
+length trades that margin for a comparison you can do by eye. Put the
+screens side by side and compare every character; do not copy, retype, or
+photograph the code.
 
 If any character differs, do not decrypt: the comparison is what keeps GnuPG
 in the key qube from reading a file the camera side altered. A bad scan is

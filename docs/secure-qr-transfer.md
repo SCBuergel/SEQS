@@ -133,9 +133,12 @@ The **receiving computer** needs:
   individual devices to other qubes) that handles only the webcam.
 
 Both key qubes should be offline: a key qube with a NetVM (the qube that gives
-it network access) keeps the plaintext `master.key` one software bug away from
-the network. The `vault` qube that the Qubes installer creates by default has
-no NetVM and is a suitable choice on either computer.
+it network access) or a default disposable (the qube in which it opens files,
+normally a networked one) keeps the plaintext `master.key` one software bug
+away from the network. The `vault` qube that the Qubes installer creates by
+default has no NetVM but inherits the default disposable; after
+`qvm-prefs vault default_dispvm none` in a dom0 terminal, it is a suitable
+choice on either computer.
 
 SEQS does not create the key qubes.
 
