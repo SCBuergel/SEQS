@@ -37,11 +37,16 @@ back at the next boot. Accept these limits before you set anything up:
 - **A USB keyboard or mouse makes `sys-usb` part of what you trust.**
   During the scan the webcam qube drives the controller directly, so whatever
   the camera side leaves in it and survives the power removal reaches
-  `sys-usb` at the next boot, and `sys-usb` can type or click in dom0 as your
-  USB keyboard or mouse would. The worst case is control of the whole
-  receiving computer, not only a lost passphrase. A built-in laptop keyboard
-  at least keeps the passphrase away from `sys-usb`; one that is itself USB
-  would fail setup step 1.
+  `sys-usb` at the next boot. Whether `sys-usb` may then type or click in
+  dom0, as a USB keyboard or mouse would, is a dom0 setting, whichever
+  keyboard you type on: a USB keyboard or mouse needs it, and it stays set
+  after you stop using them. The worst case is then control of the whole
+  receiving computer, not only a lost passphrase. With a built-in keyboard
+  and touchpad (ones that are USB fail setup step 1), the passphrase stays
+  away from `sys-usb`. Open Qubes Global Config (Qubes menu, gear icon), set
+  `Keyboard` and `Mouse` under `USB Input Devices` to `disable` for
+  `sys-usb`, and use no USB input device; the worst case is then a
+  compromised `sys-usb`.
 - **Internal USB devices stay switched off in the firmware**, for every
   later transfer: a built-in webcam, Bluetooth, a fingerprint or card reader.
   Only the webcam may be on the controller during the scan.
@@ -92,10 +97,10 @@ against. Use the QR webcam for nothing else, and plug it in only when step 4
 of the transfer says so; at any other time it, too, lands in `sys-usb`. If
 that ever happens, including at a boot, unplug it, shut the computer down,
 and remove all power as in step 4 of the transfer. A hostile webcam has then
-reached `sys-usb` itself, not only the controller. If you use a USB keyboard
-or mouse, `sys-usb` could type or click in dom0 at once (the first limit
-above), so treat that computer as compromised. Treat `sys-usb` as
-compromised too, unless it is a disposable (in a dom0 terminal,
+reached `sys-usb` itself, not only the controller. If dom0 takes keyboard or
+mouse input from `sys-usb` (the first limit above), `sys-usb` could type or
+click in dom0 at once, so treat that computer as compromised. Treat
+`sys-usb` as compromised too, unless it is a disposable (in a dom0 terminal,
 `qvm-prefs sys-usb klass` prints `DispVM`), which discards what the webcam
 left in it when it restarts.
 
@@ -228,7 +233,8 @@ Four rules hold from the first step to the last:
   camera's view, and keep the webcam unplugged, with its lens covered, until
   step 4 says to plug it in. A hostile webcam may record whenever it has
   power.
-- Qubes asks in a dom0 dialog before a qube copies files to another qube.
+- Qubes asks in a dom0 dialog before a qube copies files to another qube;
+  only the scanner's copy into `A-qr-staging` is allowed without asking.
   Accept only the copy dialogs the steps expect. Cancel any other dialog
   from `D-qr-display` or a camera qube, and treat it as a fingerprint
   mismatch, as step 5 describes.
@@ -402,10 +408,10 @@ in the key qube from reading a file the camera side altered. A bad scan is
 unlikely, because QR codes carry error correction; assume that the camera
 side changed the file on purpose and is hostile. Delete the received
 `key.asc` and any other received file without opening them. That side has
-also held the controller that `sys-usb` got back at boot, so with a USB
-keyboard or mouse the receiving computer itself is now in doubt. Retry only
-once you know the cause: shut down `D-qr-display` and repeat from step 2 with
-the kept `key.asc`.
+also held the controller that `sys-usb` got back at boot, so if dom0 takes
+input from `sys-usb`, the receiving computer itself is now in doubt. Retry
+only once you know the cause: shut down `D-qr-display` and repeat from step 2
+with the kept `key.asc`.
 
 ### Step 6: Decrypt (receiving computer)
 
