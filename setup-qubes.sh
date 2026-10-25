@@ -423,9 +423,10 @@ confirmPolicyTakeover() {
 	# prompt (fail safe). It is also skipped when Qubes' own
 	# 50-config-input.policy already allows or asks for the keyboard, or the
 	# staged pillar sets usb_keyboard_prompt to False on the line
-	# docs/configuration.md tells the operator to edit: the state then only
-	# removes a SEQS-marked file and never overwrites. Any other spelling of
-	# False keeps the prompt.
+	# docs/configuration.md tells the operator to edit, and assigns it nowhere
+	# else: the state then only removes a SEQS-marked file and never
+	# overwrites. Any other spelling of False, or a second assignment that
+	# Jinja might let win, keeps the prompt.
 	local usb_applies=1 release vms
 	release="$(grep -oE '[0-9]+\.[0-9]+' /etc/qubes-release 2>/dev/null | head -1)" || true
 	if [ -n "${release}" ] && [ "${release}" != "4.3" ]; then
@@ -435,7 +436,8 @@ confirmPolicyTakeover() {
 	elif sudo grep -Eqs '^[[:space:]]*qubes\.InputKeyboard[[:space:]]+\*[[:space:]]+sys-usb[[:space:]]+(@adminvm|dom0)[[:space:]]+(allow|ask)([[:space:]]|$)' \
 			"${POLICY_DIR}/50-config-input.policy"; then
 		usb_applies=0
-	elif grep -Eqs '^\{%-? set usb_keyboard_prompt = False %\}$' "${PILLAR_TREE}/config.sls"; then
+	elif [ "$(grep -Ec '^\{%-? set usb_keyboard_prompt = ' "${PILLAR_TREE}/config.sls" 2>/dev/null)" = 1 ] \
+			&& grep -Eqs '^\{%-? set usb_keyboard_prompt = False %\}$' "${PILLAR_TREE}/config.sls"; then
 		usb_applies=0
 	fi
 

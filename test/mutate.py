@@ -139,6 +139,7 @@ MUTATIONS = [
     ("dom0-usb-override-kept", S, "{% if release == '4.3' and ('sys-usb' in inventory) and (keyboard_handled.value or not usb_keyboard_prompt) %}", "{% if false %}"),
     ("dom0-usb-override-setting", S, "and (keyboard_handled.value or not usb_keyboard_prompt) %}", "and keyboard_handled.value %}"),
     ("dom0-usb-prompt-bool", S, "{% if usb_keyboard_prompt is not sameas true and usb_keyboard_prompt is not sameas false %}", "{% if false %}"),
+    ("runner-usb-takeover-single", R, "\"${PILLAR_TREE}/config.sls\" 2>/dev/null)\" = 1 ] \\", "\"${PILLAR_TREE}/config.sls\" 2>/dev/null)\" -ge 1 ] \\"),
     ("runner-usb-takeover-setting", R, "\"${PILLAR_TREE}/config.sls\"; then\n\t\tusb_applies=0", "\"${PILLAR_TREE}/config.sls\"; then\n\t\tusb_applies=1"),
     ("runner-usb-takeover-50", R, "(allow|ask)([[:space:]]|$)' \\\n\t\t\t\"${POLICY_DIR}/50-config-input.policy\"; then\n\t\tusb_applies=0", "(allow|ask)([[:space:]]|$)' \\\n\t\t\t\"${POLICY_DIR}/50-config-input.policy\"; then\n\t\tusb_applies=1"),
     ("dom0-qr-input-deny", S, "        qubes.InputKeyboard  *  {{ webcam_usb_qube }}  @adminvm  deny\n", ""),

@@ -95,6 +95,7 @@ eq "50- comment" "$(takeover 'dom0\nsys-usb\n' 0 '# qubes.InputKeyboard * sys-us
 eq "pillar False" "$(takeover 'dom0\nsys-usb\n' 0 '' '{%- set usb_keyboard_prompt = False %}')" skip
 eq "pillar false" "$(takeover 'dom0\nsys-usb\n' 0 '' '{%- set usb_keyboard_prompt = false %}')" prompt
 eq "pillar commented" "$(takeover 'dom0\nsys-usb\n' 0 '' '{#- set usb_keyboard_prompt = False #}')" prompt
+eq "pillar reassigned" "$(takeover 'dom0\nsys-usb\n' 0 '' $'{%- set usb_keyboard_prompt = False %}\n{%- set usb_keyboard_prompt = True %}')" prompt
 
 echo "== adb-pull treats the device's answers as data =="
 # A hostile phone answers stat with a bash arithmetic payload; adb-pull must
