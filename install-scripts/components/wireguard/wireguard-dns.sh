@@ -66,12 +66,19 @@ for i in "${!qubes_dns[@]}"; do
 	rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'
 	rules+="ip daddr ${qubes_dns[$i]} tcp dport 53 dnat to ${destination}"$'\n'
 done
-rules+=$'}\nchain seqs-wireguard-dns-output {\n'
-rules+=$'type nat hook output priority dstnat; policy accept;\n'
-for i in "${!qubes_dns[@]}"; do
-	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
-	rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'
-	rules+="ip daddr ${qubes_dns[$i]} tcp dport 53 dnat to ${destination}"$'\n'
-done
-rules+=$'}\n}\n'
+rules+=$'}\n'
+# This qube's own lookups go to the provider only while wg0 is up: providers
+# usually name a resolver reachable only through the tunnel, and wg-quick
+# resolves a hostname Endpoint before the tunnel exists.
+if ip link show dev wg0 2>/dev/null | grep -Eq '<([^>]*,)?UP(,|>)'; then
+	rules+=$'chain seqs-wireguard-dns-output {\n'
+	rules+=$'type nat hook output priority dstnat; policy accept;\n'
+	for i in "${!qubes_dns[@]}"; do
+		destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
+		rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'
+		rules+="ip daddr ${qubes_dns[$i]} tcp dport 53 dnat to ${destination}"$'\n'
+	done
+	rules+=$'}\n'
+fi
+rules+=$'}\n'
 nft --file - <<< "$rules"

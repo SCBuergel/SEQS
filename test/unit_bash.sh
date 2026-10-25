@@ -485,6 +485,29 @@ wg_conf; sed -i 's|^AllowedIPs = .*|AllowedIPs = 100.0.0.0/08|' "${wg}/t.conf"; 
 out="$(wg_import)" && bad "the import accepted a split tunnel"
 grep -q "not a complete full-tunnel" <<< "${out}" && ok || bad "split tunnel: wrong message [${out}]"
 
+echo "== WireGuard dns.sh translates this qube's own DNS only while wg0 is up =="
+# A copy calls stubs by absolute path: nft records its batch, ip reports wg0
+# as up or absent, qubesdb-read names the client resolvers.
+wd="${tmp}/wgdns"; mkdir -p "${wd}"
+printf '[Interface]\nDNS = 10.128.0.1\n' > "${wd}/wg0.conf"
+printf '#!/bin/sh\ncat > "%s/batch"\n' "${wd}" > "${wd}/nft"
+printf '#!/bin/sh\n[ -e "%s/up" ] && echo "4: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420"\n' "${wd}" > "${wd}/ip"
+printf '#!/bin/sh\ncase "$1" in */qubes-netvm-primary-dns) echo 10.139.1.1;; */qubes-netvm-secondary-dns) echo 10.139.1.2;; esac\n' > "${wd}/qubesdb-read"
+chmod +x "${wd}/nft" "${wd}/ip" "${wd}/qubesdb-read"
+sed -e "s#/rw/config/seqs-wireguard/wg0.conf#${wd}/wg0.conf#" -e "s#^nft #${wd}/nft #" \
+	-e "s#qubesdb-read #${wd}/qubesdb-read #" -e "s#if ip link #if ${wd}/ip link #" \
+	install-scripts/components/wireguard/wireguard-dns.sh > "${wd}/dns.sh"
+out_chain='chain seqs-wireguard-dns-output {'
+rm -f "${wd}/up" "${wd}/batch"; bash "${wd}/dns.sh" \
+	&& grep -qx 'delete chain ip qubes seqs-wireguard-dns-output' "${wd}/batch" \
+	&& ! grep -qF "${out_chain}" "${wd}/batch" \
+	&& grep -q 'ip daddr 10.139.1.1 udp dport 53 dnat to 10.128.0.1' "${wd}/batch" \
+	&& ok || bad "with wg0 down, dns.sh must keep client DNS and drop its own translation"
+touch "${wd}/up"; rm -f "${wd}/batch"; bash "${wd}/dns.sh" \
+	&& grep -qF "${out_chain}" "${wd}/batch" \
+	&& [ "$(grep -c 'dnat to 10.128.0.1' "${wd}/batch")" = 8 ] \
+	&& ok || bad "with wg0 up, dns.sh must translate this qube's own DNS as well"
+
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 # Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
 qctl() { ( sudo() { "$@"; }; qubesctl() { printf '%b\n' "$1"; }; runQubesctl "$1" ) >/dev/null 2>&1; }

@@ -13,6 +13,9 @@ sed '/^[[:space:]]*DNS[[:space:]]*=/Id' "$config" > "${runtime_dir}/wg0.conf"
 chmod 0600 "${runtime_dir}/wg0.conf"
 
 wg-quick down "${runtime_dir}/wg0.conf" >/dev/null 2>&1 || true
+# With wg0 down, dns.sh drops the local DNS translation, so wg-quick resolves
+# a hostname Endpoint upstream; run after up, it restores the translation.
+/rw/config/seqs-wireguard/dns.sh
 wg-quick up "${runtime_dir}/wg0.conf"
 if ! /rw/config/seqs-wireguard/dns.sh; then
 	wg-quick down "${runtime_dir}/wg0.conf" >/dev/null 2>&1 || true

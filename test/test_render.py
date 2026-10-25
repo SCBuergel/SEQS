@@ -1280,6 +1280,10 @@ def test_qube_wireguard_component():
         boot_text = f.read()
     check("sed " in boot_text and "dns.sh" in boot_text,
           "WireGuard boot must omit DNS from wg-quick and update Qubes DNS")
+    check(boot_text.index("wg-quick down") <
+          boot_text.index("/rw/config/seqs-wireguard/dns.sh") <
+          boot_text.index("wg-quick up"),
+          "WireGuard boot must drop the local DNS translation before wg-quick up")
     firewall_script = os.path.join(
         sr.REPO_ROOT, "install-scripts", "components", "wireguard",
         "wireguard-firewall.sh")

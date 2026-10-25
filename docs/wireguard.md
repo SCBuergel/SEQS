@@ -129,9 +129,9 @@ sudo systemctl status qubes-firewall.service
 sudo journalctl -b
 ```
 
-The two nftables chains should translate Qubes' synthetic DNS addresses to the
-IPv4 DNS server from the imported configuration. If IP traffic works but names
-do not resolve, do not replace `/etc/resolv.conf`; inspect these chains and the
+While the tunnel is up, the two nftables chains should translate Qubes'
+synthetic DNS addresses to the IPv4 DNS server from the imported
+configuration. If IP traffic works but names do not resolve, do not replace `/etc/resolv.conf`; inspect these chains and the
 provider configuration's `DNS=` value.
 
 For repository upgrades to an already-provisioned WireGuard qube, rerun
@@ -185,7 +185,9 @@ It then atomically installs two narrowly scoped translations:
 - Qubes' native `dnat-dns` prerouting chain handles requests arriving from
   client qubes.
 - `seqs-wireguard-dns-output` handles requests generated locally by
-  `A-wireguard`.
+  `A-wireguard`, but only while `wg0` is up: the provider's DNS server is
+  usually reachable only through the tunnel, and WireGuard must first resolve
+  a hostname endpoint through the upstream resolver.
 
 Both TCP and UDP port 53 are translated to the provider's IPv4 DNS server.
 The firewall hook reapplies these mappings whenever Qubes rebuilds its firewall
