@@ -201,6 +201,15 @@ def test_dom0_runtime_selection():
     check("runtime selection names unknown catalogue entry 'not-in-catalogue'" in _errors(bad),
           "unknown runtime selections must fail pre-flight")
 
+    # Instance names become qube names in dom0 shell states.
+    for sel, msg, name in [
+            ("brave brave-a;b", "contains unsafe recipe or instance name 'brave brave-a;b'", "brave-a;b"),
+            ("a;b", "contains unsafe recipe or instance name 'a;b'", "a;b"),
+            ("@all a;b", "contains unsafe postfix 'a;b'", "brave-a;b")]:
+        _, unsafe = render_state("dom0", "dom0", Scenario(selection=sel))
+        check("runtime selection " + msg in _errors(unsafe) and "seqs-clone-" + name not in unsafe,
+              "an unsafe runtime selection must fail pre-flight: " + sel)
+
     _, postfixed = render_state(
         "dom0", "dom0",
         Scenario(selection="brave alpha\nsignal signal-alpha"))
