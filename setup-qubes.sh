@@ -278,8 +278,8 @@ fetchSaltTree() {
 	# source_commit is restricted to a full hexadecimal object ID above, so it
 	# is safe to interpolate into this fixed remote command.
 	# git archive applies the commit's own .gitattributes: export-subst writes
-	# commit-message text into a file, export-ignore drops one, and filters
-	# rewrite one, so the exported bytes would not be the reviewed blobs. A
+	# commit-message text into a file and export-ignore drops one, so the
+	# exported bytes would not be the reviewed blobs. A
 	# commit holding one, at any depth, is refused with exit code 3 before the
 	# export (ls-tree -z: an unusual name is not quoted, so the match holds).
 	local remote
