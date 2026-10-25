@@ -973,10 +973,19 @@ def test_dom0_validation_catches_bad_config():
         catalogue={"x": {"label": "gray", "components": ["brave"],
                      "firewall": ["not a host!!"]}})),
         "malformed firewall entry must fail validation")
+    # A trailing newline passes a regex that ends in $ but not one that ends in \Z.
+    check(_rejected("invalid firewall entry 'example.com\n'", _bad_pillar(
+        catalogue={"x": {"label": "gray", "components": ["brave"],
+                     "firewall": ["example.com\n"]}})),
+        "a firewall entry with a trailing newline must fail validation")
+    check(_rejected("has invalid Chrome Web Store ID", _bad_pillar(
+        brave_extensions={"rabby": "a" * 32 + "\n"},
+        catalogue={"brave": {"label": "red", "components": ["brave", "brave-extension-rabby"]}})),
+        "an extension ID with a trailing newline must fail validation")
     check(_rejected("duplicate qube name 'brave'", _bad_pillar(
         config_errors=["duplicate qube name 'brave'"])),
         "config_errors from pillar compilation must abort the dom0 apply")
-    for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8"):
+    for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8", "00_14.0\n"):
         check(_rejected("webcam_usb_controller '%s' is invalid" % bdf, _bad_pillar(
             webcam_usb_mode="sequential", webcam_usb_controller=bdf,
             webcam_scanner_dvm="A-qr-camera")),
@@ -1395,12 +1404,18 @@ def test_qube_validation_catches_bad_component():
             ("spec", {"components": ["brave-extension-x"]}, "missing or invalid extension ID for 'brave-extension-x'"),
             ("browser_vm", "A-brave;id", "unsafe browser_vm 'A-brave;id'"),
             ("browser_desktop", "x;id.desktop", "unsafe browser_desktop 'x;id.desktop'"),
+            ("browser_desktop", "x.desktop\n", "unsafe browser_desktop 'x.desktop\n'"),
             ("component_timeout", "900\n    - shell: /bin/x", "component_timeout must be a number")]:
         bad = dict(good, **{key: value})
         _, parsed = render_state("qube", "Z-brave", pillar_seqs=bad)
         comment = (state_arg(parsed, "seqs-qube-validation-failed", "test.fail_without_changes", "comment")
                    if "seqs-qube-validation-failed" in parsed else "")
         check(expected in comment, "in-qube validation must report %r, got %r" % (expected, comment))
+    bad = dict(good, spec={"components": ["brave-extension-x"]}, brave_extensions={"x": "a" * 32 + "\n"})
+    _, parsed = render_state("qube", "Z-brave", pillar_seqs=bad)
+    check("seqs-qube-validation-failed" in parsed and "missing or invalid extension ID for 'brave-extension-x'"
+          in state_arg(parsed, "seqs-qube-validation-failed", "test.fail_without_changes", "comment"),
+          "an extension ID with a trailing newline must fail in-qube validation")
 
 
 
@@ -1556,7 +1571,8 @@ def test_gnosisvpn_receive_buffer():
 
 
 BAD_CLEANUP_PATHS = ["/home/user", "/home/user/", "/home/user//", "/home/user/.", "/home/user/./",
-                     "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)"]
+                     "/home/user/a/..", "/home/user/a//b", "/home/user/a b", "/root/x", "/home/user/$(id)",
+                     "/home/user/Downloads\n"]
 
 
 def test_cleanup_paths_never_name_home():

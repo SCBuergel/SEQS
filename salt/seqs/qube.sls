@@ -28,7 +28,7 @@ seqs-noop:
 {%   if comp | regex_match(name_re) is none %}
 {%     do errors.append("unsafe component name '" ~ comp ~ "'") %}
 {%   elif comp.startswith('brave-extension-') %}
-{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}$') is none %}
+{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}\\Z') is none %}
 {%       do errors.append("missing or invalid extension ID for '" ~ comp ~ "'") %}
 {%     endif %}
 {%   endif %}
@@ -36,7 +36,7 @@ seqs-noop:
 {% if browser_vm | regex_match(name_re) is none %}
 {%   do errors.append("unsafe browser_vm '" ~ browser_vm ~ "'") %}
 {% endif %}
-{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\.desktop$') is none %}
+{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\.desktop\\Z') is none %}
 {%   do errors.append("unsafe browser_desktop '" ~ browser_desktop ~ "'") %}
 {% endif %}
 {# timeout is interpolated into the cmd.run states below as a bare YAML
@@ -47,7 +47,7 @@ seqs-noop:
 {% if role == 'template' %}
 {%   for e in cleanup_dirs %}
 {%     if e.get('mode') not in ['folder', 'contents']
-          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none
+          or e.get('path', '') | regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\Z') is none
           or '..' in e.get('path', '') or '/./' in e.get('path', '') ~ '/' %}
 {%       do errors.append("unsafe cleanup_dirs entry '" ~ e ~ "'") %}
 {%     endif %}

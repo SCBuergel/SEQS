@@ -160,7 +160,15 @@ MUTATIONS = [
     ("desktop-shortcut", R, '[[ "${a}" =~ ${shortcut_re} && "${b}" =~ ^[a-z][a-z_]*_key$ ]] \\', 'true \\'),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "{%           if e not in ['dns', 'icmp'] and ((es", "{%           if false and ((es"),
-    ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),
+    ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]\\\\Z') is none %}", "regex_match('^.*$') is none %}"),
+    # \Z, not $, which also matches before a trailing newline.
+    ("dom0-webcam-bdf-anchor", S, "[0-7]\\\\Z') is none %}", "[0-7]$') is none %}"),
+    ("dom0-ext-id-anchor", S, "exts[en] | regex_match('^[a-p]{32}\\\\Z')", "exts[en] | regex_match('^[a-p]{32}$')"),
+    ("dom0-firewall-anchor", S, "(:[0-9]{1,5})?\\\\Z')", "(:[0-9]{1,5})?$')"),
+    ("dom0-cleanup-anchor", S, "(p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z')", "(p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$')"),
+    ("qube-ext-id-anchor", Q, "regex_match('^[a-p]{32}\\\\Z')", "regex_match('^[a-p]{32}$')"),
+    ("qube-browser-desktop-anchor", Q, "\\\\.desktop\\\\Z')", "\\\\.desktop$')"),
+    ("qube-cleanup-anchor", Q, "regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z')", "regex_match('^/home/user(/[A-Za-z0-9._-]+)+$')"),
     ("dom0-sequential-staging-offline", S, "(not qcatalog.get('qr-staging', {}).get('offline') or ", "("),
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
     # delete-vms.sh --reset: only marked qubes and files, in order, after RESET.

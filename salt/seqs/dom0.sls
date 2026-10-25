@@ -159,7 +159,7 @@ print("END")'{% endset %}
 {% endif %}
 {# Lowercase only: qvm-pci lists and matches BDFs in lowercase, and the
    ownership checks below compare them as strings. #}
-{% if webcam_controller and webcam_controller | regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]$') is none %}
+{% if webcam_controller and webcam_controller | regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\.[0-7]\\Z') is none %}
 {%   do errors.append("webcam_usb_controller '" ~ webcam_controller ~ "' is invalid (expected a lowercase BDF as listed by qvm-pci, such as 03_00.0)") %}
 {% endif %}
 {% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube), ('webcam_staging_qube', webcam_staging_qube)] %}
@@ -261,7 +261,7 @@ print("END")'{% endset %}
 {%         set en = comp[16:] %}
 {%         if en not in exts %}
 {%           do errors.append("qube '" ~ name ~ "' references unknown Brave extension '" ~ en ~ "' (not in brave_extensions)") %}
-{%         elif exts[en] | regex_match('^[a-p]{32}$') is none %}
+{%         elif exts[en] | regex_match('^[a-p]{32}\\Z') is none %}
 {%           do errors.append("Brave extension '" ~ en ~ "' has invalid Chrome Web Store ID '" ~ exts[en] ~ "' (expected 32 chars a-p)") %}
 {%         endif %}
 {%       elif not salt['file.directory_exists']('/srv/salt/seqs/files/components/' ~ comp) %}
@@ -320,7 +320,7 @@ print("END")'{% endset %}
 {%           set octet = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])' %}
 {#           Qubes rejects a port outside 1-65535 or a malformed dotted-quad
              host only after egress is already closed. #}
-{%           if e not in ['dns', 'icmp'] and ((es | regex_match('^[A-Za-z0-9._-]+(:[0-9]{1,5})?$')) is none
+{%           if e not in ['dns', 'icmp'] and ((es | regex_match('^[A-Za-z0-9._-]+(:[0-9]{1,5})?\\Z')) is none
                 or (port | int) < 1 or (port | int) > 65535
                 or ((host | regex_match('^[0-9.]+$')) is not none
                     and (host | regex_match('^' ~ octet ~ '([.]' ~ octet ~ '){3}$')) is none)) %}
@@ -404,7 +404,7 @@ print("END")'{% endset %}
 {#   Each segment non-empty and neither '.' nor '..': '/home/user//' or
      '/home/user/.' would name the home directory itself. #}
 {%   set p = e.get('path', '') %}
-{%   if (p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+$') is none) or ('..' in p) or ('/./' in p ~ '/') %}
+{%   if (p | regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\Z') is none) or ('..' in p) or ('/./' in p ~ '/') %}
 {%     do errors.append("cleanup_dirs path '" ~ p ~ "' must be strictly under /home/user/, contain no '..', '.' or empty segment, and use only [A-Za-z0-9._/-]") %}
 {%   endif %}
 {% endfor %}
