@@ -247,10 +247,21 @@ print("END")'{% endset %}
 {% endif %}
 
 {# ── Per-qube validation ───────────────────────────────────────────────── #}
+{#   Every catalogue key the states read; add a new key here. A misspelled
+     flag would otherwise be ignored and leave, say, an 'ofline' qube online. #}
+{% set bool_keys = ['offline', 'no_handoff', 'network_provider', 'audio_provider', 'dispvm_template', 'named_disposable', 'preserve_incoming'] %}
+{% set catalogue_keys = bool_keys + ['name', 'label', 'components', 'main_app', 'firewall', 'netvm', 'vcpus', 'cpu_pinning'] %}
 {% for name, q in qcatalog.items() %}
 {%   if name | regex_match(name_re) is none %}
 {%     do errors.append("qube name '" ~ name ~ "' is unsafe") %}
 {%   else %}
+{%     set unknown = q.keys() | reject('in', catalogue_keys) | list %}
+{%     if unknown %}
+{%       do errors.append("qube '" ~ name ~ "' has unknown key(s) " ~ unknown | join(', ')) %}
+{%     endif %}
+{%     for k in bool_keys if q.get(k) is not none and q[k] is not sameas true and q[k] is not sameas false %}
+{%       do errors.append("qube '" ~ name ~ "': '" ~ k ~ "' must be True or False") %}
+{%     endfor %}
 {%     if q.get('label') not in labels %}
 {%       do errors.append("qube '" ~ name ~ "' has unknown label '" ~ q.get('label') ~ "'") %}
 {%     endif %}

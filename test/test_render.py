@@ -962,6 +962,12 @@ def test_dom0_validation_catches_bad_config():
     check(_rejected("has unknown label 'chartreuse'", _bad_pillar(
         catalogue={"brave": {"label": "chartreuse", "components": ["brave"]}})),
         "unknown label must fail validation")
+    check(_rejected("qube 'brave' has unknown key(s) ofline", _bad_pillar(
+        catalogue={"brave": {"label": "red", "components": ["brave"], "ofline": True}})),
+        "a misspelled flag must fail validation instead of being ignored")
+    check(_rejected("qube 'brave': 'offline' must be True or False", _bad_pillar(
+        catalogue={"brave": {"label": "red", "components": ["brave"], "offline": "no"}})),
+        "a non-boolean flag must fail validation")
     check(_rejected("references unknown component 'does-not-exist'", _bad_pillar(
         catalogue={"brave": {"label": "red", "components": ["does-not-exist"]}})),
         "unknown component must fail validation")

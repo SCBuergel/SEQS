@@ -135,6 +135,8 @@ MUTATIONS = [
     ("dom0-netvm-offline", S, "{%       elif q.get('offline') or q.get('network_provider') %}", "{%       elif false %}"),
     ("dom0-netvm-built", S, "{%   if q.netvm not in qmap and inventory.get(provider, {}).get('recipe') != q.netvm %}", "{%   if false %}"),
     ("dom0-netvm-recipe", S, "inventory.get(provider, {}).get('recipe') != q.netvm %}", "provider not in inventory %}"),
+    ("dom0-catalogue-unknown-key", S, "{%     if unknown %}", "{%     if false %}"),
+    ("dom0-catalogue-bool", S, "q[k] is not sameas true and q[k] is not sameas false %}", "false %}"),
     ("dom0-offline-firewall", S, "{%         if q.get('offline') %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'", "{%         if false %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'"),
     ("dom0-firewall-named-disposable", S, "{%         if q.get('named_disposable') %}", "{%         if false %}"),
     ("dom0-adopt", S, "{%     if not inventory[vmname].managed and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}", "{%     if false %}"),
