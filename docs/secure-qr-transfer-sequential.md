@@ -234,8 +234,9 @@ Four rules hold from the first step to the last:
 
 ### Step 1: Encrypt (sending computer)
 
-Take a fresh sheet of paper. In a terminal in the source key qube, go to the
-directory containing `master.key` and run:
+Take a fresh sheet of paper and lift it off the pad before you write; a pen
+presses the passphrase into the sheet below. In a terminal in the source key
+qube, go to the directory containing `master.key` and run:
 
 ```bash
 (
