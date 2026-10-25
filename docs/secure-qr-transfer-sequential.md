@@ -38,19 +38,19 @@ back at the next boot. Accept these limits before you set anything up:
   qube drives the controller directly, so whatever the camera side leaves in
   it and survives the power removal reaches `sys-usb` at the next boot. Dom0
   cannot tell a USB keyboard's or mouse's input from input that `sys-usb`
-  invents, so wherever a USB keyboard or mouse works in dom0, `sys-usb` may
-  type or click there, whichever keyboard you type on, and the worst case is
-  control of the whole receiving computer, not only a lost passphrase. On a
-  computer installed with a USB keyboard, Qubes lets `sys-usb` type without
-  a prompt. On one installed with its built-in keyboard, Qubes would refuse
-  USB keyboards, and SEQS instead makes dom0 ask before one works
+  invents, so wherever dom0 accepts such input from `sys-usb`, `sys-usb` may
+  type or click there, and the worst case is control of the whole receiving
+  computer, not only a lost passphrase. A computer installed with a USB
+  keyboard accepts it by policy, whichever keyboard you type on. One
+  installed with its built-in keyboard accepts it only through a prompt:
+  Qubes would refuse USB keyboards there, and SEQS instead makes dom0 ask
+  before one works, as Qubes asks before a mouse works
   ([TRUST.md](../TRUST.md#usb-keyboard-policy-override-qubesinputkeyboard-from-sys-usb--dom0-));
-  a prompt you accept for a USB keyboard or mouse, even your own, opens the
-  same channel. Either accept that worst case, or use no USB keyboard or
-  mouse on the receiving computer, deny every such prompt, and type the
-  passphrase on the built-in keyboard; the worst case is then a compromised
-  `sys-usb`. A built-in keyboard or touchpad that is itself USB fails setup
-  step 1.
+  accepting such a prompt, even for your own device, opens the same channel.
+  Only on that computer can you shrink the worst case to a compromised
+  `sys-usb`: use no USB keyboard or mouse on it, deny every such prompt, and
+  type the passphrase on the built-in keyboard. A built-in keyboard or
+  touchpad that is itself USB fails setup step 1.
 - **Internal USB devices stay switched off in the firmware**, for every
   later transfer: a built-in webcam, Bluetooth, a fingerprint or card reader.
   Only the webcam may be on the controller during the scan.
@@ -101,12 +101,12 @@ against. Use the QR webcam for nothing else, and plug it in only when step 4
 of the transfer says so; at any other time it, too, lands in `sys-usb`. If
 that ever happens, including at a boot, unplug it, shut the computer down,
 and remove all power as in step 4 of the transfer. A hostile webcam has then
-reached `sys-usb` itself, not only the controller. If a USB keyboard or
-mouse works in dom0 on that computer (the first limit above), `sys-usb`
-could type or click there, so treat the computer as compromised. Treat
-`sys-usb` as compromised too, unless it is a disposable (in a dom0 terminal,
-`qvm-prefs sys-usb klass` prints `DispVM`), which discards what the webcam
-left in it when it restarts.
+reached `sys-usb` itself, not only the controller. If dom0 accepts keyboard
+or mouse input from `sys-usb` on that computer (the first limit above),
+`sys-usb` could type or click there, so treat the computer as compromised.
+Treat `sys-usb` as compromised too, unless it is a disposable (in a dom0
+terminal, `qvm-prefs sys-usb klass` prints `DispVM`), which discards what the
+webcam left in it when it restarts.
 
 ## Set up the receiving computer once
 
@@ -412,8 +412,8 @@ in the key qube from reading a file the camera side altered. A bad scan is
 unlikely, because QR codes carry error correction; assume that the camera
 side changed the file on purpose and is hostile. Delete the received
 `key.asc` and any other received file without opening them. That side has
-also held the controller that `sys-usb` got back at boot, so if a USB
-keyboard or mouse works in dom0 there, the receiving computer itself is now
+also held the controller that `sys-usb` got back at boot, so if dom0 accepts
+keyboard or mouse input from `sys-usb`, the receiving computer itself is now
 in doubt. Retry only once you know the cause: shut down `D-qr-display` and
 repeat from step 2 with the kept `key.asc`.
 
