@@ -34,9 +34,10 @@ computer off; you then remove all power, and `sys-usb` gets the controller
 back at the next boot. Accept these limits before you set anything up:
 
 - **A USB keyboard or mouse makes `sys-usb` part of what you trust.**
-  Whatever the webcam leaves in the controller and survives the power removal
-  reaches `sys-usb` at the next boot, and `sys-usb` can type or click in dom0
-  as your USB keyboard or mouse would. The worst case is control of the whole
+  During the scan the webcam qube drives the controller directly, so whatever
+  the camera side leaves in it and survives the power removal reaches
+  `sys-usb` at the next boot, and `sys-usb` can type or click in dom0 as your
+  USB keyboard or mouse would. The worst case is control of the whole
   receiving computer, not only a lost passphrase. A built-in laptop keyboard
   at least keeps the passphrase away from `sys-usb`; one that is itself USB
   would fail setup step 1.
@@ -58,7 +59,7 @@ The **sending computer** needs a trusted offline **source key qube** that
 holds the file, called `master.key` below, and SEQS with the `qr-display`
 qube selected. That creates `D-qr-display`, an offline disposable (a qube
 whose changes are discarded when it shuts down) that only ever shows
-encrypted data.
+encrypted data, and its template `A-qr-display`.
 
 The **receiving computer** needs Qubes OS 4.3, a trusted offline **target key
 qube** without a `master.key`, a USB webcam that reads QR codes from a screen
@@ -314,7 +315,7 @@ After `START`:
    start over; nothing has changed yet. A keyboard or mouse still plugged in
    when the webcam qube starts ends up in it with the webcam, the script
    finds more than one device, refuses to scan, and powers off. Use that
-   keyboard or mouse again only if you accept that the webcam may have
+   keyboard or mouse again only if you accept that the camera side may have
    altered its firmware; otherwise replace it.
 2. When the screen says `NORMAL USB BACKEND STOPPED`, plug in only the
    webcam, within 30 seconds, and point it at the QR code. The script scans
