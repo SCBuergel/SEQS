@@ -12,7 +12,9 @@ dedicated-controller path.
 
 ## What happens, and what you accept
 
-The secret travels in two pieces that must never meet on the camera side:
+The secret travels in two pieces, and the passphrase must never reach the
+**camera side**: the webcam, the QR data, and every qube that handles them,
+all treated as possibly hostile.
 
 - The **encrypted file** goes from the source key qube to an offline display
   qube, as a QR code to the webcam, through offline camera qubes on the
@@ -20,11 +22,10 @@ The secret travels in two pieces that must never meet on the camera side:
 - The **passphrase** goes from the source key qube's screen onto paper, and
   from the paper through your keyboard into the target key qube.
 
-The webcam, the QR data, and every qube that handles them are treated as
-possibly hostile. The procedure holds only while you do the steps in order,
-so that nothing on the camera side runs when you type the passphrase. If the
-camera side is hostile and the passphrase reaches it anyway, the secret is
-lost and nothing in this procedure will tell you.
+The procedure holds only while you do the steps in order, so that nothing on
+the camera side runs when you type the passphrase. If the camera side is
+hostile and the passphrase reaches it anyway, the secret is lost and nothing
+in this procedure will tell you.
 
 On the sequential path the webcam borrows the USB controller that normally
 belongs to `sys-usb` (the qube that owns the computer's USB hardware, through
@@ -45,9 +46,9 @@ back at the next boot. Accept these limits before you set anything up:
   later transfer: a built-in webcam, Bluetooth, a fingerprint or card reader.
   Only the webcam may be on the controller during the scan.
 - **You must be able to remove all power** after the scan: unplug the power
-  cable and take out the battery. A laptop with a built-in battery is the
-  weakest point of this path, and this guide cannot say how much it weakens
-  it.
+  cable and take out the battery; this guide has not tested how long the
+  power must stay off. A laptop with a built-in battery is the weakest point
+  of this path, and this guide cannot say how much it weakens it.
 
 If one of these is not acceptable for your secret, use the
 [dedicated-controller path](secure-qr-transfer.md#choose-the-hardware-isolation-path)
@@ -172,14 +173,16 @@ and the reset result:
 {%- set webcam_usb_no_strict_reset = False %}
 ```
 
-SEQS builds only committed changes, so commit the edit:
+SEQS builds only committed changes. In the same terminal, show the diff,
+check that it changes only those lines, and commit it:
 
 ```bash
-cd ~/SEQS && git diff salt/pillar/seqs/config.sls && git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
+cd ~/SEQS && git diff salt/pillar/seqs/config.sls
+git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
 ```
 
-The diff must show only those lines. If the repository qube is a disposable,
-repeat the edit before every later SEQS run on this computer.
+If the repository qube is a disposable, repeat the edit before every later
+SEQS run on this computer.
 
 Then run SEQS from dom0 on each computer as for a
 [first install](../README.md) or an [upgrade](upgrading.md), selecting
@@ -191,9 +194,11 @@ it prints a line starting with `Air gap verified:` naming `A-qr-camera` and
 `D-qr-display` on the sending computer, which it checked to have no NetVM
 and no default disposable. The scan script repeats that check for
 `sys-usb-webcam`, `seqs-qr-scanner`, and `A-qr-staging` before every scan.
-To verify the policies and the controller assignment without relying on the
-build output, run the checks for both computers under the full guide's
-[Check the setup](secure-qr-transfer.md#check-the-setup).
+Then run the checks for both computers under the full guide's
+[Check the setup](secure-qr-transfer.md#check-the-setup). They verify the
+controller assignment and the dom0 policies that keep the camera qubes from
+typing into dom0 or copying files anywhere else, which the build output does
+not show.
 
 ### 5. Rehearse with a throwaway file
 
@@ -323,9 +328,9 @@ but your keyboard and mouse. Otherwise:
 After `START`:
 
 1. Unplug the keyboard and mouse at once; the script stops `sys-usb` after
-   10 seconds. If you are too slow, press `Ctrl+C` within those seconds and
-   start over; nothing has changed yet. A keyboard or mouse still plugged in
-   when the webcam qube starts ends up in it with the webcam, the script
+   10 seconds. If you cannot manage in time, press `Ctrl+C` before they end
+   and start over; nothing has changed yet. A keyboard or mouse still plugged
+   in when the webcam qube starts ends up in it with the webcam, the script
    finds more than one device, refuses to scan, and powers off. Use that
    keyboard or mouse again only if you accept that the camera side may have
    altered its firmware; otherwise replace it.
