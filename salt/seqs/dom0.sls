@@ -313,6 +313,10 @@ print("END")'{% endset %}
 {%         if q.get('offline') %}
 {%           do errors.append("qube '" ~ name ~ "' sets both 'offline' and 'firewall' -- contradictory: offline removes the netvm entirely, there is no egress to filter") %}
 {%         endif %}
+{#         The firewall state keeps the list on the app qube only. #}
+{%         if q.get('named_disposable') %}
+{%           do errors.append("qube '" ~ name ~ "' sets both 'named_disposable' and 'firewall' -- SEQS keeps the allowlist on the app qube only, not on its named disposable") %}
+{%         endif %}
 {%         for e in fw %}
 {%           set es = e | string %}
 {%           set port = es.split(':')[1] if ':' in es else '1' %}

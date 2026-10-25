@@ -975,6 +975,12 @@ def test_dom0_validation_catches_bad_config():
         catalogue={"x": {"label": "gray", "components": ["brave"],
                      "offline": True, "firewall": ["dns"]}})),
         "offline + firewall is contradictory and must fail validation")
+    check(_rejected("sets both 'named_disposable' and 'firewall'", _bad_pillar(
+        prefix_disposable="D-",
+        catalogue={"x": {"label": "gray", "components": ["brave"], "netvm": "vpn",
+                         "dispvm_template": True, "named_disposable": True, "firewall": ["dns"]},
+                   "vpn": {"label": "purple", "components": ["wireguard"], "network_provider": True}})),
+        "the named disposable would not carry the allowlist, so the pre-flight must refuse it")
     check(_rejected("invalid firewall entry 'not a host!!'", _bad_pillar(
         catalogue={"x": {"label": "gray", "components": ["brave"],
                      "firewall": ["not a host!!"]}})),

@@ -130,6 +130,7 @@ MUTATIONS = [
     ("dom0-netvm-built", S, "{%   if q.netvm not in qmap and inventory.get(provider, {}).get('recipe') != q.netvm %}", "{%   if false %}"),
     ("dom0-netvm-recipe", S, "inventory.get(provider, {}).get('recipe') != q.netvm %}", "provider not in inventory %}"),
     ("dom0-offline-firewall", S, "{%         if q.get('offline') %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'", "{%         if false %}\n{%           do errors.append(\"qube '\" ~ name ~ \"' sets both 'offline' and 'firewall'"),
+    ("dom0-firewall-named-disposable", S, "{%         if q.get('named_disposable') %}", "{%         if false %}"),
     ("dom0-adopt", S, "{%     if not inventory[vmname].managed and not salt['file.file_exists'](intents_dir ~ '/' ~ vmname) %}", "{%     if false %}"),
     ("dom0-repurpose", S, "{%       do errors.append(\"qube '\" ~ vmname ~ \"' is managed for recipe", "{%       do [].append(\"qube '\" ~ vmname ~ \"' is managed for recipe"),
     ("dom0-special-adopt", S, "and not inventory.get(special, {}).get('managed') %}", "and false %}"),

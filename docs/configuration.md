@@ -184,7 +184,8 @@ of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   (`sys-firewall` does); SEQS neither sets nor checks that NetVM. A build
   that selects the qube restores the list if its rules were changed by hand;
   removing the key and rebuilding restores the Qubes default (allow all). It
-  cannot be combined with `offline`. Because the allowlist does not restrict
+  cannot be combined with `offline`, or with `named_disposable`, whose
+  disposable would not get the list. Because the allowlist does not restrict
   qrexec, it implies `no_handoff`, which closes link handoff and disposables
   and clears the qube's default disposable.
 - `'preserve_incoming': True` — skips the boot and shutdown cleanup of
