@@ -334,9 +334,11 @@ After `START`:
    `D-qr-display`, and repeat from step 2.
 3. Unplug the webcam when the script reports a completed copy or an error.
    Do not reconnect the keyboard or mouse.
-4. The computer powers off either way. Unplug the power cable and remove the
-   battery if you can. Then, with the webcam still unplugged, reconnect
-   power, keyboard, and mouse, and start the computer.
+4. The computer powers off either way; if it is still running two minutes
+   after you unplugged the webcam, hold the power button until it is off.
+   Unplug the power cable and remove the battery if you can. Then, with the
+   webcam still unplugged, reconnect power, keyboard, and mouse, and start
+   the computer.
 
 After boot, start the target key qube. In a terminal in `A-qr-staging`, run:
 
