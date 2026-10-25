@@ -162,6 +162,11 @@ MUTATIONS = [
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$') is none %}", "regex_match('^.*$') is none %}"),
     ("dom0-sequential-staging-offline", S, "(not qcatalog.get('qr-staging', {}).get('offline') or ", "("),
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
+    # delete-vms.sh --reset: only marked qubes and files, in order, after RESET.
+    ("reset-unmarked-qube", D, 'if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \\\n\t\t\t|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then', "if true; then"),
+    ("reset-policy-marker", D, "sudo head -n 1 -- \"$1\" 2>/dev/null | grep -q '^# Managed by SEQS'", "sudo head -n 2 -- \"$1\" 2>/dev/null | grep -q 'Managed by SEQS'"),
+    ("reset-remove-order", D, """\t\tif awk -F'|' -v r=" ${remaining[*]} " -v t="${vm}" \\\n\t\t\t\t'$1 != t && index(r, " " $1 " ") { for (i = 2; i <= 7; i++) if ($i == t) exit 1 }' <<< "${rows}"; then""", "\t\tif true; then"),
+    ("reset-confirm-word", D, '[ "${answer}" = RESET ] ||', '[ -n "${answer}" ] ||'),
     # The sequential QR script in dom0: offline camera side, one device, power-off.
     ("qr-running-webcam-poweroff", QR, "\texposed=1; exit 1;", "\texit 1;"),
     ("qr-poweroff-force", QR, "systemctl poweroff || systemctl poweroff --force --force", "systemctl poweroff"),

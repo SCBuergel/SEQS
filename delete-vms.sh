@@ -5,7 +5,8 @@ set -Eeuo pipefail
 # Command substitutions stop at a failure too.
 shopt -s inherit_errexit
 
-# Removes matching D-/A-/Z- qubes; run with --help and use --dry-run first.
+# Removes matching D-/A-/Z- qubes, or with --reset everything SEQS built;
+# run with --help and use --dry-run first.
 
 # Prefixes to check for each configured base name. Ordered by dependency so
 # removal succeeds: the named disposable (D-) before the dispvm template/app
@@ -23,12 +24,24 @@ LIBVIRT_DIR="${SEQS_LIBVIRT_DIR:-/etc/qubes/templates/libvirt/xen/by-name}"
 # Creation markers: written by the seqs.dom0 state before it creates a qube,
 # removed once the qube carries the seqs-managed feature.
 INTENTS_DIR="${STATE_DIR}/intents"
+# Everything else SEQS puts into dom0, removed by --reset.
+SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
+PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
+POLICY_DIR="${SEQS_POLICY_DIR:-/etc/qubes/policy.d}"
+ETC_DIR="${SEQS_ETC_DIR:-/etc/seqs}"
+QR_SCRIPT="${SEQS_QR_SCRIPT:-/usr/local/sbin/seqs-qr-sequential}"
+VPN_MONITOR="${SEQS_VPN_MONITOR:-/usr/local/bin/seqs-vpn-monitor}"
+POLICIES=(00-seqs-qr-input-deny 01-seqs-qr-filecopy 20-seqs-gnosisvpn-updates
+	28-browser-suppress 29-browser 30-user-input 50-seqs-audiovm)
+DOM0_LAUNCHERS_ADDED="${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/panel/seqs-dom0-launchers"
 
 DRY_RUN=0
+RESET=0
 
 usage() {
 	cat <<EOF
 Usage: $0 [--dry-run] <name> [<name> ...]
+       $0 [--dry-run] --reset
 
 Deletes qubes matching the SEQS prefix convention: for each <name>, removes
 any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
@@ -38,8 +51,15 @@ NetVM are preserved but disconnected (netvm set to none). If another qube uses
 a match in any other setting (template, default or management disposable,
 audio or GUI qube), or a match is a global default, nothing is changed.
 
+--reset instead removes every qube SEQS built, whatever its name, and then
+the files SEQS wrote in dom0: the staged Salt trees, its state directory, the
+policy files and helpers it marked, and its panel launchers. It asks you to
+type RESET first. sys-usb's memory setting, the window-manager shortcuts, and
+your copies of the runner and this helper stay.
+
 Options:
   --dry-run    print what would be killed/removed and exit 0
+  --reset      remove everything SEQS built and wrote; takes no <name>
   -h, --help   show this message
 EOF
 }
@@ -49,6 +69,7 @@ ARGS=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--dry-run) DRY_RUN=1 ;;
+		--reset)   RESET=1 ;;
 		-h|--help) usage; exit 0 ;;
 		--)        shift; ARGS+=("$@"); break ;;
 		-*)        echo "ERROR: unknown option '$1'" >&2; usage >&2; exit 1 ;;
@@ -57,10 +78,19 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-if [ "${#ARGS[@]}" -eq 0 ]; then
+if [ "${RESET}" -eq 1 ] && [ "${#ARGS[@]}" -gt 0 ]; then
+	echo "ERROR: --reset takes no name; it removes every qube SEQS built" >&2
+	exit 1
+fi
+if [ "${RESET}" -eq 0 ] && [ "${#ARGS[@]}" -eq 0 ]; then
 	usage >&2
 	exit 1
 fi
+
+# isMarked FILE -- SEQS wrote FILE: its first line starts with the marker.
+isMarked() {
+	sudo head -n 1 -- "$1" 2>/dev/null | grep -q '^# Managed by SEQS'
+}
 
 # waitForShutdown VM [VM ...] -- poll until shutdown or SHUTDOWN_TIMEOUT.
 waitForShutdown() {
@@ -104,6 +134,25 @@ findUsers() {
 # Check every name before changing anything, so that a refusal for one name
 # leaves the others untouched too.
 found=()
+if [ "${RESET}" -eq 1 ]; then
+	# Every qube SEQS marked as its own, whatever its name: the catalogue
+	# qubes, the QR camera qubes, and a GnosisVPN proxy a run left behind. A
+	# qube without a marker is never touched, so an unreadable list must not
+	# read as an empty one.
+	echo "looking for every qube SEQS built..."
+	all="$(qvm-ls --raw-list)" || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; exit 1; }
+	while IFS= read -r vm; do
+		[ -n "${vm}" ] && [ "${vm}" != dom0 ] || continue
+		[[ "${vm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || { echo "  skipping '${vm}': unsafe name"; continue; }
+		if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \
+			|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then
+			found+=("${vm}")
+		elif sudo test -e "${INTENTS_DIR}/${vm}"; then
+			echo "  ${vm}: no seqs-managed feature, but an interrupted SEQS build left its creation marker"
+			found+=("${vm}")
+		fi
+	done <<< "${all}"
+fi
 for app in "${ARGS[@]}"; do
 	# Reject anything that isn't a safe identifier. $app is interpolated into
 	# qube names and passed straight to qvm-remove -f, so a value like '.*'
@@ -132,12 +181,11 @@ for app in "${ARGS[@]}"; do
 	done
 done
 
-if [ "${#found[@]}" -eq 0 ]; then
+if [ "${#found[@]}" -eq 0 ] && [ "${RESET}" -eq 0 ]; then
 	echo "  no qubes match"
 	exit 0
 fi
-echo "found:"
-printf '  %s\n' "${found[@]}"
+[ "${#found[@]}" -eq 0 ] || { echo "found:"; printf '  %s\n' "${found[@]}"; }
 
 netvm_users=()
 blockers=()
@@ -162,6 +210,15 @@ if [ "${#netvm_users[@]}" -gt 0 ]; then
 	done
 fi
 
+if [ "${RESET}" -eq 1 ]; then
+	echo "SEQS files in dom0 to remove:"
+	for f in "${SALT_TREE}" "${PILLAR_TREE}" "${STATE_DIR}" "${ETC_DIR}" "${QR_SCRIPT}" "${VPN_MONITOR}"; do
+		! sudo test -e "${f}" || echo "  ${f}"
+	done
+	for p in "${POLICIES[@]}"; do
+		! sudo test -e "${POLICY_DIR}/${p}.policy" || echo "  ${POLICY_DIR}/${p}.policy"
+	done
+fi
 if [ "${DRY_RUN}" -eq 1 ]; then
 	echo "  (dry-run: not killing or removing)"
 	for pair in "${netvm_users[@]}"; do
@@ -169,6 +226,12 @@ if [ "${DRY_RUN}" -eq 1 ]; then
 		echo "  (dry-run: would set ${consumer} netvm to none)"
 	done
 	exit 0
+fi
+if [ "${RESET}" -eq 1 ]; then
+	# A typed word, from the terminal only: a piped answer must not count.
+	read -rp "Type RESET to delete these qubes with their data and the SEQS files in dom0: " answer </dev/tty \
+		|| { echo "ERROR: no terminal available to confirm -- nothing was changed" >&2; exit 1; }
+	[ "${answer}" = RESET ] || { echo "not confirmed -- nothing was changed" >&2; exit 1; }
 fi
 
 # qvm-remove refuses to remove a NetVM in use. Preserve the consumers, but
@@ -190,9 +253,29 @@ done
 echo "waiting for qubes to shut down..."
 waitForShutdown "${found[@]}" || true
 
+# Qubes refuses to remove a qube that another one still uses as its template,
+# NetVM, default or management disposable, audio or GUI qube, so each pass
+# removes the qubes no remaining target refers to.
 echo "removing..."
-for vm in "${found[@]}"; do
-	qvm-remove "${vm}" -f
+rows="$(qvm-ls --raw-data --fields name,netvm,template,default_dispvm,management_dispvm,audiovm,guivm)" \
+	|| { echo "ERROR: could not list the qubes" >&2; exit 1; }
+remaining=("${found[@]}")
+while [ "${#remaining[@]}" -gt 0 ]; do
+	pass=()
+	keep=()
+	for vm in "${remaining[@]}"; do
+		if awk -F'|' -v r=" ${remaining[*]} " -v t="${vm}" \
+				'$1 != t && index(r, " " $1 " ") { for (i = 2; i <= 7; i++) if ($i == t) exit 1 }' <<< "${rows}"; then
+			pass+=("${vm}")
+		else
+			keep+=("${vm}")
+		fi
+	done
+	[ "${#pass[@]}" -gt 0 ] || { echo "ERROR: these qubes refer to each other in a cycle: ${remaining[*]}" >&2; exit 1; }
+	for vm in "${pass[@]}"; do
+		qvm-remove "${vm}" -f
+	done
+	remaining=("${keep[@]}")
 done
 
 # dom0 files SEQS wrote for a removed qube: its CPU pinning or creation
@@ -231,6 +314,8 @@ dropPanelPlugin() {
 # seqs-monitor property and go entirely. In any other launcher, such as one
 # the user added, each entry whose menu file names a removed qube in its
 # X-Qubes-VmName line goes, and the launcher goes once it has none left.
+# A reset also drops every plugin SEQS marked, including the launchers for
+# dom0 programs (seqs-dom0), whether or not its qube still existed.
 removePanelPlugins() {
 	local pid v prop p vm item dir keep gone removed=0
 	command -v xfconf-query >/dev/null 2>&1 || return 0
@@ -239,9 +324,9 @@ removePanelPlugins() {
 	while IFS= read -r -d '' v; do
 		case "${v}" in DISPLAY=* | DBUS_SESSION_BUS_ADDRESS=*) export "${v?}" ;; esac
 	done < "/proc/${pid}/environ"
-	for prop in $(xfconf-query -c xfce4-panel -l | grep -E '^/plugins/plugin-[0-9]+/seqs-(qube|monitor)$'); do
+	for prop in $(xfconf-query -c xfce4-panel -l | grep -E '^/plugins/plugin-[0-9]+/seqs-(qube|monitor|dom0)$'); do
 		vm="$(xfconf-query -c xfce4-panel -p "${prop}")"
-		[[ " ${found[*]} " == *" ${vm} "* ]] || continue
+		[[ " ${found[*]} " == *" ${vm} "* ]] || [ "${RESET}" -eq 1 ] || continue
 		p="${prop#/plugins/plugin-}"
 		dropPanelPlugin "${p%/seqs-*}"
 		echo "removed a panel plugin of ${vm}"
@@ -278,3 +363,45 @@ removePanelPlugins() {
 	[ "${removed}" -eq 0 ] || xfce4-panel -r
 }
 removePanelPlugins || echo "WARNING: could not remove every panel plugin of the removed qubes" >&2
+
+[ "${RESET}" -eq 1 ] || exit 0
+
+# The files SEQS wrote in dom0. A policy or helper under a SEQS name that
+# does not carry the SEQS marker was written by the operator: it stays, and
+# the reset reports it.
+echo "removing the SEQS files in dom0..."
+left=0
+sudo qubesctl top.disable seqs.config pillar=true >/dev/null 2>&1 \
+	|| { echo "WARNING: could not disable the SEQS pillar: run 'sudo qubesctl top.disable seqs.config pillar=true'" >&2; left=1; }
+for p in "${POLICIES[@]}"; do
+	f="${POLICY_DIR}/${p}.policy"
+	sudo test -e "${f}" || continue
+	if isMarked "${f}"; then
+		sudo rm -f -- "${f}"
+	else
+		echo "WARNING: ${f} was not written by SEQS; left in place" >&2
+		left=1
+	fi
+done
+for f in "${QR_SCRIPT}" "${VPN_MONITOR}"; do
+	sudo test -e "${f}" || continue
+	if sudo head -n 2 -- "${f}" 2>/dev/null | grep -q 'SEQS'; then
+		sudo rm -f -- "${f}"
+	else
+		echo "WARNING: ${f} was not written by SEQS; left in place" >&2
+		left=1
+	fi
+done
+sudo rm -rf -- "${SALT_TREE}" "${PILLAR_TREE}" "${STATE_DIR}" "${ETC_DIR}"
+rm -f -- "${DOM0_LAUNCHERS_ADDED}"
+if [[ " ${found[*]} " == *" sys-usb-webcam "* ]]; then
+	echo "NOTE: on the dedicated-controller QR path, the webcam's USB controller now belongs to no qube;"
+	echo "      the recovery steps in docs/secure-qr-transfer.md give it back to sys-usb."
+fi
+echo "Left as they were: sys-usb's memory setting, the window-manager shortcuts, and your copies of"
+echo "setup-qubes.sh and delete-vms.sh in dom0 (such as ~/s.sh and ~/d.sh); delete those yourself."
+if [ "${left}" -eq 1 ]; then
+	echo "SEQS reset finished with the files reported above left in place." >&2
+	exit 1
+fi
+echo "SEQS reset complete."

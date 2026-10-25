@@ -693,6 +693,96 @@ rm -rf "${SBX}"
 # test/hardware/dom0-test.sh reset deletes every SEQS qube on a test machine.
 # It must never remove the control qube or sys-net, must leave stock and
 # unrelated qubes alone, and must not delete an unmarked policy file.
+# ── Scenario 9: delete-vms.sh --reset removes every SEQS qube and dom0 file ──
+echo "== scenario: delete-vms.sh --reset removes SEQS qubes and dom0 state, nothing else =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+# Listed so that plain list order would remove a NetVM before its user and a
+# template before its app qube. A-notes is the user's own qube under a SEQS
+# name; A-orphan was created by an interrupted build that never marked it.
+printf '%s\n' "sys-net running" "sys-firewall running" "debian-13-xfce halted" "personal halted" "vault halted" \
+	"Z-keepass halted" "A-keepass running" "A-gnosisvpn running" "A-signal running" "Z-gnosisvpn halted" "Z-signal halted" \
+	"A-qr-camera halted" "Z-qr-camera halted" "sys-usb-webcam halted" "seqs-qr-scanner halted" \
+	"seqs-gnosisvpn-update-proxy halted" "A-notes halted" "A-orphan halted" > "${SEQS_MOCK_STATE}"
+export SEQS_MOCK_UNMANAGED="A-notes A-orphan"
+export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d" SEQS_ETC_DIR="${SBX}/etc/seqs"
+export SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequential" SEQS_VPN_MONITOR="${SBX}/bin/seqs-vpn-monitor"
+mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}/intents" "${SEQS_POLICY_DIR}" \
+	"${SEQS_ETC_DIR}" "${SBX}/sbin" "${SBX}/bin" "${SBX}/config/xfce4/panel"
+touch "${SEQS_STATE_DIR}/intents/A-orphan" "${SEQS_SALT_TREE}/dom0.sls" "${SEQS_ETC_DIR}/qr-sequential.conf" \
+	"${SBX}/config/xfce4/panel/seqs-dom0-launchers"
+printf '#!/bin/sh\n# SEQS sequential-path QR scan\n' > "${SEQS_QR_SCRIPT}"
+printf '#!/bin/sh\n# Managed by SEQS\n' > "${SEQS_VPN_MONITOR}"
+for p in 00-seqs-qr-input-deny 28-browser-suppress 29-browser 50-seqs-audiovm; do
+	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"
+done
+printf '%s\n' "qubes.InputKeyboard * sys-usb @adminvm allow" "# Managed by SEQS? No, by hand." \
+	> "${SEQS_POLICY_DIR}/30-user-input.policy"
+echo "# mine" > "${SEQS_POLICY_DIR}/40-mine.policy"
+printf '%s\n' "seqs-gnosisvpn-update-proxy seqs-gnosisvpn-temporary-proxy 1" \
+	"sys-usb-webcam seqs-managed 1" "seqs-qr-scanner seqs-managed 1" > "${SBX}/features"
+export SEQS_MOCK_FEATURES="${SBX}/features"
+printf '%s\n' "sys-usb-webcam template A-qr-camera" "seqs-qr-scanner template A-qr-camera" > "${SBX}/prefs"
+export SEQS_MOCK_PREFS="${SBX}/prefs"
+printf '%s\n' "A-signal A-gnosisvpn" "personal A-gnosisvpn" "sys-firewall sys-net" > "${SBX}/netvm"
+export SEQS_MOCK_NETVM_STATE="${SBX}/netvm"
+reset_vms() {  # the inventory, sorted on one line
+	cut -d' ' -f1 "${SEQS_MOCK_STATE}" | sort | tr '\n' ' '
+}
+before="$(reset_vms)"
+# A name and --reset do not mix.
+out="$(bash "${REPO}/delete-vms.sh" --reset keepass 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "takes no name" <<<"$out" && [ "$(reset_vms)" = "${before}" ] && ok \
+	|| bad "--reset with a name must be refused: ${out}"
+# Dry run: names every SEQS qube and dom0 file, not the user's, and changes nothing.
+out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "dry-run: not killing" <<<"$out" && ok || bad "a reset dry run must exit 0: ${out}"
+for vm in A-keepass Z-keepass A-gnosisvpn A-signal sys-usb-webcam seqs-qr-scanner seqs-gnosisvpn-update-proxy A-orphan; do
+	grep -q "^  ${vm}$" <<<"$out" && ok || bad "the dry run must list ${vm}: ${out}"
+done
+for vm in A-notes personal vault debian-13-xfce sys-net; do
+	grep -q "^  ${vm}$" <<<"$out" && bad "the dry run must not list ${vm}" || ok
+done
+grep -q "would set personal netvm to none" <<<"$out" && ok || bad "the dry run must name the NetVM user: ${out}"
+grep -q "^  ${SEQS_SALT_TREE}$" <<<"$out" && grep -q "^  ${SEQS_POLICY_DIR}/29-browser.policy$" <<<"$out" && ok \
+	|| bad "the dry run must list the dom0 files: ${out}"
+[ "$(reset_vms)" = "${before}" ] && [ -e "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "a reset dry run must change nothing"
+# Only the typed word RESET confirms.
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="y" python3 "${REPO}/test/lib/pty_run.py" \
+	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "not confirmed -- nothing was changed" <<<"$out" && [ "$(reset_vms)" = "${before}" ] \
+	&& [ -e "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "an answer other than RESET must change nothing: ${out}"
+# The confirmed reset: SEQS qubes go in dependency order (the qvm-remove mock
+# refuses a template or NetVM still in use), the user's qubes stay, the
+# NetVM user is disconnected, marked dom0 files go, unmarked ones stay.
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log" \
+	XDG_CONFIG_HOME="${SBX}/config" python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$(reset_vms)" = "A-notes debian-13-xfce personal sys-firewall sys-net vault " ] && ok \
+	|| bad "reset left the wrong qubes: $(reset_vms); ${out}"
+[ "$(awk '$1 == "personal" { print $2 }' "${SBX}/netvm")" = "none" ] && ok || bad "the NetVM user must be disconnected"
+for f in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_ETC_DIR}" "${SEQS_QR_SCRIPT}" \
+		"${SEQS_VPN_MONITOR}" "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" \
+		"${SBX}/config/xfce4/panel/seqs-dom0-launchers"; do
+	[ ! -e "${f}" ] && ok || bad "reset left ${f}"
+done
+[ -e "${SEQS_POLICY_DIR}/30-user-input.policy" ] && [ -e "${SEQS_POLICY_DIR}/40-mine.policy" ] && ok \
+	|| bad "reset must keep an unmarked policy under a SEQS name, and the user's own"
+[ "$rc" -ne 0 ] && grep -q "30-user-input.policy was not written by SEQS; left in place" <<<"$out" \
+	&& grep -q "finished with the files reported above left in place" <<<"$out" && ok \
+	|| bad "reset must report the unmarked policy it kept and exit non-zero: rc=$rc ${out}"
+grep -q "qubesctl top.disable seqs.config pillar=true" "${SBX}/sudo.log" && ok || bad "reset must disable the SEQS pillar"
+grep -q "webcam's USB controller now belongs to no qube" <<<"$out" && ok || bad "reset must say what the webcam controller needs"
+# With nothing of SEQS left, a reset finds nothing to do and succeeds.
+rm -f "${SEQS_POLICY_DIR}/30-user-input.policy"
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
+	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" && [ "$(reset_vms)" = "A-notes debian-13-xfce personal sys-firewall sys-net vault " ] && ok \
+	|| bad "a second reset must succeed and change nothing: rc=$rc ${out}"
+unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_MOCK_UNMANAGED
+unset SEQS_MOCK_FEATURES SEQS_MOCK_PREFS SEQS_MOCK_NETVM_STATE
+unset -f reset_vms
+rm -rf "${SBX}"
+
 echo "== scenario: hardware test reset removes SEQS state, keeps test-ctl and sys-net =="
 new_sandbox
 export SEQS_MOCK_STATE="${SBX}/qubes.state"

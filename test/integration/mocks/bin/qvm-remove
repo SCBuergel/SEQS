@@ -4,6 +4,20 @@
 name=""; for a in "$@"; do case "$a" in -*|--) ;; *) name="$a" ;; esac; done
 [ -n "${SEQS_MOCK_STATE:-}" ] && [ -f "${SEQS_MOCK_STATE}" ] || exit 1
 grep -q "^${name} " "${SEQS_MOCK_STATE}" || exit 1
+# Match Qubes' refusal to remove a template that an existing qube is based
+# on: A-<x> on Z-<x> by convention, and "<vm> template <name>" lines of
+# SEQS_MOCK_PREFS.
+if grep -q "^A-${name#Z-} " "${SEQS_MOCK_STATE}" && [ "${name#Z-}" != "${name}" ]; then
+	echo "mock qvm-remove: ${name} is still the template of A-${name#Z-}" >&2
+	exit 1
+fi
+if [ -n "${SEQS_MOCK_PREFS:-}" ]; then
+	for user in $(awk -v t="${name}" '$2 == "template" && $3 == t { print $1 }' "${SEQS_MOCK_PREFS}"); do
+		grep -q "^${user} " "${SEQS_MOCK_STATE}" || continue
+		echo "mock qvm-remove: ${name} is still the template of ${user}" >&2
+		exit 1
+	done
+fi
 # Match Qubes' refusal to remove a NetVM that still has consumers.
 if [ -n "${SEQS_MOCK_NETVM_STATE:-}" ] \
 	&& awk -v target="${name}" '$2 == target { found=1 } END { exit !found }' \

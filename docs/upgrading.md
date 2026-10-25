@@ -228,7 +228,8 @@ qvm-run -p seqs-repo "git -C /home/user/SEQS show HEAD:delete-vms.sh" 2>/dev/nul
 
 The destructive form removes `D-<base-name>` (if it exists), `A-<base-name>`,
 and `Z-<base-name>` with their data. Use it only after backups and explicit review. Rebuilding a qube is not a
-routine upgrade step.
+routine upgrade step. To start over completely without reinstalling Qubes,
+use its [`--reset`](deleting-vms.md#resetting-seqs) option.
 
 ## Example: add USB/QR support to an existing desktop
 

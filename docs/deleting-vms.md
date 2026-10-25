@@ -54,6 +54,45 @@ To rebuild from scratch, leave the catalogue entry in place, delete the qubes,
 and rerun a build that explicitly selects the base name. Fetch and stage again
 only when the reviewed repository tree itself changed.
 
+## Resetting SEQS
+
+`--reset` takes SEQS off the machine without reinstalling Qubes OS: every
+qube SEQS built, whatever its name, and the files SEQS wrote in dom0. Use it
+before a first install from scratch after extensive changes, when converging
+or rebuilding single qubes is not enough. It does not undo what only a Qubes
+reinstall undoes: a dom0 that ran a revision you no longer trust stays that
+dom0.
+
+A reset destroys the data in every SEQS app qube. Back up what must survive,
+for example with `qvm-backup`, then review what would go:
+
+```bash
+~/d.sh --dry-run --reset
+```
+
+The output lists the qubes, the qubes whose network would be disconnected,
+and the dom0 files. Qubes that SEQS did not mark as its own, such as a
+same-named qube you created, are not listed and stay. Then run the reset and
+type `RESET` when asked:
+
+```bash
+~/d.sh --reset
+```
+
+It removes the qubes in dependency order and then the dom0 files: the staged
+trees under `/srv`, `/var/lib/seqs`, `/etc/seqs`, the policy files and the
+two helpers that carry the SEQS marker, and every panel plugin SEQS added.
+A policy or helper under a SEQS name without the marker was written by hand:
+it stays, is reported, and makes the reset exit non-zero. The memory setting
+of `sys-usb`, the window-manager shortcuts, and your copies of the runner and
+this helper stay as well; delete `~/s.sh` and `~/d.sh` yourself. On the
+dedicated-controller QR path, the webcam's USB controller then belongs to no
+qube; the
+[recovery steps](secure-qr-transfer.md#before-you-build-on-the-dedicated-controller-path)
+give it back to `sys-usb`.
+
+Afterwards, install again as for a [first install](first-install.md).
+
 ## What it does under the hood
 
 For each supplied base name, the helper:
@@ -74,15 +113,16 @@ For each supplied base name, the helper:
    disconnecting their network; Qubes otherwise refuses to remove a NetVM that
    is in use. Dry-run lists every dependency it would disconnect.
 5. Calls `qvm-kill` for matches, then waits up to 30 seconds for them to stop.
-6. Calls `qvm-remove -f` for each match in dependency order — the disposable
-   (`D-`) before the `A-` template it derives from, and `A-` before its `Z-`
-   template — permanently removing the qube and its volumes. A removal failure
-   stops the script.
+6. Calls `qvm-remove -f` for each match, permanently removing the qube and
+   its volumes, in passes: a qube goes once no remaining match uses it as its
+   template, NetVM, default or management disposable, audio or GUI qube,
+   which Qubes would refuse. A removal failure stops the script.
 7. Deletes the dom0 files SEQS wrote for each removed qube: its CPU pinning
    (`/etc/qubes/templates/libvirt/xen/by-name/<qube>.xml`) and its creation
    marker, both of which would otherwise apply to a later qube of the same
    name, and its recorded firewall rules under `/var/lib/seqs/firewall/`.
-8. Removes the removed qubes' launchers and VPN monitor from the dom0 panel.
+8. Removes the removed qubes' launchers and VPN monitor from the dom0 panel,
+   and with `--reset` every plugin SEQS added.
    From launchers it did not add, such as ones you added yourself, it removes
    each entry that starts a removed qube, and the launcher once it has no
    entries left. Then it restarts the panel.
