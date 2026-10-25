@@ -257,6 +257,25 @@ out="$(run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
 unset SEQS_MOCK_STATE
 rm -rf "${SBX}"
 
+# ── Scenario 1b4: a GnosisVPN proxy or policy that survives cleanup ────────
+echo "== scenario: a GnosisVPN build fails when its proxy or policy cannot be removed =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state"
+echo "debian-13-xfce halted" > "${SEQS_MOCK_STATE}"
+out="$(SEQS_MOCK_SUDO_REFUSE="rm -f *.policy" run_setup --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "temporary GnosisVPN updates policy was not removed" <<<"$out" && ok \
+	|| bad "a policy that cleanup cannot remove must fail the build ($rc): $(tail -n 1 <<<"$out")"
+rm -f "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy"
+# A qube that uses the proxy as its NetVM makes qvm-remove refuse it.
+echo "debian-13-xfce halted" > "${SEQS_MOCK_STATE}"
+export SEQS_MOCK_NETVM_STATE="${SBX}/netvms"
+echo "stuck seqs-gnosisvpn-update-proxy" > "${SEQS_MOCK_NETVM_STATE}"
+out="$(run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "temporary GnosisVPN updates proxy was not removed" <<<"$out" && ok \
+	|| bad "a proxy that cleanup cannot remove must fail the build ($rc): $(tail -n 1 <<<"$out")"
+unset SEQS_MOCK_STATE SEQS_MOCK_NETVM_STATE
+rm -rf "${SBX}"
+
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───
 # Hash-based completion markers make a rerun reinstall a changed component,
 # so an existing GnosisVPN instance converges in place like every other qube.

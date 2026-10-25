@@ -2,4 +2,6 @@
 if [ -n "${SEQS_MOCK_QVM_CREATE_LOG:-}" ]; then
 	printf '%s\n' "$*" >> "${SEQS_MOCK_QVM_CREATE_LOG}"
 fi
+# The new qube (the last argument) joins the SEQS_MOCK_STATE inventory.
+[ -z "${SEQS_MOCK_STATE:-}" ] || echo "${*: -1} halted" >> "${SEQS_MOCK_STATE}"
 exit 0

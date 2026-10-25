@@ -52,6 +52,9 @@ MUTATIONS = [
     ("arg-repo-vm-name", R, '|| die "unsafe repo qube name', '|| true "unsafe repo qube name'),
     ("arg-qubes-name", R, '|| die "unsafe or empty qube base name in --qubes', '|| true "unsafe or empty qube base name in --qubes'),
     ("gnosis-stale-cleanup", R, '\t# A temporary GnosisVPN proxy or policy that a killed run left behind.\n\tcleanupGnosisUpdateProxy\n', ''),
+    ("gnosis-cleanup-unverified", R, '\tverifyGnosisUpdateProxyRemoved\n', ''),
+    ("gnosis-policy-left", R, '|| die "temporary GnosisVPN updates policy was not removed"', '|| true'),
+    ("gnosis-proxy-left", R, '|| die "temporary GnosisVPN updates proxy was not removed"', '|| true'),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
     # Runner: fetch and archive validation.
