@@ -12,8 +12,11 @@ every name the documentation that should explain it does not mention:
   * pinned signing-key fingerprints in TRUST.md and VERIFY-HUMAN.md;
   * qrexec policy files the runner guards in TRUST.md;
   * `--qubes` examples in the docs name catalogue entries;
+  * TRUST.md's list of shipped qubes with the link handoff closed is exactly
+    the catalogue entries with offline, no_handoff or firewall;
   * relative Markdown links: the file exists, and so does the #anchor.
 """
+import fnmatch
 import glob
 import os
 import re
@@ -88,6 +91,15 @@ def main():
         for arg in re.findall(r"--qubes ([a-z0-9,-]+)", read(os.path.relpath(path, ROOT))):
             for name in set(arg.split(",")) - names:
                 FAILURES.append("%s selects %s, which is not in the catalogue" % (os.path.relpath(path, ROOT), name))
+
+    closed = {n for n, rest in re.findall(r"'name': '([a-z0-9-]+)'(.*)", catalogue)
+              if re.search(r"'(offline|no_handoff)': True|'firewall'", rest)}
+    listed = re.search(r"WITH `offline` / `no_handoff` \(default: (.*?)\)", trust)
+    listed = re.findall(r"`([a-z0-9*-]+)`", listed.group(1)) if listed else []
+    listed = {n for n in names for p in listed if fnmatch.fnmatch(n, p)}
+    for n in sorted(closed ^ listed):
+        FAILURES.append("TRUST.md's default list of qubes with the handoff closed %s %s"
+                        % ("omits" if n in closed else "wrongly lists", n))
 
     check_links()
     for f in FAILURES:
