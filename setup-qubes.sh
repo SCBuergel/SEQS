@@ -498,6 +498,7 @@ readTargets() {
 	DISPOSABLE_TARGETS=()
 	OFFLINE_TARGETS=()
 	NETVM_TARGETS=()
+	NODISPVM_TARGETS=()
 	GNOSIS_TEMPLATE_TARGETS=()
 	[ -r "${TARGETS_FILE}" ] || die "${TARGETS_FILE} missing -- did the seqs.dom0 state run?"
 	local kind name recipe flags flag
@@ -521,6 +522,7 @@ readTargets() {
 		for flag in ${flags}; do
 			case "${flag}" in
 				offline) case "${kind}" in app|disposable) OFFLINE_TARGETS+=("${name}") ;; esac ;;
+				nodispvm) NODISPVM_TARGETS+=("${name}") ;;
 				netvm=*)
 					[[ "${flag#netvm=}" =~ ${SAFE_NAME} ]] || die "unsafe netvm in ${TARGETS_FILE}: '${flag}'"
 					NETVM_TARGETS+=("${name} ${flag#netvm=}")
@@ -564,6 +566,20 @@ verifyNetvm() {
 			|| die "qube '${vm}' does not have its netvm explicitly set to '${netvm}' after the dom0 apply -- refusing to provision."
 		echo "    NetVM verified: ${vm} uses ${netvm}."
 	done
+}
+
+# verifyNoDispvm -- the same check for the default disposable of every
+# no_handoff or firewalled qube: one inherited from the global default is
+# networked, and only the seqs-no-handoff tag would keep the qube out of it.
+verifyNoDispvm() {
+	local vm
+	for vm in "${NODISPVM_TARGETS[@]}"; do
+		qvm-prefs -- "${vm}" 2>/dev/null | awk '$1 == "default_dispvm" && $2 == "-" && $3 == "None" { f = 1 } END { exit !f }' \
+			|| die "qube '${vm}' does not have default_dispvm explicitly set to none after the dom0 apply -- refusing to provision."
+	done
+	if [ "${#NODISPVM_TARGETS[@]}" -gt 0 ]; then
+		echo "    No default disposable verified on ${NODISPVM_TARGETS[*]}."
+	fi
 }
 
 # shutdownAll VM... -- barrier between phases: templates must be verifiably
@@ -999,6 +1015,7 @@ buildQubes() {
 	readTargets
 	verifyAirgap
 	verifyNetvm
+	verifyNoDispvm
 	if [ "${#DISPOSABLE_TARGETS[@]}" -gt 0 ]; then
 		# Named disposables are created and air-gap-verified by the dom0 apply above;
 		# they inherit everything from their dispvm template and are never provisioned.

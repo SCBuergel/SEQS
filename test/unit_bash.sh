@@ -226,11 +226,12 @@ grep -q "unknown flag in ${TARGETS_FILE}: 'online'" <<< "${out}" && ok || bad "u
 
 echo "== verifyAirgap() only passes when offline qubes are explicitly offline =="
 # Stub qvm-prefs on PATH: "qvm-prefs -- VM" lists netvm and default_dispvm in
-# qvm-prefs format, with the netvm from $NETVM and the flag from $FLAG.
+# qvm-prefs format, with the values from $DISPVM and $NETVM and the flag from
+# $FLAG.
 stub="${tmp}/bin"; mkdir -p "${stub}"
 cat > "${stub}/qvm-prefs" <<'EOF'
 #!/usr/bin/env bash
-printf 'default_dispvm  %s  None\nnetvm  %s  %s\n' "${FLAG:--}" "${FLAG:--}" "${NETVM:-None}"
+printf 'default_dispvm  %s  %s\nnetvm  %s  %s\n' "${FLAG:--}" "${DISPVM:-None}" "${FLAG:--}" "${NETVM:-None}"
 EOF
 chmod +x "${stub}/qvm-prefs"
 export PATH="${stub}:${PATH}"
@@ -251,6 +252,16 @@ if ( NETVM=A-gnosisvpn verifyNetvm ) >/dev/null 2>&1; then ok; else bad "verifyN
 out="$( ( NETVM=sys-firewall verifyNetvm ) 2>&1 )" && bad "verifyNetvm passed another NetVM"
 grep -q "qube 'A-anon' does not have its netvm explicitly set to 'A-gnosisvpn'" <<< "${out}" && ok || bad "verifyNetvm: wrong message [${out}]"
 if ( NETVM=A-gnosisvpn FLAG=D verifyNetvm ) >/dev/null 2>&1; then bad "verifyNetvm passed an inherited NetVM"; else ok; fi
+
+echo "== readTargets() and verifyNoDispvm(): a no_handoff qube has no default disposable =="
+printf 'template Z-wallet wallet\napp A-wallet wallet nodispvm\napp A-anon anon netvm=A-gnosisvpn nodispvm\n' > "${TARGETS_FILE}"
+eq "nodispvm entries" "$( ( readTargets && echo "${NODISPVM_TARGETS[*]}|${NETVM_TARGETS[*]}" ) 2>&1 )" \
+	"A-wallet A-anon|A-anon A-gnosisvpn"
+NODISPVM_TARGETS=(A-wallet)
+if ( verifyNoDispvm ) >/dev/null 2>&1; then ok; else bad "verifyNoDispvm failed a qube without a default disposable"; fi
+out="$( ( DISPVM=default-dvm verifyNoDispvm ) 2>&1 )" && bad "verifyNoDispvm passed a default disposable"
+grep -q "qube 'A-wallet' does not have default_dispvm explicitly set to none" <<< "${out}" && ok || bad "verifyNoDispvm: wrong message [${out}]"
+if ( FLAG=D verifyNoDispvm ) >/dev/null 2>&1; then bad "verifyNoDispvm passed a default disposable inherited as None"; else ok; fi
 
 echo "== test machine setup: input validation and generated qube scripts =="
 # test/hardware/setup-test-machine.sh interpolates these values into scripts

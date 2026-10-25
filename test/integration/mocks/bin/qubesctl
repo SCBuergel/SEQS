@@ -34,9 +34,10 @@ else:
 ptpl, papp = seqs["prefix_template"], seqs["prefix_app"]
 pdvm = seqs["prefix_disposable"]
 lines = ["# Managed by SEQS (mock).",
-         "# Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>]"]
+         "# Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>] [nodispvm]"]
 def flag(q):
-    return " offline" if q.get("offline") else (" netvm=" + papp + q["netvm"] if q.get("netvm") else "")
+    return (" offline" if q.get("offline") else (" netvm=" + papp + q["netvm"] if q.get("netvm") else "")) \
+        + (" nodispvm" if not q.get("offline") and (q.get("no_handoff") or q.get("firewall") is not None) else "")
 for n in selected:
     lines.append("template %s%s %s" % (ptpl, n, recipes[n]))
 for n, q in selected.items():

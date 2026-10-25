@@ -1328,9 +1328,10 @@ seqs-desktop:
 # ── Target list for the runner ─────────────────────────────────────────────
 # setup-qubes.sh reads this to know which qubes to provision (templates
 # first, then app qubes), instead of guessing from qvm-ls prefixes. The
-# 'offline' and 'netvm=' flags let the runner independently verify the air
-# gap and the NetVM before provisioning starts.
-{% macro target_flag(q) %}{{ ' offline' if q.get('offline') else (' netvm=' ~ papp ~ q.netvm if q.get('netvm') else '') }}{% endmacro %}
+# 'offline', 'netvm=' and 'nodispvm' flags let the runner independently verify
+# the air gap, the NetVM, and the cleared default disposable before
+# provisioning starts.
+{% macro target_flag(q) %}{{ ' offline' if q.get('offline') else (' netvm=' ~ papp ~ q.netvm if q.get('netvm') else '') }}{{ ' nodispvm' if not q.get('offline') and (q.get('no_handoff') or q.get('firewall') is not none) else '' }}{% endmacro %}
 seqs-targets:
   file.managed:
     - name: /var/lib/seqs/targets
@@ -1340,7 +1341,7 @@ seqs-targets:
     - makedirs: True
     - contents: |
         # Managed by SEQS (salt state seqs.dom0). Read by setup-qubes.sh.
-        # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>]
+        # Format: <template|app|disposable> <qube-name> <catalogue-recipe> [offline | netvm=<qube>] [nodispvm]
         {%- for name in qmap %}
         template {{ ptpl }}{{ name }} {{ recipes[name] }}
         {%- endfor %}

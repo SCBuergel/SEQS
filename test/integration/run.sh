@@ -197,6 +197,8 @@ out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -q "NetVM verified: A-anon uses A-gnosisvpn" <<<"$out" \
 	&& grep -q "NetVM verified: D-anon uses A-gnosisvpn" <<<"$out" && ok \
 	|| bad "both NetVMs must be verified ($rc): $(tail -n 3 <<<"$out")"
+grep -qF "No default disposable verified on A-anon A-gnosisvpn D-anon." <<<"$out" && ok \
+	|| bad "the no_handoff qubes' default disposable must be verified: $(grep -i 'default disposable' <<<"$out")"
 eq "the provider's wave comes first" "$(grep -o -- "--targets=A-[^ ]*" "${SEQS_MOCK_QUBESCTL_LOG}" | tail -n 2 | tr '\n' ' ')" \
 	"--targets=A-gnosisvpn --targets=A-anon "
 echo "A-anon netvm sys-firewall" > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
@@ -398,6 +400,13 @@ export SEQS_MOCK_DEFAULT_DISPVM="default-dvm"   # reachable via qubes.OpenInVM
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a default_dispvm"
 grep -q "air gap NOT in effect" <<<"$out" && ok || bad "expected a default_dispvm failure message"
+rm -rf "${SBX}"
+
+echo "== scenario: a default disposable on a no_handoff qube halts provisioning =="
+new_sandbox
+out="$(SEQS_MOCK_DEFAULT_DISPVM=default-dvm run_setup --qubes wallet-ledger 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "qube 'A-wallet-ledger' does not have default_dispvm explicitly set to none" <<<"$out" && ok \
+	|| bad "verifyNoDispvm should abort when a no_handoff qube has a default disposable: rc=$rc $(tail -n 1 <<<"$out")"
 rm -rf "${SBX}"
 
 echo "== scenario: an air gap inherited from a global default halts provisioning =="

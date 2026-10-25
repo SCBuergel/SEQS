@@ -830,8 +830,14 @@ def test_dom0_netvm_key():
     check('$1 == "netvm" && $3 == "A-gnosisvpn"' in next((i["unless"] for i in dvm if "unless" in i), ""),
           "the disposable's NetVM must be rechecked as explicitly A-gnosisvpn")
     targets = next((i["contents"] for i in parsed.get("seqs-targets", {}).get("file.managed", []) if "contents" in i), "")
-    check("app A-anon anon netvm=A-gnosisvpn\n" in targets and "disposable D-anon anon netvm=A-gnosisvpn\n" in targets,
-          "the runner must be told to verify both NetVMs")
+    check("app A-anon anon netvm=A-gnosisvpn nodispvm\n" in targets
+          and "disposable D-anon anon netvm=A-gnosisvpn nodispvm\n" in targets,
+          "the runner must be told to verify both NetVMs and that neither has a default disposable")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="wallet-ledger\nkeepass\nbrave"))
+    targets = state_arg(parsed, "seqs-targets", "file.managed", "contents")
+    check("app A-wallet-ledger wallet-ledger nodispvm\n" in targets and "app A-keepass keepass offline\n" in targets
+          and "app A-brave brave\n" in targets,
+          "only a no_handoff qube that is not offline must be marked nodispvm: " + targets)
     check("qvm-prefs -- D-qr-display netvm none\n" in state_arg(
         render_state("dom0", "dom0", Scenario(selection="qr-display\nbrave"))[1], "seqs-disposable-prefs-qr-display", "cmd.run", "name"),
           "a disposable without 'netvm' must stay offline")
