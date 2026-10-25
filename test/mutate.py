@@ -66,6 +66,7 @@ MUTATIONS = [
     ("tar-valid", R, 'tar -tf - < "${tarball}" > /dev/null 2>&1 || die', 'tar -tf - < "${tarball}" > /dev/null 2>&1 || true'),
     ("tar-stdin", R, 'tar -tf - < "${tarball}"', 'tar -tf "${tarball}"'),
     ("tar-listed-size", R, "total=$((total + 10#${f_size}))", "total=0"),
+    ("fetch-bidi", R, '[ "${rc}" -eq 1 ] || die "refusing archive', '[ "${rc}" -ge 0 ] || die "refusing archive'),
     ("fetch-owner", R, '"${FETCH_PILLAR_TREE}"; do\n\t\tif sudo test -e "${d}"; then\n\t\t\tsudo test -e "${d}/.seqs-managed" \\\n',
      '"${FETCH_PILLAR_TREE}"; do\n\t\tif sudo test -e "${d}"; then\n\t\t\ttrue \\\n'),
     ("stage-owner", R, 'staging; otherwise a permission error looks\n\t\t# exactly like an absent path and bypasses the ownership guard.\n\t\tif sudo test -e "${d}"; then\n\t\t\tsudo test -e "${d}/.seqs-managed" \\\n',

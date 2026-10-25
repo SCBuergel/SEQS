@@ -112,7 +112,9 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
   little archive space; tar reads it from stdin, where it refuses compressed
   data instead of decompressing it; only regular files and directories under `salt/` and
   `install-scripts/` with safe names, none named like SEQS's `.seqs-*` markers;
-  a listing whose fields are not in their fixed format is refused), records the resolved ID in
+  a listing whose fields are not in their fixed format is refused), refuses
+  the whole tree if a file holds a Unicode bidirectional control, which can
+  make code display in another order than it runs in, records the resolved ID in
   `/var/lib/seqs/fetched/source-commit`, and saves the tree under
   `/var/lib/seqs/fetched`; stage requires its completion marker, displays the
   `/srv` diff, and copies it root-owned. Build requires the stage completion

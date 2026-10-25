@@ -14,7 +14,9 @@ data flow and controls. For the per-component trust analysis see
    working tree. Resolving first avoids a moving-HEAD race between selection
    and export. Every archive entry is validated before extraction
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
-   `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths).
+   `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths),
+   and a file holding a Unicode bidirectional control, which can hide code
+   from review, refuses the whole tree.
    These commit-ID and archive responses are the only VM→dom0 data that dom0
    stages or runs. The transfer SHA256 is printed as a diagnostic. The
    operator still verifies the checkout's Git commit hash in the disposable,

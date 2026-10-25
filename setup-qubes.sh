@@ -298,6 +298,16 @@ fetchSaltTree() {
 	tar -xf - -C "${stage}" --no-same-owner --no-same-permissions < "${tarball}" 2>/dev/null \
 		|| die "tar extraction failed"
 
+	# Unicode bidirectional controls (U+202A-U+202E, U+2066-U+2069) make code
+	# display in another order than the one it runs in ("Trojan Source"), so
+	# review could miss what they hide. No SEQS file has one.
+	local bidi
+	bidi="$(LC_ALL=C grep -rlE $'\xe2\x80[\xaa-\xae]|\xe2\x81[\xa6-\xa9]' -- "${stage}")"
+	rc=$?
+	bidi="${bidi//"${stage}/"/}"
+	[ "${rc}" -le 1 ] || die "could not scan the fetched tree for Unicode bidirectional controls"
+	[ "${rc}" -eq 1 ] || die "refusing archive: ${bidi//$'\n'/ } has Unicode bidirectional controls, which can hide code from review"
+
 	# Sanity: the tree must carry the pieces the apply phases rely on.
 	local f
 	for f in salt/seqs/dom0.sls salt/seqs/dom0.top salt/seqs/qube.sls salt/seqs/qube.top \

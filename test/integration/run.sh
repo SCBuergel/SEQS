@@ -342,6 +342,17 @@ tar -C "${REPO}" -czf "${SEQS_MOCK_TAR}" salt install-scripts
 out="$(run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "not a valid tar archive" <<<"$out" && ok \
 	|| bad "a compressed archive must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+# A right-to-left override can make a line display as a comment while it runs
+# as code; the whole tree is refused, not only that file.
+mkdir -p "${evil}/install-scripts"
+printf 'true # \xe2\x80\xae; reviewed\n' > "${evil}/install-scripts/x.sh"
+SEQS_MOCK_TAR="${SBX}/bidi.tar"
+tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
+tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/x.sh
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "refusing archive: install-scripts/x.sh has Unicode bidirectional controls" <<<"$out" \
+	&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+	|| bad "an archive with a bidirectional control must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 # An endless answer from the repository qube is cut off, not stored whole.
 unset SEQS_MOCK_TAR
 export SEQS_MOCK_ENDLESS_LOG="${SBX}/endless.log"
