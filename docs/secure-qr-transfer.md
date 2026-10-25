@@ -21,13 +21,14 @@ Encrypted file:  source key qube -> D-qr-display  --QR code-->  webcam
                                                                  on one setup)
                                                                 -> target key qube
 
-Passphrase:      source key qube -> written on paper -> typed on the
-                 keyboard into the target key qube
+Passphrase:      source key qube -> written on paper, or kept in a hidden
+                 window -> typed on the keyboard into the target key qube
 ```
 
 1. The source key qube (the trusted qube that holds the file) encrypts it with
    [GnuPG](https://www.gnupg.org/) (a standard encryption program) using a
-   random one-time passphrase, which you write on paper.
+   random one-time passphrase, which you write on paper or keep in a hidden
+   window.
 2. You copy the encrypted file to a display qube on the sending computer.
 3. The display qube shows the encrypted file as a QR code.
 4. On the receiving computer, a webcam and a camera qube read the QR code and
@@ -35,9 +36,10 @@ Passphrase:      source key qube -> written on paper -> typed on the
    and shut down the camera qubes.
 5. You compare a short fingerprint (a code calculated from the encrypted file)
    on both screens to check that the file arrived unchanged.
-6. You type the paper passphrase into the target key qube, which decrypts the
+6. You type the passphrase into the target key qube, which decrypts the
    file.
-7. You delete the leftover encrypted copies and destroy the paper.
+7. You delete the leftover encrypted copies and destroy the paper or close
+   the window.
 
 ## What you must trust
 
@@ -893,7 +895,8 @@ commands need changing.
 Repeat this procedure for every transfer. Once you have done it before, the
 [transfer checklist](secure-qr-transfer-checklist.md) lists the steps with
 links back to this section. Before starting, take a fresh sheet of paper for
-the passphrase, which will look like this:
+the passphrase, unless you keep it on screen as step 1 describes. It will
+look like this:
 
 ```text
 PASSPHRASE: <26 characters, each A-Z or 2-7>
@@ -948,6 +951,15 @@ the block again.
 Then close this terminal window completely. Its scrollback still contains the
 passphrase, and running `clear` does not remove it.
 
+Instead of paper, you may keep this window as the only copy of the
+passphrase if you accept the risk: from step 3 until you unplug the webcam
+in step 4, the webcam films this screen, and the window must not appear on
+it even briefly, for example after a stray click or when another window
+closes. Then do not close it: move it to another workspace (right-click its
+title bar, then `Move to Another Workspace`), or minimize it, and bring it
+back only in step 6. If it closes, the passphrase is lost: delete `key.asc`
+and start again.
+
 ### Step 2: Copy the encrypted file to the display qube (sending computer)
 
 Start `D-qr-display` before copying, so that its start-up cleanup cannot delete
@@ -966,11 +978,12 @@ qvm-copy key.asc
 
 In the dialog, choose the running `D-qr-display`. Keep the source copy of
 `key.asc`, because step 5 compares against it. You may shut down the source key
-qube now; its files are kept.
+qube now, unless its terminal holds the passphrase; its files are kept.
 
 ### Step 3: Show the QR code (sending computer)
 
-Put away the paper and close every window that shows a secret. In the
+Put away the paper, or check that the passphrase window is out of sight, and
+close every other window that shows a secret. In the
 `D-qr-display` terminal from step 2, run this, replacing `<source-key-qube>`
 with the name of your source key qube:
 
@@ -1029,7 +1042,8 @@ use step 4b.
    other from `seqs-qr-scanner`, and treat it like a fingerprint mismatch.
 7. After the copy succeeds, unplug the webcam and shut down `seqs-qr-scanner`
    and `sys-usb-webcam`. Check in the Qube Manager or the Qubes
-   Domains widget (the tray icon that lists running qubes) that both have stopped before you take out the paper.
+   Domains widget (the tray icon that lists running qubes) that both have
+   stopped before you take out the paper or bring back the passphrase window.
 
 If `sys-usb` handled the webcam at any point since the receiving computer last
 booted, or `sys-usb-webcam` handled your keyboard, stop and do not type the
@@ -1236,7 +1250,9 @@ stat --format='%a %n' master.key
 When GnuPG asks for the passphrase, check that the prompt window has the
 target key qube's colour border. Qubes draws that border in dom0, so another
 qube cannot fake it; a prompt with a different colour belongs to another qube
-and must not receive the passphrase. Then type the passphrase from the paper.
+and must not receive the passphrase. Then type the passphrase from the paper,
+or from the passphrase window on the sending computer, which you may bring
+back now.
 If the [built-in keyboard check](#check-whether-the-built-in-keyboard-uses-usb)
 showed that the built-in keyboard does not use USB, type it there rather than
 on a USB keyboard.
@@ -1259,6 +1275,7 @@ run:
 rm -f -- key.asc
 ```
 
-The command prints nothing. Check that the file is gone. Destroy the paper
-only after step 6 showed `600 master.key`: burn it, or cut it with a cross-cut
-shredder, so that the passphrase cannot be read from the pieces.
+The command prints nothing. Check that the file is gone. Only after step 6
+showed `600 master.key`, close the passphrase window, or destroy the paper:
+burn it, or cut it with a cross-cut shredder, so that the passphrase cannot
+be read from the pieces.

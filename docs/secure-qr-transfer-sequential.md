@@ -19,8 +19,9 @@ all treated as possibly hostile.
 - The **encrypted file** goes from the source key qube to an offline display
   qube, as a QR code to the webcam, through offline camera qubes on the
   receiving computer, and into the target key qube.
-- The **passphrase** goes from the source key qube's screen onto paper, and
-  from the paper through your keyboard into the target key qube.
+- The **passphrase** goes from the source key qube's screen onto paper, or
+  stays in that qube's terminal kept out of sight, and from there through
+  your keyboard into the target key qube.
 
 The procedure holds only while you do the steps in order, so that nothing on
 the camera side runs when you type the passphrase. If the camera side is
@@ -245,7 +246,8 @@ mkdir ~/qr-rehearsal && cd ~/qr-rehearsal && head -c 1000 /dev/urandom > master.
 
 In a terminal in the target key qube, run `mkdir ~/qr-rehearsal`. Then do
 the whole [transfer](#transfer-a-file) in `~/qr-rehearsal` on both
-computers, with a sheet of paper that you destroy at the end. It succeeds
+computers, with a sheet of paper that you destroy at the end, or with the
+passphrase window that step 1 describes. It succeeds
 only if the script lists nothing unexpected in `sys-usb`, starts the webcam
 qube, and powers off after the scan; exactly one copy dialog appears on the
 receiving computer and the received folder holds only `key.asc`; all four
@@ -301,6 +303,15 @@ It prints `PASSPHRASE:` and 26 characters, each A-Z or 2-7, and creates
 and no old `key.asc` is there, and run the block again. Then close this
 terminal window completely; its scrollback keeps the passphrase.
 
+Instead of paper, you may keep this window as the only copy of the
+passphrase if you accept the risk: from step 3 until you unplug the webcam
+in step 4, the webcam films this screen, and the window must not appear on
+it even briefly, for example after a stray click or when another window
+closes. Then do not close it: move it to another workspace (right-click its
+title bar, then `Move to Another Workspace`), or minimize it, and bring it
+back only in step 6. If it closes, the passphrase is lost: delete `key.asc`
+and start again.
+
 ### Step 2: Copy the encrypted file to the display qube (sending computer)
 
 Start `D-qr-display` first, so that its start-up cleanup cannot delete the
@@ -319,8 +330,9 @@ compares against it.
 
 ### Step 3: Show the QR code (sending computer)
 
-Put the paper away and close every window that shows a secret; the webcam
-will film this screen. In the `D-qr-display` terminal, run this with the name
+Put the paper away, or check that the passphrase window is out of sight, and
+close every other window that shows a secret; the webcam will film this
+screen. In the `D-qr-display` terminal, run this with the name
 of your source key qube:
 
 ```bash
@@ -469,7 +481,8 @@ stat --format='%a %n' master.key
 
 When GnuPG asks for the passphrase, check that the prompt window has the
 target key qube's colour border; dom0 draws it, so no other qube can fake it.
-Type the passphrase from the paper, on the built-in keyboard if the computer
+Type the passphrase from the paper, or from the passphrase window on the
+sending computer, which you may bring back now, on the built-in keyboard if the computer
 has one. The last line must show `600 master.key`. A wrong passphrase gives
 an `ERROR` line and no `master.key`; run the block again.
 
@@ -477,6 +490,6 @@ an `ERROR` line and no `master.key`; run the block again.
 
 In the source key qube directory containing `key.asc`, run `rm -f -- key.asc`
 and check that the file is gone. Then burn the paper, or cut it with a
-cross-cut shredder. Leftover encrypted copies cannot be ruled out in
-snapshots or on SSDs, and any of them opens with the passphrase, which is
-why the paper must go.
+cross-cut shredder, or close the passphrase window. Leftover encrypted copies
+cannot be ruled out in snapshots or on SSDs, and any of them opens with the
+passphrase, which is why the paper or window must go.

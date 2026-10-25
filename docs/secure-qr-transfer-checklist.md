@@ -9,7 +9,8 @@ the step says to stop.
 
 Before you start:
 
-- [ ] A fresh sheet of paper is ready for the passphrase.
+- [ ] A fresh sheet of paper is ready for the passphrase, or you will keep
+      it in a hidden window as step 1 describes.
 - [ ] The webcam is unplugged, and every built-in camera on both computers is
       covered or switched off with a hardware switch.
 - [ ] The paper and any screen showing the passphrase will stay out of every
@@ -19,12 +20,12 @@ Sending computer:
 
 - [ ] [Step 1](secure-qr-transfer.md#step-1-encrypt-the-file-sending-computer):
       encrypt `master.key` in the source key qube, write the passphrase on
-      paper, and close that terminal window.
+      paper and close that terminal window, or move that window out of sight.
 - [ ] [Step 2](secure-qr-transfer.md#step-2-copy-the-encrypted-file-to-the-display-qube-sending-computer):
       start `D-qr-display` first, then copy `key.asc` to it. Keep the source
       `key.asc`.
 - [ ] [Step 3](secure-qr-transfer.md#step-3-show-the-qr-code-sending-computer):
-      put the paper away, then show the QR code in `D-qr-display`; cancel any
+      put the paper or passphrase window away, then show the QR code in `D-qr-display`; cancel any
       dialog from `D-qr-display` and treat it like a fingerprint mismatch.
 
 Receiving computer, one of:
@@ -55,4 +56,4 @@ Both computers:
       passphrase prompt has the target key qube's colour border, and the last
       line shows `600 master.key`.
 - [ ] [Step 7](secure-qr-transfer.md#step-7-clean-up): delete the source
-      `key.asc`, then destroy the paper.
+      `key.asc`, then destroy the paper or close the passphrase window.
