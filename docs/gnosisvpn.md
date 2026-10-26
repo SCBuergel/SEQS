@@ -1,8 +1,8 @@
 # Using the GnosisVPN NetVM
 
-SEQS builds `A-gnosisvpn`, a network-provider AppVM with a pinned GnosisVPN
-stable release for the `jura-prod` network and Qubes-aware DNS/fail-closed
-integration.
+SEQS builds `A-gnosisvpn`, a network-provider AppVM with GnosisVPN from its
+stable APT repository for the `jura-prod` network and Qubes-aware
+DNS/fail-closed integration.
 
 ## Build the prepared qube
 
@@ -20,9 +20,8 @@ catalogue key, see [configuration](configuration.md)): on a four-core test
 machine, 2 vCPUs reached about 7.4 Mbit/s, and 4 about 8.4, with no gain
 beyond 4.
 After a newer revision is fetched and staged, rerunning the same command
-upgrades an existing instance in place: when the
-pinned release or any other part of the component changed, its installers run
-again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
+upgrades an existing instance in place: when any part of the component
+changed, its installers run again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
 `~/d.sh gnosisvpn` (see [Deleting SEQS qubes](deleting-vms.md)) only to destroy the instance and rebuild it from
 scratch; that also destroys the private VPN state, so back up anything that
 must survive first.
@@ -44,8 +43,9 @@ The template contains:
 
 - `wireguard-tools`, including `wg` and `wg-quick`;
 - `openresolv`, including the `resolvconf` command GnosisVPN expects.
-- GnosisVPN `0.95.2` for `amd64`, configured with
-  `GNOSISVPN_NETWORK=jura-prod`.
+- GnosisVPN for `amd64`, the stable release current at build time,
+  configured with `GNOSISVPN_NETWORK=jura-prod`. Template updates (the Qubes
+  updater) upgrade it like any other package.
 - `/etc/sysctl.d/99-seqs-gnosisvpn-rmem.conf`, which raises the default
   socket receive buffer from 208 KiB to 4 MiB; with the default, the
   GnosisVPN node drops incoming mixnet packets at full speed.
@@ -71,25 +71,22 @@ The runner checks only dom0's UpdateVM: if the `qubes.UpdatesProxy` policy
 sends template updates over Tor but dom0's UpdateVM is not a Whonix gateway,
 the GnosisVPN download still leaves without Tor.
 
-Upstream currently recommends piping
-`https://download.vpn.gnosis.eth.limo/linux/install.sh` to root. That mutable
-installer downloads the repository keyring, writes a stable or snapshot APT
-source, refreshes APT metadata, and installs the channel's current candidate.
-SEQS does not execute that mutable root script. Instead, it downloads the
-package that the stable channel's signed APT index listed when the pin was
-last reviewed, retaining an exact version and content pin. It downloads from
-the mirror `download.gnosisvpn.io`, because `download.vpn.gnosis.eth.limo`
-keeps only the latest release. Once upstream stops serving the pinned release,
-the build fails (HTTP 404) until the SEQS pin is reviewed and updated.
-
-The template downloads the pinned `.deb` and detached signature through
-`127.0.0.1:8082`, checks the embedded signing-key fingerprint
-`9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, checks SHA-256
-`87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`, and
-verifies the detached signature before installation. After template provisioning—even on failure—the runner
+Upstream's Linux guide (on `download.vpn.gnosis.eth.limo`) offers its
+mutable `install.sh` piped to a shell, or a manual APT setup. SEQS follows the
+manual setup and does not run `install.sh`. The template writes the embedded
+signing key, after checking its fingerprint
+`9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, to
+`/usr/share/keyrings/seqs-gnosisvpn-archive-keyring.gpg` and locks it. It
+writes `/etc/apt/sources.list.d/gnosisvpn.sources` for the stable suite on
+both mirrors, `download.vpn.gnosis.eth.limo` and `download.gnosisvpn.io`,
+trusted only through that keyring. It refreshes only the
+`download.gnosisvpn.io` mirror, which the temporary proxy reaches, and
+installs the `gnosisvpn` package; apt checks the repository's signed index
+against the key. After template provisioning—even on failure—the runner
 removes the temporary policy and marked proxy qube; a run killed before that
 leaves them until the next build, which removes them first. The template's
-normal `qubes.UpdatesProxy` policy then applies again.
+normal `qubes.UpdatesProxy` policy then applies again, and later template
+updates reach both mirrors through it.
 
 `A-gnosisvpn` is already the prepared AppVM and is the shortest path for the
 test below. For a second GnosisVPN qube, use `--postfix` as shown above rather
@@ -270,16 +267,17 @@ you change in `A-anon` appears in every later `D-anon`, so do not browse in
 
 ## Caveats
 
-- The stable release is version- and hash-pinned and its detached signature is
-  checked against an embedded key, but the key was sourced from the GnosisVPN
-  project. Review the fingerprint through an independent channel.
-- The package configures upstream's APT repository on two mirrors. SEQS pins
-  both so that only the `gnosisvpn` package can come from them, checks that
-  the repository keyring holds exactly the pinned key, and locks that keyring.
-  Every `gnosisvpn` upgrade rewrites that keyring, which the lock would make
-  fail and then block all updates of the template, so SEQS holds the package:
-  template updates leave GnosisVPN at the pinned release, and a newer one
-  arrives only with a reviewed SEQS pin.
+- apt accepts a GnosisVPN release when its signed index verifies with the
+  embedded key, which was sourced from the GnosisVPN project. Review the
+  fingerprint through an independent channel. Every stable release signed with
+  that key installs with the next template update, without a SEQS review.
+- SEQS pins both mirrors so that only the `gnosisvpn` package can come from
+  them. The package's install script rewrites its own keyring copy,
+  `/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg`, which apt does not use.
+  It also rewrites `gnosisvpn.sources` to use that copy if a release changes
+  the suite or mirror list; that copy comes from a package signed with the
+  same key. A new signing key makes apt refuse updates from the repository
+  until the SEQS key is reviewed and updated.
 - The DNS helper expects the interface to be named `wg0_gnosisvpn`. A future
   GnosisVPN release that renames it requires a reviewed component update.
 - Only IPv4 DNS servers are accepted. Missing or unusable openresolv data uses

@@ -594,7 +594,7 @@ print(d.get("local", d).get(sys.argv[1], ""))' "${1#brave-extension-}" <<< "${EX
 		wireguard) echo 'wg --version >/dev/null && test -x /usr/bin/seqs-wireguard-import && sudo grep -qx /rw/config/seqs-wireguard/boot.sh /rw/config/rc.local' ;;
 		protonvpn) echo 'test -x /usr/bin/protonvpn-app && sudo grep -qx /rw/config/seqs-protonvpn-firewall.sh /rw/config/qubes-firewall-user-script' ;;
 		bluetooth) echo 'test -x /usr/bin/pacat-simple-vchan && command -v blueman-manager >/dev/null && systemctl cat bluetooth 2>/dev/null | grep -qx "ExecStartPre=-/usr/sbin/seqs-bluetooth-bredr" && findmnt -n /var/lib/bluetooth >/dev/null && test "$(qubesdb-read /qubes-service/blueman)" = 1' ;;
-		gnosisvpn) echo 'dpkg-query -W -f="\${Status}" gnosisvpn 2>/dev/null | grep -qx "hold ok installed" && systemctl is-enabled --quiet seqs-gnosisvpn-dns.path && test -d /rw/bind-dirs/var/lib/gnosisvpn' ;;
+		gnosisvpn) echo 'dpkg-query -W -f="\${Status}" gnosisvpn 2>/dev/null | grep -qx "install ok installed" && systemctl is-enabled --quiet seqs-gnosisvpn-dns.path && test -d /rw/bind-dirs/var/lib/gnosisvpn' ;;
 		*) echo "" ;;
 	esac
 }

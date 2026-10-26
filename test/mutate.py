@@ -236,6 +236,8 @@ MUTATIONS = [
     ("brave-signed-by", B, "signed-by=${keyring}]", "]"),
     ("brave-keyring-restore", B, 'sudo install -m 0644 "${tmp}" "${keyring}"\n\trm -f', "rm -f"),
     ("gnosisvpn-apt-pin", GV, 'gnosis.eth.limo"\nPin-Priority: -1', 'gnosis.eth.limo"\nPin-Priority: 1'),
+    ("gnosisvpn-own-keyring", GV, 'Signed-By: %s\\n\' "$1" "${KEYRING}"', 'Signed-By: %s\\n\' "$1" "${PACKAGE_KEYRING}"'),
+    ("gnosisvpn-lock-keyring", GV, 'lock_keyring "${KEYRING}" "${GNOSISVPN_KEY_FPR}"\n', ''),
     ("gnosisvpn-apt-pin-mirror", GV, 'gnosisvpn.io"\nPin-Priority: -1', 'gnosisvpn.io"\nPin-Priority: 1'),
     ("ledger-sha512", L, "| sha512sum --check --strict --quiet \\\n", "| true \\\n"),
     ("ledger-signature", L, "openssl dgst -sha256 -verify", "true || openssl dgst -sha256 -verify"),

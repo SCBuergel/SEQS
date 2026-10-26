@@ -1415,25 +1415,27 @@ def test_qube_gnosisvpn_component():
     check("dsthost=download.gnosisvpn.io proto=tcp dstports=443" in runner_text and
           "printf 'qubes.UpdatesProxy * %s @anyvm deny" in runner_text,
           "temporary proxy must be host-restricted and exact-source scoped")
-    check('GNOSISVPN_URL="https://download.gnosisvpn.io/linux/apt/pool/main/g/'
-          'gnosisvpn/gnosisvpn_0.95.2_amd64.deb"' in installer_text,
-          "GnosisVPN installer must pin the requested stable release")
-    check("87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb"
-          in installer_text,
-          "GnosisVPN installer must pin the stable release SHA-256")
     check("9A308031FD3BFE8EDBF5076D84F73FEA46D10972" in installer_text,
           "GnosisVPN installer must pin the signing-key fingerprint")
-    check('GNOSISVPN_NETWORK=jura-prod apt-get install -y "${tmp}/${DEB}"'
+    keyring = "/usr/share/keyrings/seqs-gnosisvpn-archive-keyring.gpg"
+    check(f'KEYRING="{keyring}"' in installer_text and
+          'lock_keyring "${KEYRING}" "${GNOSISVPN_KEY_FPR}"' in installer_text and
+          'Signed-By: %s\\n\' "$1" "${KEYRING}"' in installer_text,
+          "apt must trust the GnosisVPN repository only through SEQS's locked keyring")
+    check(installer_text.index('lock_keyring "${KEYRING}"') <
+          installer_text.index("sudo apt-get update"),
+          "the SEQS keyring must be checked and locked before apt reads the repository")
+    check('sources "https://download.vpn.gnosis.eth.limo/linux/apt '
+          'https://download.gnosisvpn.io/linux/apt"' in installer_text and
+          "Suites: stable\\nComponents: main" in installer_text,
+          "GnosisVPN sources must match upstream's stable suite and mirrors, "
+          "or the package's postinst rewrites them to its own keyring")
+    check("apt-mark hold" not in installer_text and
+          "apt-mark unhold gnosisvpn" in installer_text,
+          "GnosisVPN must not be held, so template updates upgrade it")
+    check("sudo env GNOSISVPN_NETWORK=jura-prod apt-get install -y gnosisvpn"
           in installer_text,
           "GnosisVPN installer must select the jura-prod network")
-    with open(os.path.join(sr.REPO_ROOT, "install-scripts", "lib",
-                           "verify-gpg.sh"), encoding="utf-8") as f:
-        verify_lib_text = f.read()
-    check('fetch_signed "${GNOSISVPN_KEY_FPR}" "${GNOSISVPN_URL}"'
-          in installer_text and
-          'UPDATES_PROXY="127.0.0.1:8082"' in verify_lib_text and
-          verify_lib_text.count('curl --proxy "${UPDATES_PROXY}"') == 2,
-          "GnosisVPN download must use the Qubes updates proxy")
     check('sudo "${ASSET_DIR}/seqs-gnosisvpn-prepare-app"'
           in app_installer_text,
           "AppVM provisioning must use the freshly staged preparation helper")

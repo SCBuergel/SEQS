@@ -156,7 +156,7 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
 The `adb`, `bluetooth`, `qr-camera`, `qr-display`, `wireguard`, and `xournalpp` components install only packages from the base template's Debian repositories (and, for `qr-camera`, `qubes-usb-proxy`, and for `bluetooth`, `qubes-audio-daemon` and `qubes-core-admin-client` from its Qubes repository), through the Qubes update proxy, and `trezor` installs only udev rules. They trust those archives and their signing keys, as the base template already does, and add no source of their own.
 
 ### apt-repo trust anchors: `chattr +i` on every embedded-key keyring
-Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton VPN, GnosisVPN) uses a signing key verified against a pinned fingerprint at a known path under `/usr/share/keyrings/` or `/etc/apt/keyrings/`. SEQS writes the `/etc/apt/sources.list.d/…` entry that references it with `signed-by=`, except for GnosisVPN, whose package writes its own entry; there SEQS only checks and locks the keyring. After the install completes, the script checks that the keyring file still holds exactly the pinned key (the package's maintainer scripts ran while it was unlocked) and then runs `sudo chattr +i` on it. The Pin-Priority: -1 + named-package allowlist bounds which packages each repo can ship (for Brave this includes `brave-keyring`, a hard dependency of `brave-browser`; the script therefore writes the verified keyring back after the install, and holds `brave-keyring`: the package owns the locked file, so its next version would otherwise fail in dpkg and block every update of the template, as seen with the Qubes updater on the test machine). `chattr +i` is the additional layer: a root-running maintainer script inside an allowlisted package that did `cp /usr/share/<app>/something.gpg ${keyring}` would silently rotate the trust anchor the `signed-by=` directive references — with no SEQS verification ever firing again. Immutability turns that into a loud dpkg failure. It stops only an in-place rewrite of that file: a root maintainer script can still add a new sources entry or a keyring elsewhere, such as `/etc/apt/trusted.gpg.d/`. Only the SEQS component script unlocks the file, to write a keyring it checks against the pinned fingerprint (for GnosisVPN, the package itself writes the keyring, which the same check then covers), so a legitimate key rotation requires a reviewed change of that pin, re-verified against the independent sources documented per-component below.
+Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton VPN, GnosisVPN) uses a signing key verified against a pinned fingerprint at a known path under `/usr/share/keyrings/` or `/etc/apt/keyrings/`. SEQS writes the `/etc/apt/sources.list.d/…` entry that references it with `signed-by=`. After the install completes, the script checks that the keyring file still holds exactly the pinned key (the package's maintainer scripts ran while it was unlocked) and then runs `sudo chattr +i` on it. GnosisVPN's keyring, which no package writes, is checked and locked before the install. The Pin-Priority: -1 + named-package allowlist bounds which packages each repo can ship (for Brave this includes `brave-keyring`, a hard dependency of `brave-browser`; the script therefore writes the verified keyring back after the install, and holds `brave-keyring`: the package owns the locked file, so its next version would otherwise fail in dpkg and block every update of the template, as seen with the Qubes updater on the test machine). `chattr +i` is the additional layer: a root-running maintainer script inside an allowlisted package that did `cp /usr/share/<app>/something.gpg ${keyring}` would silently rotate the trust anchor the `signed-by=` directive references — with no SEQS verification ever firing again. Immutability turns that into a loud dpkg failure. It stops only an in-place rewrite of that file: a root maintainer script can still add a new sources entry or a keyring elsewhere, such as `/etc/apt/trusted.gpg.d/`. Only the SEQS component script unlocks the file, to write a keyring it checks against the pinned fingerprint, so a legitimate key rotation requires a reviewed change of that pin, re-verified against the independent sources documented per-component below.
 
 ### Brave — apt repository & signing keys ✅
 - **Trust assumption:** Brave's apt signing keys are genuine; thereafter apt trusts whatever Brave signs.
@@ -285,14 +285,16 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton V
   GnosisVPN's package/runtime behavior.
 - **Established by:** ✅ Debian prerequisites come from configured signed
   repositories: the runner installs them in the template as root through its
-  normal `qubes.UpdatesProxy` route (`qvm-run -u root`, output sanitized). The `amd64` stable release `0.95.2`, listed on 2026-10-10 in
-  the stable channel's APT index (whose `InRelease` file verified with the
-  embedded key, and whose package entry matches the pin), is pinned to SHA-256
-  `87294d45d382d22181089c2f7f0a25330c75b77ef22b3989d399abf4027d3bdb`
-  and its detached signature must verify with embedded fingerprint
-  `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`. The key fingerprint is published
+  normal `qubes.UpdatesProxy` route (`qvm-run -u root`, output sanitized).
+  GnosisVPN comes from upstream's stable APT suite, set up as upstream's
+  manual guide describes, which apt trusts only through a SEQS keyring:
+  `/usr/share/keyrings/seqs-gnosisvpn-archive-keyring.gpg`, written from the
+  embedded key after the build checks that it holds exactly the key with
+  embedded fingerprint
+  `9A308031FD3BFE8EDBF5076D84F73FEA46D10972`, and locked with `chattr +i`.
+  apt checks the suite's signed index with it. The key fingerprint is published
   in GnosisVPN's `SECURITY.md`; the operator should cross-check it
-  independently. Download uses a temporary update-proxy AppVM whose firewall
+  independently. At build time, the download uses a temporary update-proxy AppVM whose firewall
   allows only DNS and `download.gnosisvpn.io:443`, with qrexec policy
   (`20-seqs-gnosisvpn-updates.policy`) scoped to the selected GnosisVPN
   template instance(s); the proxy is based on the TemplateVM of dom0's
@@ -306,27 +308,24 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton V
 - **Residual risk:** The embedded key and fingerprint originate from the same
   upstream project, so this is not an independent trust anchor by itself. The
   upstream `download.vpn.gnosis.eth.limo/linux/install.sh` is mutable; SEQS
-  deliberately does not pipe it to root and instead pins the package its
-  stable channel listed when reviewed. A later upstream stable release requires
-  a reviewed SEQS update rather than being installed automatically. The
-  `download.vpn.gnosis.eth.limo` mirror keeps only the latest release, so
-  SEQS downloads from `download.gnosisvpn.io`, which still served superseded
-  releases on 2026-10-25; once upstream stops serving the pinned release, the
-  build fails closed with HTTP 404 until the pin is updated. Only dom0's
-  UpdateVM is checked for Whonix: if the
+  deliberately does not pipe it to root. Every stable release signed with the
+  key installs, at build time and with later template updates, without a SEQS
+  review. The signed index has no expiry date (`Valid-Until`), so a mirror can
+  keep serving an older index: a new build then installs the older release it
+  lists, and an existing template stays at its release, since apt does not
+  downgrade. Only dom0's UpdateVM is checked for Whonix: if the
   `qubes.UpdatesProxy` policy routes template updates over Tor while dom0's
-  UpdateVM is not a Whonix gateway, the `.deb` download still leaves without
+  UpdateVM is not a Whonix gateway, the build's download still leaves without
   Tor. The
-  package runs maintainer scripts as root and configures upstream's APT
-  repository (mirrors `download.vpn.gnosis.eth.limo` and
-  `download.gnosisvpn.io`). SEQS pins both mirrors so that only the
-  `gnosisvpn` package can come from them, requires the installed repository
-  keyring to hold exactly the pinned key, and locks it with `chattr +i`, as
-  for the other third-party repositories. Every `gnosisvpn` upgrade rewrites
-  that keyring (its postinst runs `install` over it), which the lock turns
-  into a dpkg failure that blocks every later update of the template, so SEQS
-  holds the package, as it does `brave-keyring`: GnosisVPN changes only when a
-  reviewed SEQS pin installs a new release. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
+  package runs maintainer scripts as root. SEQS pins both mirrors
+  (`download.vpn.gnosis.eth.limo` and `download.gnosisvpn.io`) so that only
+  the `gnosisvpn` package can come from them. Its install script rewrites its
+  own keyring copy, `/etc/apt/keyrings/gnosisvpn-archive-keyring.gpg`, which
+  apt does not use, and rewrites `gnosisvpn.sources` to use that copy when a
+  release changes the suite or mirror list; apt then trusts whatever key that
+  release shipped, from a package signed with the current key. A key rotation
+  otherwise makes apt refuse the repository until a reviewed SEQS key update.
+  When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
   back to Cloudflare `1.1.1.1` and Google `8.8.8.8`; those providers can
   observe queries, although the helper verifies that they route through the
   tunnel and installs an output leak guard. The VPN qube retains upstream
