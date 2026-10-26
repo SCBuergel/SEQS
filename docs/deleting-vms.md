@@ -37,9 +37,9 @@ Review what would happen without changing anything:
 
 The output lists the matching qubes, the qubes whose network would be
 disconnected, and any qube that blocks the deletion. If it instead reports
-that `/var/lib/seqs/names` is missing, the qubes were built by a SEQS
-revision that did not record their names: run a build of the current
-revision first. Check every name, then perform the deletion:
+that `/var/lib/seqs/names` is missing, no build of the current SEQS
+revision has passed its pre-flight checks, which is when a build records the
+names: run one first. Check every name, then perform the deletion:
 
 ```bash
 ~/d.sh keepass
@@ -86,7 +86,7 @@ the GnosisVPN update proxy `seqs-gnosisvpn-update-proxy`. Without that
 record, no qube with the `seqs-managed` feature is selected, and while one
 exists and dom0 files would be removed the reset changes nothing, since it
 may be a SEQS qube that needs those policies: run a build of the current
-revision first. A same-named qube you created
+revision that passes its pre-flight checks first. A same-named qube you created
 yourself is not listed and stays. A qube you cloned from a SEQS qube carries
 the `seqs-managed` feature of its source; under another name, such as
 `my-wallet-backup`, it is reported as not selected, but under a SEQS name,

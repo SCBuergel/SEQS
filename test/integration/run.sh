@@ -818,7 +818,11 @@ out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass
 	|| bad "with configured prefixes, exactly app-keepass and tpl-keepass must go: rc=$rc ${out}"
 # Without a valid record, nothing is deleted.
 printf '%s\n' "app-keepass halted" > "${SEQS_MOCK_STATE}"
-for record in "prefix app- tpl-" "prefix ../" "prefix" "usb-qube x"$'\n'"qube seqs-qr-scanner" "prefix A-" "name app-"; do
+# Each record is valid but for one line: extra field, unsafe or empty value,
+# no prefix, no USB qube, unknown key.
+u=$'\nusb-qube sys-usb-webcam'
+for record in "prefix app- tpl-${u}" "prefix ../${u}" "prefix A-"$'\n'"usb-qube -x" "prefix${u}" \
+		"qube seqs-qr-scanner${u}" "prefix A-" "prefix A-${u}"$'\n'"name app-"; do
 	echo "${record}" > "${SEQS_STATE_DIR}/names"
 	out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qxF "ERROR: ${SEQS_STATE_DIR}/names is not a valid list of SEQS names -- nothing was changed" <<<"$out" \
@@ -1010,7 +1014,8 @@ export SEQS_ETC_DIR="${SBX}/etc/seqs" SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequen
 export SEQS_TMP_DIR="${SBX}/tmp" SEQS_TEST_DELETE_VMS="${REPO}/delete-vms.sh"
 mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_POLICY_DIR}" \
 	"${SEQS_ETC_DIR}" "${SBX}/sbin" "${SEQS_TMP_DIR}/seqs-stage.x"
-write_names D- A- Z-
+# No record of names, as on a machine last built by an older revision: the
+# reset writes the default one for delete-vms.sh.
 touch "${SEQS_QR_SCRIPT}"
 for p in 28-browser-suppress 29-browser; do
 	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"

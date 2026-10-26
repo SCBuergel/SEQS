@@ -174,7 +174,7 @@ if sudo test -e "${NAMES_FILE}"; then
 	readNames || { echo "ERROR: ${NAMES_FILE} is not a valid list of SEQS names -- nothing was changed" >&2; exit 1; }
 	names_known=1
 elif [ "${RESET}" -eq 0 ]; then
-	echo "ERROR: ${NAMES_FILE} is missing, so the names SEQS gives its qubes are unknown; a build of the current SEQS revision writes it -- nothing was changed" >&2
+	echo "ERROR: ${NAMES_FILE} is missing, so the names SEQS gives its qubes are unknown; a build of the current SEQS revision that passes its pre-flight checks writes it -- nothing was changed" >&2
 	exit 1
 fi
 
@@ -295,7 +295,7 @@ if [ "${RESET}" -eq 1 ]; then
 	# Those qubes may rely on the policy files and on SEQS's state.
 	if [ "${#unnamed[@]}" -gt 0 ] && [ "${#removable[@]}" -gt 0 ]; then
 		echo "ERROR: nothing was changed; the qubes above that carry a SEQS feature may be SEQS qubes that use these files." >&2
-		echo "  A build of the current SEQS revision writes ${NAMES_FILE}; run one, then the reset again." >&2
+		echo "  A build of the current SEQS revision that passes its pre-flight checks writes ${NAMES_FILE}; run one, then the reset again." >&2
 		exit 1
 	fi
 fi

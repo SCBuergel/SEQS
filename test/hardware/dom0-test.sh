@@ -116,6 +116,11 @@ reset() {
 		qvm-remove --force -- "${vm}" || fail "could not remove ${vm}"
 	done
 	if [ "${#bases[@]}" -gt 0 ]; then
+		# delete-vms.sh needs the record of names, which a machine last built
+		# by an older revision lacks; the test machine uses the default names.
+		sudo test -e "${STATE_DIR}/names" || { sudo mkdir -p -- "${STATE_DIR}" \
+			&& printf '%s\n' "prefix D-" "prefix A-" "prefix Z-" "usb-qube sys-usb-webcam" "qube seqs-qr-scanner" \
+				| sudo tee -- "${STATE_DIR}/names" >/dev/null; } || fail "could not write ${STATE_DIR}/names"
 		mapfile -t bases < <(printf '%s\n' "${bases[@]}" | sort -u)
 		bash "${DELETE_VMS}" "${bases[@]}" || fail "delete-vms.sh failed for: ${bases[*]}"
 	fi
