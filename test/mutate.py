@@ -227,7 +227,7 @@ MUTATIONS = [
     # Installer helpers: pinned keys, signatures, hashes, apt pins.
     ("gpg-exact-keys", G, '[[ "${got}" != "${expected}" ]]', '[[ -z "${got}" ]]'),
     ("gpg-lock-recheck", G, '| require_exact_keys "${1}" "${2}" || exit 1', '>/dev/null || true'),
-    ("gpg-validsig-pin", G, '$NF==fpr { validsig=1; next }', '{ validsig=1; next }'),
+    ("gpg-validsig-pin", G, '$2=="VALIDSIG" && $NF==fpr {', '$2=="VALIDSIG" {'),
     ("gpg-badsig", G, '($2=="BADSIG"   || ', '($2=="NOPE"   || '),
     ("gpg-rc", G, ' || [ "${rc}" -ne 0 ]; then', '; then'),
     ("gpg-sha256", G, "| sha256sum --check --strict --quiet \\\n", "| true \\\n"),

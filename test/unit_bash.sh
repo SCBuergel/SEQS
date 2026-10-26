@@ -591,6 +591,12 @@ if command -v gpg >/dev/null 2>&1; then
 		gpg() { printf '[GNUPG:] GOODSIG X\n[GNUPG:] VALIDSIG a b %s\n' "${fprs[0]}"; return 2; }
 		verify_detached_sig s d "${fprs[0]}" f.bin ) 2>&1 )" && bad "verify_detached_sig ignored gpg's exit code"
 	grep -q "f.bin signature verification FAILED (gpg exit 2" <<< "${out}" && ok || bad "gpg exit: wrong message [${out}]"
+	# A good signature counts only from the pinned primary key.
+	out="$( ( set -Eeuo pipefail; . install-scripts/lib/verify-gpg.sh
+		gpg() { printf '[GNUPG:] GOODSIG X\n[GNUPG:] VALIDSIG a b %s\n' "${fprs[1]}"; }
+		verify_detached_sig s d "${fprs[0]}" f.bin ) 2>&1 )" && bad "verify_detached_sig accepted a VALIDSIG by another key"
+	grep -q "rejected: no VALIDSIG with primary-key fingerprint ${fprs[0]}" <<< "${out}" \
+		&& grep -q "f.bin signature verification FAILED (gpg exit 0" <<< "${out}" && ok || bad "other VALIDSIG: wrong message [${out}]"
 	# lock_keyring locks a keyring only while it holds exactly the pinned key.
 	GNUPGHOME="${g}/home" gpg --export "${fprs[0]}" > "${g}/one.gpg"
 	GNUPGHOME="${g}/home" gpg --export > "${g}/two.gpg"
