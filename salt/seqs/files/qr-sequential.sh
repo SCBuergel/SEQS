@@ -45,13 +45,14 @@ teardown_and_poweroff() {
 }
 trap teardown_and_poweroff EXIT HUP INT QUIT TERM
 # Once the camera side may have had the controller, no hang in a qube, in
-# qubesd or in this script may keep the boot running: a watchdog that ignores
-# the script's signals and outlives it forces a power-off after 14 minutes.
+# qubesd or in this script may keep the boot running: a watchdog that
+# outlives the script and its terminal forces a power-off after 14 minutes.
+# It does not ignore TERM, so an orderly power-off stops it without delay.
 # That leaves over 8 minutes beyond the 4-minute scan and the fixed waits
 # for the qubes to start and stop.
 expose() {
 	exposed=1
-	( trap '' HUP INT QUIT TERM; set +e; sleep 840; systemctl poweroff --force --force ) \
+	( trap '' HUP INT QUIT; set +e; sleep 840; systemctl poweroff --force --force ) \
 		</dev/null >/dev/null 2>&1 &
 }
 

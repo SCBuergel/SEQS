@@ -1060,12 +1060,15 @@ write_mock sync ':'
 write_mock sleep '[ "$1" = 840 ] || exit 0; echo "$PPID $$" > "'"${SBX}"'/watchdog.pid"
 for _ in $(seq 600); do [ -e "'"${SBX}"'/attach_started" ] && exit 0; /bin/sleep 0.1; done'
 qr_stop_watchdog() {  # NAME -- end the watchdog of the last run; it must exist
-	local _
+	local _ pids
 	for _ in $(seq 50); do [ -s "${SBX}/watchdog.pid" ] && break; /bin/sleep 0.1; done
 	[ -s "${SBX}/watchdog.pid" ] && ok || bad "$1: no power-off watchdog was started"
-	# shellcheck disable=SC2046
-	kill -KILL $(cat "${SBX}/watchdog.pid" 2>/dev/null) 2>/dev/null
-	rm -f "${SBX}/watchdog.pid"
+	pids="$(cat "${SBX}/watchdog.pid" 2>/dev/null)"; rm -f "${SBX}/watchdog.pid"
+	# An orderly power-off stops it with TERM, which it must not ignore.
+	# shellcheck disable=SC2086
+	kill -TERM ${pids} 2>/dev/null; /bin/sleep 0.2
+	# shellcheck disable=SC2086
+	! kill -0 ${pids} 2>/dev/null && ok || { bad "$1: the watchdog ignores TERM"; kill -KILL ${pids} 2>/dev/null; }
 }
 write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
 # The fixture holds "<vm> <property> <flag> <value>" lines; "qvm-prefs -- VM"
@@ -1133,7 +1136,11 @@ fi
 write_mock qvm-start ':'
 write_mock qvm-shutdown 'sed -i "/^${!#}$/d" "'"${SBX}"'/running"'
 # With attach_hangs, an attach hangs until the watchdog forces the power-off.
+# It first sends the watchdog the hangup of a closed terminal, which it must
+# survive.
 write_mock qvm-usb 'if [ "${1:-}" = attach ] && [ -e "'"${SBX}"'/attach_hangs" ]; then
+	for _ in $(seq 50); do [ -s "'"${SBX}"'/watchdog.pid" ] && break; /bin/sleep 0.1; done
+	kill -HUP $(cat "'"${SBX}"'/watchdog.pid"); /bin/sleep 0.2
 	touch "'"${SBX}"'/attach_started"
 	for _ in $(seq 100); do grep -qx -- "poweroff --force --force" "'"${SBX}"'/systemctl.log" 2>/dev/null && exit 1; /bin/sleep 0.1; done
 	exit 1

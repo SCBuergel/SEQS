@@ -389,8 +389,8 @@ After `START`:
    does not work with this controller.
 3. Unplug the webcam when the script reports a completed copy or an error,
    or when the computer turns off. Do not reconnect the keyboard or mouse.
-4. The computer powers off either way, at the latest 14 minutes after
-   `START`. If it is still running two minutes after you unplugged the
+4. The computer powers off either way, by itself about 14 minutes after
+   `START` if the script hangs. If it is still running two minutes after you unplugged the
    webcam, or 15 minutes after `START`, hold the power button until it is off.
    Unplug the power cable and remove the battery if you can. Then, with the
    webcam still unplugged, reconnect power, keyboard, and mouse, and start

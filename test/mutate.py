@@ -214,6 +214,7 @@ MUTATIONS = [
     ("reset-confirm-word", D, '[ "${answer}" = RESET ] ||', '[ -n "${answer}" ] ||'),
     # The sequential QR script in dom0: offline camera side, one device, power-off.
     ("qr-running-webcam-poweroff", QR, "\texpose; exit 1;", "\texit 1;"),
+    ("qr-watchdog-hup", QR, "( trap '' HUP INT QUIT; set +e;", "( trap '' INT QUIT; set +e;"),
     ("qr-watchdog", QR, "set +e; sleep 840; systemctl poweroff --force --force", "set +e; sleep 840"),
     ("qr-poweroff-force", QR, "systemctl poweroff || systemctl poweroff --force --force", "systemctl poweroff"),
     ("qr-start-word", QR, '[ "$answer" = START ]', '[ -n "$answer" ]'),

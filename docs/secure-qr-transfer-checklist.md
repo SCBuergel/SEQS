@@ -42,7 +42,7 @@ Receiving computer, one of:
       seconds of `START`, plug in only the webcam, into the socket you chose
       for it, once the script shows `NORMAL USB BACKEND STOPPED`, unplug the
       webcam when the script reports a completed copy or an error or the
-      computer turns off (at the latest 14 minutes after `START`), remove
+      computer turns off (about 14 minutes after `START` if the script hangs), remove
       all power after the power-off, start the target key qube, check that
       only `key.asc` arrived in
       `A-qr-staging`, copy it (accept only that one dialog), delete the

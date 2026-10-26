@@ -1109,8 +1109,8 @@ Otherwise, type `START` in capital letters. After that:
 4. Unplug the webcam when the script reports that the copy completed, when
    it reports an error, or when the computer turns off. Do not reconnect the
    keyboard or mouse.
-5. The computer powers off, whether the scan worked or not, at the latest 14
-   minutes after `START`. If it is still running two minutes after you
+5. The computer powers off, whether the scan worked or not, by itself about
+   14 minutes after `START` if the script hangs. If it is still running two minutes after you
    unplugged the webcam, or 15 minutes after `START`, hold the power button
    until it is off.
 
