@@ -50,11 +50,12 @@ new_sandbox() {
 REPO_ORIG_PATH="${PATH}"
 
 # write_names PREFIX... -- the record of names seqs.dom0 writes for
-# delete-vms.sh, with these prefixes and the default QR camera qubes.
+# delete-vms.sh, with these prefixes and the QR camera qubes (by default
+# sys-usb-webcam and seqs-qr-scanner, or USB_QUBE and SCANNER_QUBE).
 write_names() {
 	mkdir -p "${SEQS_STATE_DIR}"
-	{ echo "# Managed by SEQS (test)"; printf 'prefix %s\n' "$@"; printf 'qube %s\n' sys-usb-webcam seqs-qr-scanner; } \
-		> "${SEQS_STATE_DIR}/names"
+	{ echo "# Managed by SEQS (test)"; printf 'prefix %s\n' "$@"
+	  echo "usb-qube ${USB_QUBE:-sys-usb-webcam}"; echo "qube ${SCANNER_QUBE:-seqs-qr-scanner}"; } > "${SEQS_STATE_DIR}/names"
 }
 
 run_setup() {  # supplies the explicit repository qube to workflows with FETCH
@@ -802,7 +803,7 @@ out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass
 	|| bad "with configured prefixes, exactly app-keepass and tpl-keepass must go: rc=$rc ${out}"
 # Without a valid record, nothing is deleted.
 printf '%s\n' "app-keepass halted" > "${SEQS_MOCK_STATE}"
-for record in "prefix app- tpl-" "prefix ../" "prefix" "qube seqs-qr-scanner" "name app-"; do
+for record in "prefix app- tpl-" "prefix ../" "prefix" "usb-qube x"$'\n'"qube seqs-qr-scanner" "prefix A-" "name app-"; do
 	echo "${record}" > "${SEQS_STATE_DIR}/names"
 	out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qxF "ERROR: ${SEQS_STATE_DIR}/names is not a valid list of SEQS names -- nothing was changed" <<<"$out" \
@@ -941,7 +942,8 @@ unset -f reset_vms
 rm -rf "${SBX}"
 
 # ── Scenario 9c: delete-vms.sh --reset follows the configured names ─────────
-# With other prefixes, the qubes under them go and an A- qube is a clone.
+# With other prefixes and QR qube names, the qubes under them go, and an A-
+# qube or one called sys-usb-webcam is a clone.
 # Without the record, a reset that would remove dom0 files refuses while a
 # qube carries a SEQS feature: its deny policies would go while it stays.
 echo "== scenario: delete-vms.sh --reset uses the recorded prefixes, refuses without them =="
@@ -951,19 +953,23 @@ export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d" SE
 export SEQS_QR_SCRIPT="${SBX}/qr" SEQS_VPN_MONITOR="${SBX}/monitor" SEQS_NUC11_FW="${SBX}/fw" SEQS_NUC11_CONF="${SBX}/conf"
 mkdir -p "${SEQS_POLICY_DIR}"
 echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/28-browser-suppress.policy"
-printf '%s\n' "app-keepass halted" "tpl-keepass halted" "A-keepass halted" "seqs-qr-scanner halted" > "${SEQS_MOCK_STATE}"
-printf '%s\n' "app-keepass seqs-managed 1" "tpl-keepass seqs-managed 1" "seqs-qr-scanner seqs-managed 1" > "${SEQS_MOCK_FEATURES}"
+printf '%s\n' "app-keepass halted" "tpl-keepass halted" "A-keepass halted" "cam-usb halted" "cam-scan halted" \
+	"sys-usb-webcam halted" > "${SEQS_MOCK_STATE}"
+printf '%s seqs-managed 1\n' app-keepass tpl-keepass cam-usb cam-scan sys-usb-webcam > "${SEQS_MOCK_FEATURES}"
 rm -rf "${SEQS_STATE_DIR}"
 out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -qxF "  app-keepass: carries a SEQS feature, but without ${SEQS_STATE_DIR}/names it is unknown whether it has a SEQS name: not selected" <<<"$out" \
 	&& grep -q "^ERROR: nothing was changed; the qubes above that carry a SEQS feature may be SEQS qubes that use these files" <<<"$out" \
-	&& [ "$(wc -l < "${SEQS_MOCK_STATE}")" -eq 4 ] && [ -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
+	&& [ "$(wc -l < "${SEQS_MOCK_STATE}")" -eq 6 ] && [ -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
 	|| bad "without the record, a reset that would remove dom0 files must refuse: rc=$rc ${out}"
-write_names app- tpl-
+USB_QUBE=cam-usb SCANNER_QUBE=cam-scan write_names app- tpl-
 out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
 	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -qF "  A-keepass: carries a SEQS feature but is not a SEQS name (a clone?): not selected" <<<"$out" \
-	&& [ "$(cut -d' ' -f1 "${SEQS_MOCK_STATE}")" = "A-keepass" ] && [ ! -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
+	&& grep -qF "  sys-usb-webcam: carries a SEQS feature but is not a SEQS name (a clone?): not selected" <<<"$out" \
+	&& grep -q "webcam's USB controller now belongs to no qube" <<<"$out" \
+	&& [ "$(cut -d' ' -f1 "${SEQS_MOCK_STATE}" | tr '\n' ' ')" = "A-keepass sys-usb-webcam " ] \
+	&& [ ! -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
 	|| bad "a reset must remove the qubes under the recorded names, and only those: rc=$rc ${out}"
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_NUC11_FW SEQS_NUC11_CONF SEQS_MOCK_FEATURES
 rm -rf "${SBX}"

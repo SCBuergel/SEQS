@@ -61,8 +61,9 @@ A qube under another name is not selected even if it carries the
 seqs-managed feature, as a clone of a SEQS qube does; while it uses a SEQS
 template, it blocks the reset like any other reference. Without the record
 of names, no qube with that feature is selected, and the reset refuses while
-one exists and SEQS files would be removed. It asks you to type RESET first. sys-usb's memory setting, the window-manager shortcuts, and your
-copies of the runner and this helper stay.
+one exists and SEQS files would be removed. It asks you to type RESET first.
+sys-usb's memory setting, the window-manager shortcuts, and your copies of
+the runner and this helper stay.
 
 Options:
   --dry-run    print what would be killed/removed and exit 0
@@ -135,10 +136,12 @@ findUsers() {
 }
 
 # readNames -- read NAMES_FILE into PREFIXES, the configured prefixes of the
-# named disposables, app qubes and templates, and SEQS_QUBES, the QR camera
-# qubes and the GnosisVPN update proxy, whose name is fixed. Fails on a
-# missing or empty prefix list, an unknown line, or an unsafe name.
+# named disposables, app qubes and templates, USB_QUBE, the QR camera's USB
+# qube, and SEQS_QUBES, the QR camera qubes and the GnosisVPN update proxy,
+# whose name is fixed. Fails on a missing prefix list or USB qube, an unknown
+# line, or an unsafe name.
 PREFIXES=()
+USB_QUBE=''
 SEQS_QUBES=(seqs-gnosisvpn-update-proxy)
 readNames() {
 	local key value rest
@@ -147,11 +150,12 @@ readNames() {
 		[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && [ -z "${rest}" ] || return 1
 		case "${key}" in
 			prefix) PREFIXES+=("${value}") ;;
+			usb-qube) USB_QUBE="${value}"; SEQS_QUBES+=("${value}") ;;
 			qube) SEQS_QUBES+=("${value}") ;;
 			*) return 1 ;;
 		esac
 	done < <(sudo cat -- "${NAMES_FILE}")
-	[ "${#PREFIXES[@]}" -gt 0 ]
+	[ "${#PREFIXES[@]}" -gt 0 ] && [ -n "${USB_QUBE}" ]
 }
 # isSeqsName VM -- VM has a name SEQS gives: a configured prefix followed by
 # a base name, or one of SEQS_QUBES.
@@ -454,7 +458,7 @@ for f in "${unmarked[@]}"; do
 	left=1
 done
 rm -f -- "${DOM0_LAUNCHERS_ADDED}"
-if [[ " ${found[*]} " == *" sys-usb-webcam "* ]]; then
+if [ -n "${USB_QUBE}" ] && [[ " ${found[*]} " == *" ${USB_QUBE} "* ]]; then
 	echo "NOTE: on the dedicated-controller QR path, the webcam's USB controller now belongs to no qube;"
 	echo "      the recovery steps in docs/secure-qr-transfer.md give it back to sys-usb."
 fi

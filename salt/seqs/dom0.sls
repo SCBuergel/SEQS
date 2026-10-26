@@ -459,11 +459,11 @@ seqs-names:
     - makedirs: True
     - contents: |
         # Managed by SEQS (salt state seqs.dom0). Read by delete-vms.sh.
-        # Format: prefix <prefix of named disposables, app qubes, templates, in that order> | qube <QR camera qube>
+        # Format: prefix <prefix of named disposables, app qubes or templates> | usb-qube <QR camera USB qube> | qube <QR scanner qube>
         {%- for p in [pdvm, papp, ptpl] if p %}
         prefix {{ p }}
         {%- endfor %}
-        qube {{ webcam_usb_qube }}
+        usb-qube {{ webcam_usb_qube }}
         qube {{ webcam_scanner_qube }}
 
 # ── qrexec policies ────────────────────────────────────────────────────────

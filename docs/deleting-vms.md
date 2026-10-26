@@ -14,7 +14,8 @@ The argument is a **base name**, such as an entry of `qube_catalog`, not a
 complete VM name. For example, use `keepass` to target both `A-keepass` and `Z-keepass`.
 These are the default name prefixes; if `config.sls` sets other `prefix_*`
 values, the helper uses those, which every build records in
-`/var/lib/seqs/names`.
+`/var/lib/seqs/names`. It knows only the latest build's prefixes: delete the
+qubes under the old ones before you change them.
 For a postfixed instance, pass its full generated base name: `gnosisvpn-alpha`
 targets `A-gnosisvpn-alpha` and `Z-gnosisvpn-alpha`, while leaving the
 canonical `gnosisvpn` instance untouched.

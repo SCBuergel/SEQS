@@ -247,7 +247,7 @@ def test_dom0_names_record():
     _, parsed = render_state("dom0", "dom0", Scenario())
     names = state_arg(parsed, "seqs-names", "file.managed", "contents")
     check(names.splitlines()[2:] == ["prefix D-", "prefix A-", "prefix Z-",
-                                     "qube sys-usb-webcam", "qube seqs-qr-scanner"],
+                                     "usb-qube sys-usb-webcam", "qube seqs-qr-scanner"],
           "the record must list the default prefixes and QR qubes: %r" % names)
     pillar = copy.deepcopy(render_pillar("dom0"))
     # Without a named disposable, prefix_disposable may be empty.
@@ -259,7 +259,7 @@ def test_dom0_names_record():
                              pillar_seqs=pillar)
     names = next((i["contents"] for i in parsed.get("seqs-names", {}).get("file.managed", [])
                   if "contents" in i), "")
-    check(names.splitlines()[2:] == ["prefix app-", "prefix tpl-", "qube cam-usb", "qube cam-scan"],
+    check(names.splitlines()[2:] == ["prefix app-", "prefix tpl-", "usb-qube cam-usb", "qube cam-scan"],
           "the record must follow the configured names: %r %s" % (names, _errors(parsed)))
 
 
