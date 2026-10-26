@@ -4,6 +4,14 @@ set -Eeuo pipefail
 if [[ ${1-} == start && $# -eq 1 ]]; then
 	exec /rw/config/seqs-wireguard/boot.sh
 fi
+# With wg0 down, dns.sh drops this qube's own DNS translation to the
+# provider's resolver, which is usually reachable only through the tunnel.
+if [[ ${1-} == stop && $# -eq 1 ]]; then
+	if ip link show dev wg0 >/dev/null 2>&1; then
+		wg-quick down /run/seqs-wireguard/wg0.conf
+	fi
+	exec /rw/config/seqs-wireguard/dns.sh
+fi
 
 usage() {
 	echo "Usage: seqs-wireguard-import PATH-TO-WIREGUARD.conf" >&2

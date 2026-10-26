@@ -142,9 +142,9 @@ After install:
   importing the configuration, `sudo wg show` inside
   `A-wireguard` should report a recent handshake. Attach a test qube, confirm
   its public IP is the VPN's, then run
-  `sudo wg-quick down /run/seqs-wireguard/wg0.conf` and confirm the test qube
+  `sudo seqs-wireguard stop` and confirm the test qube
   loses both IP and DNS connectivity (fail closed) before bringing the tunnel
-  back with `sudo /rw/config/seqs-wireguard/boot.sh`.
+  back with `sudo seqs-wireguard start`.
   The test qube's `/etc/resolv.conf` should remain Qubes-managed with
   `10.139.1.1` and `10.139.1.2`; inside `A-wireguard`,
   `sudo nft list table ip seqs-wireguard-dns` should translate those

@@ -104,13 +104,13 @@ reboots.
 To stop the tunnel:
 
 ```bash
-sudo wg-quick down /run/seqs-wireguard/wg0.conf
+sudo seqs-wireguard stop
 ```
 
 To start it again:
 
 ```bash
-sudo /rw/config/seqs-wireguard/boot.sh
+sudo seqs-wireguard start
 ```
 
 Client qubes fail closed while `wg0` is down. `A-wireguard` itself retains

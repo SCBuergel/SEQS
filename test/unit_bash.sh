@@ -523,6 +523,17 @@ touch "${wd}/up"; rm -f "${wd}/batch"; bash "${wd}/dns.sh" \
 	&& grep -qF "${out_chain}" "${wd}/batch" \
 	&& [ "$(grep -c 'dnat to 10.128.0.1' "${wd}/batch")" = 8 ] \
 	&& ok || bad "with wg0 up, dns.sh must translate this qube's own DNS as well"
+# seqs-wireguard stop takes wg0 down, then drops this qube's own translation.
+printf '#!/bin/sh\necho "$*" > "%s/wg-quick.log"; rm -f "%s/up"\n' "${wd}" "${wd}" > "${wd}/wg-quick"; chmod +x "${wd}/wg-quick"
+sed -e "s#if ip link #if ${wd}/ip link #" -e "s#wg-quick down #${wd}/wg-quick down #" \
+	-e "s#exec /rw/config/seqs-wireguard/dns.sh#exec bash ${wd}/dns.sh#" \
+	install-scripts/components/wireguard/seqs-wireguard > "${wd}/seqs-wireguard"
+rm -f "${wd}/batch"; bash "${wd}/seqs-wireguard" stop \
+	&& grep -qx 'down /run/seqs-wireguard/wg0.conf' "${wd}/wg-quick.log" \
+	&& grep -qx 'delete table ip seqs-wireguard-dns' "${wd}/batch" \
+	&& ! grep -qF "${out_chain}" "${wd}/batch" \
+	&& grep -q 'ip daddr 10.139.1.1 udp dport 53 dnat to 10.128.0.1' "${wd}/batch" \
+	&& ok || bad "seqs-wireguard stop must take wg0 down and drop only this qube's own DNS translation"
 
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 # Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
