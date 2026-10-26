@@ -123,16 +123,15 @@ Check the tunnel, DNS translations, and firewall service inside
 
 ```bash
 sudo wg show
-sudo nft list chain ip qubes dnat-dns
-sudo nft list chain ip qubes seqs-wireguard-dns-output
+sudo nft list table ip seqs-wireguard-dns
 sudo systemctl status qubes-firewall.service
 sudo journalctl -b
 ```
 
-While the tunnel is up, the two nftables chains should translate Qubes'
+While the tunnel is up, both chains of this table should translate Qubes'
 synthetic DNS addresses to the IPv4 DNS server from the imported
 configuration. If IP traffic works but names do not resolve, do not replace
-`/etc/resolv.conf`; inspect these chains and the provider configuration's
+`/etc/resolv.conf`; inspect this table and the provider configuration's
 `DNS=` value.
 
 For repository upgrades to an already-provisioned WireGuard qube, rerun
@@ -181,18 +180,19 @@ Client qubes always query Qubes' synthetic resolver addresses
 `10.139.1.1` and `10.139.1.2`. SEQS reads the actual synthetic addresses from
 QubesDB and the provider DNS from the imported WireGuard file.
 
-It then atomically installs two narrowly scoped translations:
+It then atomically replaces its own nftables table, `seqs-wireguard-dns`,
+which holds two narrowly scoped translations:
 
-- Qubes' native `dnat-dns` prerouting chain handles requests arriving from
-  client qubes.
-- `seqs-wireguard-dns-output` handles requests generated locally by
-  `A-wireguard`, but only while `wg0` is up: the provider's DNS server is
-  usually reachable only through the tunnel, and WireGuard must first resolve
-  a hostname endpoint through the upstream resolver.
+- The `prerouting` chain handles requests arriving from client qubes.
+- The `output` chain handles requests generated locally by `A-wireguard`, but
+  only while `wg0` is up: the provider's DNS server is usually reachable only
+  through the tunnel, and WireGuard must first resolve a hostname endpoint
+  through the upstream resolver.
 
 Both TCP and UDP port 53 are translated to the provider's IPv4 DNS server.
-The firewall hook reapplies these mappings whenever Qubes rebuilds its firewall
-tables.
+The chains run before Qubes' own `dnat-dns` chain, which Qubes rewrites
+whenever `A-wireguard`'s uplink is set up again, for example when its NetVM
+changes; that rewrite therefore does not undo the translation.
 
 ### Fail-closed forwarding
 

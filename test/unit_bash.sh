@@ -507,12 +507,18 @@ chmod +x "${wd}/nft" "${wd}/ip" "${wd}/qubesdb-read"
 sed -e "s#/rw/config/seqs-wireguard/wg0.conf#${wd}/wg0.conf#" -e "s#^nft #${wd}/nft #" \
 	-e "s#qubesdb-read #${wd}/qubesdb-read #" -e "s#if ip link #if ${wd}/ip link #" \
 	install-scripts/components/wireguard/wireguard-dns.sh > "${wd}/dns.sh"
-out_chain='chain seqs-wireguard-dns-output {'
+out_chain='type nat hook output priority -101; policy accept;'
 rm -f "${wd}/up" "${wd}/batch"; bash "${wd}/dns.sh" \
-	&& grep -qx 'delete chain ip qubes seqs-wireguard-dns-output' "${wd}/batch" \
+	&& grep -qx 'delete table ip seqs-wireguard-dns' "${wd}/batch" \
 	&& ! grep -qF "${out_chain}" "${wd}/batch" \
 	&& grep -q 'ip daddr 10.139.1.1 udp dport 53 dnat to 10.128.0.1' "${wd}/batch" \
 	&& ok || bad "with wg0 down, dns.sh must keep client DNS and drop its own translation"
+# Qubes rewrites its dnat-dns chain (priority dstnat, -100) whenever the uplink
+# is set up again; the translation must live in a table of its own that runs
+# before it.
+grep -qx 'type nat hook prerouting priority -101; policy accept;' "${wd}/batch" \
+	&& ! grep -q 'ip qubes' "${wd}/batch" \
+	&& ok || bad "client DNS translation must run before Qubes' dnat-dns, outside table ip qubes"
 touch "${wd}/up"; rm -f "${wd}/batch"; bash "${wd}/dns.sh" \
 	&& grep -qF "${out_chain}" "${wd}/batch" \
 	&& [ "$(grep -c 'dnat to 10.128.0.1' "${wd}/batch")" = 8 ] \

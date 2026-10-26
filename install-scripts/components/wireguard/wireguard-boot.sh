@@ -6,7 +6,7 @@ config=/rw/config/seqs-wireguard/wg0.conf
 
 # Qubes owns /etc/resolv.conf and does not expose it through resolvconf.
 # Preserve DNS= in the stored provider file, but remove it from the runtime
-# wg-quick input; dns.sh programs Qubes' native dnat-dns chain instead.
+# wg-quick input; dns.sh translates Qubes' DNS addresses instead.
 runtime_dir=/run/seqs-wireguard
 install -d -m 0700 "$runtime_dir"
 sed '/^[[:space:]]*DNS[[:space:]]*=/Id' "$config" > "${runtime_dir}/wg0.conf"

@@ -7,7 +7,3 @@ set -Eeuo pipefail
 # instead of passing silently; the IPv4 drop is added first.
 nft add rule ip qubes custom-forward oifname "eth0" counter drop
 nft add rule ip6 qubes custom-forward oifname "eth0" counter drop
-
-# Qubes may rebuild its firewall and DNS NAT tables when network state changes.
-# Reassert the provider DNS after the Qubes-owned chains exist.
-/rw/config/seqs-wireguard/dns.sh

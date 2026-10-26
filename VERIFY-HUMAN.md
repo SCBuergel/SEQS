@@ -147,12 +147,12 @@ After install:
   back with `sudo /rw/config/seqs-wireguard/boot.sh`.
   The test qube's `/etc/resolv.conf` should remain Qubes-managed with
   `10.139.1.1` and `10.139.1.2`; inside `A-wireguard`,
-  `sudo nft list chain ip qubes dnat-dns` should translate those addresses to
-  the DNS selected by the WireGuard configuration. Import and boot output
-  should contain no `resolvconf` warning. Inside `A-wireguard`,
-  `sudo nft list chain ip qubes seqs-wireguard-dns-output` should show the
-  equivalent output-hook translations, and both `getent hosts example.com`
-  there and in the test client should succeed.
+  `sudo nft list table ip seqs-wireguard-dns` should translate those
+  addresses to the DNS selected by the WireGuard configuration in both its
+  `prerouting` and `output` chains. Import and boot output should contain no
+  `resolvconf` warning. Both `getent hosts example.com` in `A-wireguard` and
+  in the test client should succeed, and still succeed after switching
+  `A-wireguard`'s NetVM to `sys-net` and back in its Qube settings.
 - If using GnosisVPN, `qvm-prefs A-gnosisvpn provides_network` should print
   `True`; `openresolv`, `wireguard-tools`, and the `gnosisvpn` package should be
   installed in `Z-gnosisvpn`, not held (`apt-mark showhold` lists nothing), with

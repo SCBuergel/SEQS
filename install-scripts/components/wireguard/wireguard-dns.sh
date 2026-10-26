@@ -52,15 +52,15 @@ for address in "${provider_dns[@]}" "${qubes_dns[@]}"; do
 	fi
 done
 
-# Match Qubes' own atomic replacement pattern: replace only dnat-dns inside
-# table ip qubes, leaving all other Qubes firewall state untouched.
-rules=$'add table ip qubes\n'
-rules+=$'add chain ip qubes dnat-dns\n'
-rules+=$'delete chain ip qubes dnat-dns\n'
-rules+=$'add chain ip qubes seqs-wireguard-dns-output\n'
-rules+=$'delete chain ip qubes seqs-wireguard-dns-output\n'
-rules+=$'table ip qubes {\nchain dnat-dns {\n'
-rules+=$'type nat hook prerouting priority dstnat; policy accept;\n'
+# Atomically replace only this component's own table. Its chains run at
+# priority -101, before Qubes' dnat-dns (dstnat, -100), which Qubes rewrites
+# whenever the uplink is set up again; the first DNAT of a connection wins.
+table=seqs-wireguard-dns
+rules="add table ip ${table}"$'\n'
+rules+="delete table ip ${table}"$'\n'
+rules+="table ip ${table} {"$'\n'
+rules+=$'chain prerouting {\n'
+rules+=$'type nat hook prerouting priority -101; policy accept;\n'
 for i in "${!qubes_dns[@]}"; do
 	destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
 	rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'
@@ -71,8 +71,8 @@ rules+=$'}\n'
 # usually name a resolver reachable only through the tunnel, and wg-quick
 # resolves a hostname Endpoint before the tunnel exists.
 if ip link show dev wg0 2>/dev/null | grep -Eq '<([^>]*,)?UP(,|>)'; then
-	rules+=$'chain seqs-wireguard-dns-output {\n'
-	rules+=$'type nat hook output priority dstnat; policy accept;\n'
+	rules+=$'chain output {\n'
+	rules+=$'type nat hook output priority -101; policy accept;\n'
 	for i in "${!qubes_dns[@]}"; do
 		destination=${provider_dns[$((i % ${#provider_dns[@]}))]}
 		rules+="ip daddr ${qubes_dns[$i]} udp dport 53 dnat to ${destination}"$'\n'

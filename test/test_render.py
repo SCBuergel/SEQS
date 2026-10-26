@@ -1391,21 +1391,19 @@ def test_qube_wireguard_component():
         "wireguard-firewall.sh")
     with open(firewall_script, encoding="utf-8") as f:
         firewall_text = f.read()
-    check("dns.sh" in firewall_text and "seqs-dns" not in firewall_text,
-          "firewall refresh must reassert Qubes dnat-dns, not a custom chain")
+    check("dns.sh" not in firewall_text,
+          "the firewall hook need not reassert DNS kept in its own table")
     dns_script = os.path.join(
         sr.REPO_ROOT, "install-scripts", "components", "wireguard",
         "wireguard-dns.sh")
     with open(dns_script, encoding="utf-8") as f:
         dns_text = f.read()
-    check("delete chain ip qubes dnat-dns" in dns_text,
-          "DNS updater must atomically replace Qubes' native dnat-dns chain")
+    check('delete table ip ${table}' in dns_text,
+          "DNS updater must atomically replace its own table")
     check("/qubes-netvm-primary-dns" in dns_text,
           "DNS updater must obtain client resolver addresses from QubesDB")
-    check("type nat hook output priority dstnat" in dns_text,
+    check("type nat hook output priority -101" in dns_text,
           "DNS updater must translate provider-qube-local resolver requests")
-    check("seqs-wireguard-dns-output" in dns_text,
-          "provider-qube DNS output must use its own narrowly scoped chain")
 
 
 def test_qube_gnosisvpn_component():
