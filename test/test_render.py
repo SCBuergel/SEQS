@@ -1388,7 +1388,7 @@ def test_qube_wireguard_component():
 
 
 def test_qube_gnosisvpn_component():
-    case("qube.sls: pinned GnosisVPN component and Qubes hooks render")
+    case("qube.sls: GnosisVPN component from its APT repository and Qubes hooks render")
     _, template = render_state("qube", "Z-gnosisvpn")
     _, app = render_state("qube", "A-gnosisvpn")
     _, postfixed_template = render_state("qube", "Z-gnosisvpn-alpha")

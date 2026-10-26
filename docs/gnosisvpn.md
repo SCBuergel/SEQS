@@ -21,7 +21,8 @@ machine, 2 vCPUs reached about 7.4 Mbit/s, and 4 about 8.4, with no gain
 beyond 4.
 After a newer revision is fetched and staged, rerunning the same command
 upgrades an existing instance in place: when any part of the component
-changed, its installers run again, and the AppVM's private VPN state in `/var/lib/gnosisvpn` is kept. Use
+changed, its installers run again, and the AppVM's private VPN state in
+`/var/lib/gnosisvpn` is kept. Use
 `~/d.sh gnosisvpn` (see [Deleting SEQS qubes](deleting-vms.md)) only to destroy the instance and rebuild it from
 scratch; that also destroys the private VPN state, so back up anything that
 must survive first.
@@ -134,12 +135,18 @@ the last start.
 Start `A-gnosisvpn`; it connects as described above. Do not attach sensitive
 client qubes until completing the checks below.
 
-Do not replace or relink `/etc/resolv.conf`. It should remain Qubes-managed:
+Do not replace or relink `/etc/resolv.conf`. With GnosisVPN 0.95.2, the
+release SEQS was checked with on hardware, it remains Qubes-managed:
 
 ```text
 nameserver 10.139.1.1
 nameserver 10.139.1.2
 ```
+
+GnosisVPN 0.96.0 and later manage `/etc/resolv.conf` themselves and add a
+kill switch; SEQS has not checked them in a Qubes NetVM. If the file shows
+other addresses after a connection, or any check below fails, do not attach
+client qubes.
 
 When GnosisVPN brings up `wg0_gnosisvpn`, it may register resolver addresses
 under `/run/resolvconf/interfaces/wg0_gnosisvpn`. A systemd path unit reacts
@@ -215,9 +222,9 @@ sudo nft list table ip seqs_gnosisvpn_dns
 sent bytes in total and in the last second; it prints nothing while the
 tunnel is down. `resolvconf -l` may
 show one or two IPv4 resolvers for `wg0_gnosisvpn`; if it does not, the nft
-table should target `1.1.1.1` and `8.8.8.8`. `/etc/resolv.conf` should still
-contain Qubes' synthetic addresses, name resolution should succeed, and the
-nftables counters should increase.
+table should target `1.1.1.1` and `8.8.8.8`. With 0.95.2, `/etc/resolv.conf`
+still contains Qubes' synthetic addresses. Name resolution should succeed,
+and the nftables counters should increase.
 
 Next, confirm that translated DNS crosses the tunnel. `tcpdump` is not in the
 template; install it in `A-gnosisvpn` (this lasts until the qube restarts):
@@ -278,6 +285,11 @@ you change in `A-anon` appears in every later `D-anon`, so do not browse in
   the suite or mirror list; that copy comes from a package signed with the
   same key. A new signing key makes apt refuse updates from the repository
   until the SEQS key is reviewed and updated.
+- The DNS and fail-closed integration was checked on hardware only with
+  GnosisVPN 0.95.2. Template updates install later releases, starting with
+  0.96.0, which manages `/etc/resolv.conf` itself and adds a kill switch;
+  whether the integration still holds with them is unverified. Repeat
+  [Test GnosisVPN](#test-gnosisvpn) after an update.
 - The DNS helper expects the interface to be named `wg0_gnosisvpn`. A future
   GnosisVPN release that renames it requires a reviewed component update.
 - Only IPv4 DNS servers are accepted. Missing or unusable openresolv data uses

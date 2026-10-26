@@ -325,7 +325,11 @@ Each apt-repo component below (Brave, Signal, Element, Docker, VS Code, Proton V
   release changes the suite or mirror list; apt then trusts whatever key that
   release shipped, from a package signed with the current key. A key rotation
   otherwise makes apt refuse the repository until a reviewed SEQS key update.
-  When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
+  The DNS and fail-closed integration below was checked on hardware only with
+  0.95.2. Release 0.96.0, which template updates install, manages
+  `/etc/resolv.conf` itself and adds a kill switch; whether the DNS helper and
+  the forwarding hook still hold with it, or with any later release, is
+  unverified. When GnosisVPN publishes no usable IPv4 resolver, runtime DNS falls
   back to Cloudflare `1.1.1.1` and Google `8.8.8.8`; those providers can
   observe queries, although the helper verifies that they route through the
   tunnel and installs an output leak guard. The VPN qube retains upstream

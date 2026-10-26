@@ -160,7 +160,8 @@ After install:
   `Signed-By: /usr/share/keyrings/seqs-gnosisvpn-archive-keyring.gpg`. Confirm
   `/etc/qubes/policy.d/20-seqs-gnosisvpn-updates.policy` and
   `seqs-gnosisvpn-update-proxy` no longer exist after provisioning. After a
-  GnosisVPN connection, `/etc/resolv.conf` should remain Qubes-managed and
+  GnosisVPN connection, `/etc/resolv.conf` should remain Qubes-managed (as
+  seen with 0.95.2; 0.96.0 and later manage the file themselves, unverified) and
   `sudo nft list table ip seqs_gnosisvpn_dns` should show provider-DNS
   translations with increasing counters. If
   `/run/resolvconf/interfaces/wg0_gnosisvpn` is absent, confirm the table uses
