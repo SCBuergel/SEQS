@@ -12,6 +12,9 @@ the affected qubes first.
 
 The argument is a **base name**, such as an entry of `qube_catalog`, not a
 complete VM name. For example, use `keepass` to target both `A-keepass` and `Z-keepass`.
+These are the default name prefixes; if `config.sls` sets other `prefix_*`
+values, the helper uses those, which every build records in
+`/var/lib/seqs/names`.
 For a postfixed instance, pass its full generated base name: `gnosisvpn-alpha`
 targets `A-gnosisvpn-alpha` and `Z-gnosisvpn-alpha`, while leaving the
 canonical `gnosisvpn` instance untouched.
@@ -32,8 +35,10 @@ Review what would happen without changing anything:
 ```
 
 The output lists the matching qubes, the qubes whose network would be
-disconnected, and any qube that blocks the deletion. Check every name,
-then perform the deletion:
+disconnected, and any qube that blocks the deletion. If it instead reports
+that `/var/lib/seqs/names` is missing, the qubes were built by a SEQS
+revision that did not record their names: run a build of the current
+revision first. Check every name, then perform the deletion:
 
 ```bash
 ~/d.sh keepass
@@ -73,9 +78,14 @@ for example with `qvm-backup`, then review what would go:
 The output lists the qubes, the qubes whose network would be disconnected,
 the dom0 files that would go, and the files under SEQS names that stay
 because SEQS did not write them. A qube goes only if SEQS marked it as its
-own and it has a name SEQS gives: `D-`, `A-` or `Z-` followed by a base name,
-the QR camera qubes `sys-usb-webcam` and `seqs-qr-scanner`, or the GnosisVPN
-update proxy `seqs-gnosisvpn-update-proxy`. A same-named qube you created
+own and it has a name SEQS gives, as recorded in `/var/lib/seqs/names`: a
+configured prefix (`D-`, `A-` or `Z-` by default) followed by a base name,
+the QR camera qubes (by default `sys-usb-webcam` and `seqs-qr-scanner`), or
+the GnosisVPN update proxy `seqs-gnosisvpn-update-proxy`. Without that
+record, no qube with the `seqs-managed` feature is selected, and while one
+exists and dom0 files would be removed the reset changes nothing, since it
+may be a SEQS qube that needs those policies: run a build of the current
+revision first. A same-named qube you created
 yourself is not listed and stays. A qube you cloned from a SEQS qube carries
 the `seqs-managed` feature of its source; under another name, such as
 `my-wallet-backup`, it is reported as not selected, but under a SEQS name,
@@ -109,9 +119,11 @@ Afterwards, install again as for a [first install](first-install.md).
 
 For each supplied base name, the helper:
 
-1. Rejects unsafe names instead of treating arguments as patterns or options.
-2. Looks for exactly `D-<name>`, `A-<name>`, and `Z-<name>`; unrelated qubes are
-   ignored. (`D-<name>` exists only for a `named_disposable` entry.) A match
+1. Rejects unsafe names instead of treating arguments as patterns or options,
+   and stops if `/var/lib/seqs/names` is missing or holds an unsafe name.
+2. Looks for exactly `<prefix><name>` for each recorded prefix, by default
+   `D-<name>`, `A-<name>`, and `Z-<name>`; unrelated qubes are ignored.
+   (`D-<name>` exists only for a `named_disposable` entry.) A match
    without the `seqs-managed` feature, such as a qube you made yourself, is
    skipped and reported, unless an interrupted SEQS build left a creation
    marker for it.

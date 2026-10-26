@@ -203,7 +203,10 @@ MUTATIONS = [
     ("fetch-tmp-cleanup", R, """	trap "rm -rf -- '${tarball}' '${stage}'" EXIT\n""", ""),
     # delete-vms.sh --reset: only marked qubes and files, in order, after RESET.
     ("reset-unmarked-qube", D, 'if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \\\n\t\t\t|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then', "if true; then"),
-    ("reset-clone-name", D, 'if [[ "${vm}" =~ ${SEQS_NAMES} ]]; then', 'if true; then'),
+    ("reset-clone-name", D, 'elif isSeqsName "${vm}"; then', 'elif true; then'),
+    ("reset-no-names-refusal", D, 'if [ "${#unnamed[@]}" -gt 0 ] && [ "${#removable[@]}" -gt 0 ]; then', 'if false; then'),
+    ("delete-no-names", D, 'elif [ "${RESET}" -eq 0 ]; then\n\techo "ERROR: ${NAMES_FILE} is missing', 'elif false; then\n\techo "ERROR: ${NAMES_FILE} is missing'),
+    ("delete-names-unsafe", D, '[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && [ -z "${rest}" ] || return 1', '[ -z "${rest}" ] || return 1'),
     ("reset-file-marker", D, '[[ "${l1}" == "# Managed by SEQS"* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# Managed by SEQS"* ]]', '[[ "${l1}" == "# "*SEQS* ]] || [[ "${l1}" == "#!"* && "${l2}" == "# "*SEQS* ]]'),
     ("reset-remove-order", D, """\t\tif awk -F'|' -v r=" ${remaining[*]} " -v t="${vm}" \\\n\t\t\t\t'$1 != t && index(r, " " $1 " ") { for (i = 2; i <= 7; i++) if ($i == t) exit 1 }' <<< "${rows}"; then""", "\t\tif true; then"),
     ("reset-confirm-word", D, '[ "${answer}" = RESET ] ||', '[ -n "${answer}" ] ||'),

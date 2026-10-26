@@ -447,6 +447,25 @@ seqs-validation-failed:
     - failhard: True
 {% else %}
 
+# ── Qube names for delete-vms.sh ───────────────────────────────────────────
+# delete-vms.sh removes only qubes under the names SEQS gives, so it reads
+# the configured ones here. Written before any qube is created.
+seqs-names:
+  file.managed:
+    - name: /var/lib/seqs/names
+    - user: root
+    - group: root
+    - mode: '0644'
+    - makedirs: True
+    - contents: |
+        # Managed by SEQS (salt state seqs.dom0). Read by delete-vms.sh.
+        # Format: prefix <prefix of named disposables, app qubes, templates, in that order> | qube <QR camera qube>
+        {%- for p in [pdvm, papp, ptpl] if p %}
+        prefix {{ p }}
+        {%- endfor %}
+        qube {{ webcam_usb_qube }}
+        qube {{ webcam_scanner_qube }}
+
 # ── qrexec policies ────────────────────────────────────────────────────────
 # setup-qubes.sh requires confirmation before taking over any policy without
 # the "Managed by SEQS" header. Salt then owns and converges the files.

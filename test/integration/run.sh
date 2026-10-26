@@ -49,6 +49,14 @@ new_sandbox() {
 }
 REPO_ORIG_PATH="${PATH}"
 
+# write_names PREFIX... -- the record of names seqs.dom0 writes for
+# delete-vms.sh, with these prefixes and the default QR camera qubes.
+write_names() {
+	mkdir -p "${SEQS_STATE_DIR}"
+	{ echo "# Managed by SEQS (test)"; printf 'prefix %s\n' "$@"; printf 'qube %s\n' sys-usb-webcam seqs-qr-scanner; } \
+		> "${SEQS_STATE_DIR}/names"
+}
+
 run_setup() {  # supplies the explicit repository qube to workflows with FETCH
 	local arg
 	for arg in "$@"; do
@@ -610,6 +618,8 @@ rm -rf "${SBX}"
 echo "== scenario: delete-vms.sh touches only the named D-/A-/Z- qubes =="
 new_sandbox
 export SEQS_MOCK_STATE="${SBX}/qubes.state"
+export SEQS_STATE_DIR="${SBX}/state"
+write_names D- A- Z-
 printf '%s\n' "A-keepass running" "Z-keepass halted" "A-brave halted" > "${SEQS_MOCK_STATE}"
 # Dry-run: announces itself, exits 0, changes nothing.
 out="$(bash "${REPO}/delete-vms.sh" --dry-run keepass 2>&1)"; rc=$?
@@ -619,7 +629,7 @@ grep -qxF "A-keepass running" "${SEQS_MOCK_STATE}" && ok || bad "dry-run must no
 # Real run: A-keepass (running) and Z-keepass go, unrelated A-brave stays.
 out="$(SEQS_MOCK_SUDO_LOG="${SBX}/sudo.log" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "delete run exited non-zero ($rc)"
-grep -qF "rm -f -- /var/lib/seqs/firewall/A-keepass " "${SBX}/sudo.log" && ok \
+grep -qF "rm -f -- ${SEQS_STATE_DIR}/firewall/A-keepass " "${SBX}/sudo.log" && ok \
 	|| bad "the removed qube's recorded firewall must be deleted"
 grep -q "^A-keepass " "${SEQS_MOCK_STATE}" && bad "A-keepass should have been removed" || ok
 grep -q "^Z-keepass " "${SEQS_MOCK_STATE}" && bad "Z-keepass should have been removed" || ok
@@ -708,7 +718,7 @@ grep -q "^A-notes " "${SEQS_MOCK_STATE}" && grep -q "^Z-notes " "${SEQS_MOCK_STA
 # only its creation marker: SEQS built it, so it is removed with its marker.
 # The CPU-pinning file SEQS wrote for a removed qube goes too; one without
 # SEQS's marker is the operator's and stays.
-export SEQS_STATE_DIR="${SBX}/state" SEQS_LIBVIRT_DIR="${SBX}/libvirt"
+export SEQS_LIBVIRT_DIR="${SBX}/libvirt"
 mkdir -p "${SEQS_STATE_DIR}/intents" "${SEQS_LIBVIRT_DIR}"
 touch "${SEQS_STATE_DIR}/intents/A-notes"
 printf '%s\n' '{# Managed by SEQS (salt state seqs.dom0) #}' x > "${SEQS_LIBVIRT_DIR}/A-notes.xml"
@@ -725,7 +735,7 @@ grep -qF "head -n 1 -- ${SEQS_LIBVIRT_DIR}/A-notes.xml" "${SBX}/sudo3.log" && ok
 [ ! -e "${SEQS_STATE_DIR}/intents/A-notes" ] && ok || bad "the removed qube's creation marker must be deleted"
 [ ! -e "${SEQS_LIBVIRT_DIR}/A-notes.xml" ] && [ -e "${SEQS_LIBVIRT_DIR}/Z-notes.xml" ] && ok \
 	|| bad "only the CPU-pinning file SEQS wrote may be deleted"
-unset SEQS_STATE_DIR SEQS_LIBVIRT_DIR
+unset SEQS_LIBVIRT_DIR
 # A failing qube listing must stop the deletion, not skip the blocker check.
 printf '%s\n' "A-keepass halted" > "${SEQS_MOCK_STATE}"
 out="$(SEQS_MOCK_QVM_LS_FAIL=1 bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
@@ -782,6 +792,29 @@ a_line="$(grep -n '^  A-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
 out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
 grep -q "refusing unsafe name" <<<"$out" && ok || bad "expected the unsafe-name error"
+# Configured prefixes: the record names them, and only they are looked for.
+write_names app- tpl-
+printf '%s\n' "app-keepass halted" "tpl-keepass halted" "A-keepass halted" > "${SEQS_MOCK_STATE}"
+printf '%s\n' "app-keepass seqs-managed 1" "tpl-keepass seqs-managed 1" > "${SBX}/features"
+out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "looking for qubes matching app-keepass tpl-keepass\.\.\." <<<"$out" \
+	&& [ "$(cut -d' ' -f1 "${SEQS_MOCK_STATE}")" = "A-keepass" ] && ok \
+	|| bad "with configured prefixes, exactly app-keepass and tpl-keepass must go: rc=$rc ${out}"
+# Without a valid record, nothing is deleted.
+printf '%s\n' "app-keepass halted" > "${SEQS_MOCK_STATE}"
+for record in "prefix app- tpl-" "prefix ../" "prefix" "qube seqs-qr-scanner" "name app-"; do
+	echo "${record}" > "${SEQS_STATE_DIR}/names"
+	out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qxF "ERROR: ${SEQS_STATE_DIR}/names is not a valid list of SEQS names -- nothing was changed" <<<"$out" \
+		&& grep -qxF "app-keepass halted" "${SEQS_MOCK_STATE}" && ok \
+		|| bad "the record '${record}' must be refused: rc=$rc ${out}"
+done
+rm -f "${SEQS_STATE_DIR}/names"
+out="$(SEQS_MOCK_FEATURES="${SBX}/features" bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "^ERROR: ${SEQS_STATE_DIR}/names is missing, so the names SEQS gives its qubes are unknown" <<<"$out" \
+	&& grep -qxF "app-keepass halted" "${SEQS_MOCK_STATE}" && ok \
+	|| bad "without the record, a deletion must be refused: rc=$rc ${out}"
+unset SEQS_STATE_DIR
 rm -rf "${SBX}"
 
 # ── Scenario 9a: delete-vms.sh --reset removes every SEQS qube and dom0 file ─
@@ -805,6 +838,7 @@ mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}/intents" "
 # The headset fix's files: one marked by SEQS, one rewritten by hand.
 printf '# Managed by SEQS (salt state seqs.dom0)\n[codec]\n' > "${SEQS_NUC11_FW}"
 printf 'options snd-hda-intel patch=mine.fw\n' > "${SEQS_NUC11_CONF}"
+write_names D- A- Z-
 touch "${SEQS_STATE_DIR}/intents/A-orphan" "${SEQS_SALT_TREE}/dom0.sls" "${SEQS_ETC_DIR}/qr-sequential.conf" \
 	"${SBX}/config/xfce4/panel/seqs-dom0-launchers"
 printf '#!/bin/sh\n# Managed by SEQS. Sequential-path QR scan\n' > "${SEQS_QR_SCRIPT}"
@@ -906,6 +940,34 @@ unset SEQS_MOCK_FEATURES SEQS_MOCK_PREFS SEQS_MOCK_NETVM_STATE
 unset -f reset_vms
 rm -rf "${SBX}"
 
+# ── Scenario 9c: delete-vms.sh --reset follows the configured names ─────────
+# With other prefixes, the qubes under them go and an A- qube is a clone.
+# Without the record, a reset that would remove dom0 files refuses while a
+# qube carries a SEQS feature: its deny policies would go while it stays.
+echo "== scenario: delete-vms.sh --reset uses the recorded prefixes, refuses without them =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state" SEQS_MOCK_FEATURES="${SBX}/features"
+export SEQS_STATE_DIR="${SBX}/var/lib/seqs" SEQS_POLICY_DIR="${SBX}/policy.d" SEQS_ETC_DIR="${SBX}/etc/seqs"
+export SEQS_QR_SCRIPT="${SBX}/qr" SEQS_VPN_MONITOR="${SBX}/monitor" SEQS_NUC11_FW="${SBX}/fw" SEQS_NUC11_CONF="${SBX}/conf"
+mkdir -p "${SEQS_POLICY_DIR}"
+echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/28-browser-suppress.policy"
+printf '%s\n' "app-keepass halted" "tpl-keepass halted" "A-keepass halted" "seqs-qr-scanner halted" > "${SEQS_MOCK_STATE}"
+printf '%s\n' "app-keepass seqs-managed 1" "tpl-keepass seqs-managed 1" "seqs-qr-scanner seqs-managed 1" > "${SEQS_MOCK_FEATURES}"
+rm -rf "${SEQS_STATE_DIR}"
+out="$(bash "${REPO}/delete-vms.sh" --reset --dry-run 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qxF "  app-keepass: carries a SEQS feature, but without ${SEQS_STATE_DIR}/names it is unknown whether it has a SEQS name: not selected" <<<"$out" \
+	&& grep -q "^ERROR: nothing was changed; the qubes above that carry a SEQS feature may be SEQS qubes that use these files" <<<"$out" \
+	&& [ "$(wc -l < "${SEQS_MOCK_STATE}")" -eq 4 ] && [ -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
+	|| bad "without the record, a reset that would remove dom0 files must refuse: rc=$rc ${out}"
+write_names app- tpl-
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
+	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -qF "  A-keepass: carries a SEQS feature but is not a SEQS name (a clone?): not selected" <<<"$out" \
+	&& [ "$(cut -d' ' -f1 "${SEQS_MOCK_STATE}")" = "A-keepass" ] && [ ! -e "${SEQS_POLICY_DIR}/28-browser-suppress.policy" ] && ok \
+	|| bad "a reset must remove the qubes under the recorded names, and only those: rc=$rc ${out}"
+unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_NUC11_FW SEQS_NUC11_CONF SEQS_MOCK_FEATURES
+rm -rf "${SBX}"
+
 # ── Scenario 9b: hardware test reset keeps the control path ─────────────────
 # test/hardware/dom0-test.sh reset deletes every SEQS qube on a test machine.
 # It must never remove the control qube or sys-net, must leave stock and
@@ -927,6 +989,7 @@ export SEQS_ETC_DIR="${SBX}/etc/seqs" SEQS_QR_SCRIPT="${SBX}/sbin/seqs-qr-sequen
 export SEQS_TMP_DIR="${SBX}/tmp" SEQS_TEST_DELETE_VMS="${REPO}/delete-vms.sh"
 mkdir -p "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_POLICY_DIR}" \
 	"${SEQS_ETC_DIR}" "${SBX}/sbin" "${SEQS_TMP_DIR}/seqs-stage.x"
+write_names D- A- Z-
 touch "${SEQS_QR_SCRIPT}"
 for p in 28-browser-suppress 29-browser; do
 	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"

@@ -5,18 +5,8 @@ set -Eeuo pipefail
 # Command substitutions stop at a failure too.
 shopt -s inherit_errexit
 
-# Removes matching D-/A-/Z- qubes, or with --reset everything SEQS built;
-# run with --help and use --dry-run first.
-
-# Prefixes to check for each configured base name. Ordered by dependency so
-# removal succeeds: the named disposable (D-) before the dispvm template/app
-# qube (A-) it derives from, and A- before the template (Z-) it is based on.
-PREFIXES=(D A Z)
-
-# The names SEQS gives the qubes it creates: the D-/A-/Z- catalogue qubes,
-# the QR camera qubes, and the temporary GnosisVPN update proxy. A clone of a
-# SEQS qube inherits its features, so --reset requires one of these names too.
-SEQS_NAMES='^([DAZ]-|(sys-usb-webcam|seqs-qr-scanner|seqs-gnosisvpn-update-proxy)$)'
+# Removes a base name's qubes, or with --reset everything SEQS built; run
+# with --help and use --dry-run first.
 
 # How long to wait, in seconds, for a killed qube to actually leave the
 # "running" state before we give up and try qvm-remove anyway.
@@ -29,6 +19,9 @@ LIBVIRT_DIR="${SEQS_LIBVIRT_DIR:-/etc/qubes/templates/libvirt/xen/by-name}"
 # Creation markers: written by the seqs.dom0 state before it creates a qube,
 # removed once the qube carries the seqs-managed feature.
 INTENTS_DIR="${STATE_DIR}/intents"
+# The names SEQS gives its qubes, recorded by the seqs.dom0 state from the
+# configuration (see readNames).
+NAMES_FILE="${STATE_DIR}/names"
 # Everything else SEQS puts into dom0, removed by --reset.
 SALT_TREE="${SEQS_SALT_TREE:-/srv/salt/seqs}"
 PILLAR_TREE="${SEQS_PILLAR_TREE:-/srv/pillar/seqs}"
@@ -50,22 +43,25 @@ usage() {
 Usage: $0 [--dry-run] <name> [<name> ...]
        $0 [--dry-run] --reset
 
-Deletes qubes matching the SEQS prefix convention: for each <name>, removes
-any qube called D-<name>, A-<name>, or Z-<name> that SEQS built (it carries
-the seqs-managed feature, or the creation marker of an interrupted run);
-same-named qubes without either are skipped. Qubes using a match as their
-NetVM are preserved but disconnected (netvm set to none). If another qube uses
+Deletes the qubes SEQS built for a base name: for each <name>, removes any
+qube called <prefix><name> that SEQS built (it carries the seqs-managed
+feature, or the creation marker of an interrupted run), for the configured
+prefixes of the named disposables, app qubes, and templates (D-, A-, and Z-
+by default), which a build records in ${NAMES_FILE}; same-named qubes
+without either are skipped. Qubes using a match as their NetVM are preserved
+but disconnected (netvm set to none). If another qube uses
 a match in any other setting (template, default or management disposable,
 audio or GUI qube), or a match is a global default, nothing is changed.
 
---reset instead removes every qube SEQS built, under any of its names (D-,
-A-, Z-, the QR camera qubes, the GnosisVPN update proxy), and then the files
+--reset instead removes every qube SEQS built, under any of its names (the
+prefixes, the QR camera qubes, the GnosisVPN update proxy), and then the files
 SEQS wrote in dom0: the staged Salt trees, its state directory, the policy
 files, helpers, and NUC 11 headset files it marked, and its panel launchers.
 A qube under another name is not selected even if it carries the
 seqs-managed feature, as a clone of a SEQS qube does; while it uses a SEQS
-template, it blocks the reset like any other reference. It asks you to type
-RESET first. sys-usb's memory setting, the window-manager shortcuts, and your
+template, it blocks the reset like any other reference. Without the record
+of names, no qube with that feature is selected, and the reset refuses while
+one exists and SEQS files would be removed. It asks you to type RESET first. sys-usb's memory setting, the window-manager shortcuts, and your
 copies of the runner and this helper stay.
 
 Options:
@@ -138,9 +134,50 @@ findUsers() {
 		|| { echo "ERROR: could not read the global defaults -- nothing was changed" >&2; return 1; }
 }
 
+# readNames -- read NAMES_FILE into PREFIXES, the configured prefixes of the
+# named disposables, app qubes and templates, and SEQS_QUBES, the QR camera
+# qubes and the GnosisVPN update proxy, whose name is fixed. Fails on a
+# missing or empty prefix list, an unknown line, or an unsafe name.
+PREFIXES=()
+SEQS_QUBES=(seqs-gnosisvpn-update-proxy)
+readNames() {
+	local key value rest
+	while read -r key value rest; do
+		case "${key}" in '' | '#'*) continue ;; esac
+		[[ "${value}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && [ -z "${rest}" ] || return 1
+		case "${key}" in
+			prefix) PREFIXES+=("${value}") ;;
+			qube) SEQS_QUBES+=("${value}") ;;
+			*) return 1 ;;
+		esac
+	done < <(sudo cat -- "${NAMES_FILE}")
+	[ "${#PREFIXES[@]}" -gt 0 ]
+}
+# isSeqsName VM -- VM has a name SEQS gives: a configured prefix followed by
+# a base name, or one of SEQS_QUBES.
+isSeqsName() {
+	local p
+	for p in "${PREFIXES[@]}"; do
+		if [[ "$1" == "${p}"?* ]]; then return 0; fi
+	done
+	[[ " ${SEQS_QUBES[*]} " == *" $1 "* ]]
+}
+# Without the record, nothing tells a SEQS qube from a clone of one: a name
+# cannot be deleted, and a reset that would remove dom0 files refuses while
+# a qube carries a SEQS feature (see unnamed below).
+names_known=0
+if sudo test -e "${NAMES_FILE}"; then
+	readNames || { echo "ERROR: ${NAMES_FILE} is not a valid list of SEQS names -- nothing was changed" >&2; exit 1; }
+	names_known=1
+elif [ "${RESET}" -eq 0 ]; then
+	echo "ERROR: ${NAMES_FILE} is missing, so the names SEQS gives its qubes are unknown; a build of the current SEQS revision writes it -- nothing was changed" >&2
+	exit 1
+fi
+
 # Check every name before changing anything, so that a refusal for one name
 # leaves the others untouched too.
 found=()
+unnamed=()
 if [ "${RESET}" -eq 1 ]; then
 	# Every qube SEQS marked as its own under a name SEQS gives: the catalogue
 	# qubes, the QR camera qubes, and a GnosisVPN proxy a run left behind. A
@@ -153,7 +190,10 @@ if [ "${RESET}" -eq 1 ]; then
 		[[ "${vm}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || { echo "  skipping '${vm}': unsafe name"; continue; }
 		if [ "$(qvm-features -- "${vm}" seqs-managed 2>/dev/null)" = "1" ] \
 			|| [ "$(qvm-features -- "${vm}" seqs-gnosisvpn-temporary-proxy 2>/dev/null)" = "1" ]; then
-			if [[ "${vm}" =~ ${SEQS_NAMES} ]]; then
+			if [ "${names_known}" -eq 0 ]; then
+				echo "  ${vm}: carries a SEQS feature, but without ${NAMES_FILE} it is unknown whether it has a SEQS name: not selected"
+				unnamed+=("${vm}")
+			elif isSeqsName "${vm}"; then
 				found+=("${vm}")
 			else
 				echo "  ${vm}: carries a SEQS feature but is not a SEQS name (a clone?): not selected"
@@ -177,9 +217,9 @@ for app in "${ARGS[@]}"; do
 	# Build the kill list by literal name + existence check -- no regex. A
 	# same-named qube that SEQS did not build (no seqs-managed feature and no
 	# creation marker from an interrupted run) is never touched.
-	echo "looking for qubes matching ${PREFIXES[*]/%/-${app}}..."
+	echo "looking for qubes matching ${PREFIXES[*]/%/${app}}..."
 	for prefix in "${PREFIXES[@]}"; do
-		candidate="${prefix}-${app}"
+		candidate="${prefix}${app}"
 		qvm-check "${candidate}" &>/dev/null || continue
 		if [ "$(qvm-features -- "${candidate}" seqs-managed 2>/dev/null)" = "1" ]; then
 			found+=("${candidate}")
@@ -248,6 +288,12 @@ if [ "${RESET}" -eq 1 ]; then
 	done
 	[ "${#removable[@]}" -eq 0 ] || { echo "SEQS files in dom0 to remove:"; printf '  %s\n' "${removable[@]}"; }
 	[ "${#unmarked[@]}" -eq 0 ] || { echo "not written by SEQS, left in place:"; printf '  %s\n' "${unmarked[@]}"; }
+	# Those qubes may rely on the policy files and on SEQS's state.
+	if [ "${#unnamed[@]}" -gt 0 ] && [ "${#removable[@]}" -gt 0 ]; then
+		echo "ERROR: nothing was changed; the qubes above that carry a SEQS feature may be SEQS qubes that use these files." >&2
+		echo "  A build of the current SEQS revision writes ${NAMES_FILE}; run one, then the reset again." >&2
+		exit 1
+	fi
 fi
 if [ "${DRY_RUN}" -eq 1 ]; then
 	echo "  (dry-run: not killing or removing)"

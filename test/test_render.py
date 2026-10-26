@@ -242,6 +242,27 @@ def test_dom0_runtime_selection():
     check("seqs-validation-failed" not in fine, "an ordinary postfix must still pass beside brave-full")
 
 
+def test_dom0_names_record():
+    case("dom0.sls: records the configured qube names for delete-vms.sh")
+    _, parsed = render_state("dom0", "dom0", Scenario())
+    names = state_arg(parsed, "seqs-names", "file.managed", "contents")
+    check(names.splitlines()[2:] == ["prefix D-", "prefix A-", "prefix Z-",
+                                     "qube sys-usb-webcam", "qube seqs-qr-scanner"],
+          "the record must list the default prefixes and QR qubes: %r" % names)
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    # Without a named disposable, prefix_disposable may be empty.
+    pillar["catalogue"] = {k: v for k, v in pillar["catalogue"].items() if not v.get("named_disposable")}
+    pillar.update(prefix_template="tpl-", prefix_app="app-", prefix_disposable="", browser_vm="app-brave",
+                  webcam_usb_qube="cam-usb", webcam_scanner_qube="cam-scan")
+    top = "base:\n  'tpl-*':\n    - seqs.config\n  'app-*':\n    - seqs.config\n"
+    _, parsed = render_state("dom0", "dom0", Scenario(top_content=top),
+                             pillar_seqs=pillar)
+    names = next((i["contents"] for i in parsed.get("seqs-names", {}).get("file.managed", [])
+                  if "contents" in i), "")
+    check(names.splitlines()[2:] == ["prefix app-", "prefix tpl-", "qube cam-usb", "qube cam-scan"],
+          "the record must follow the configured names: %r %s" % (names, _errors(parsed)))
+
+
 def test_dom0_idempotent_rerun():
     case("dom0.sls: a fully-provisioned re-run is churn-free (no clone/tag states)")
     # Every qube already exists AND is tagged seqs-managed.
