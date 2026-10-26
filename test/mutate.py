@@ -303,7 +303,7 @@ def check_one(tree, mutation):
     run(["git", "-c", "user.name=mutate", "-c", "user.email=mutate@invalid",
          "commit", "-q", "-am", name], tree)
     # Lint checks that every original text is present; that would catch any mutation.
-    env = dict(os.environ, SEQS_MUTATING="1")
+    env = dict(os.environ, SEQS_SKIP_MUTATION_CHECK="1")
     try:
         for layer in LAYERS:
             if run(["bash", "test/run-tests.sh", layer], tree, env=env).returncode:

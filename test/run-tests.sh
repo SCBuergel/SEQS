@@ -48,7 +48,9 @@ EOF
 
 # prove REV -- copy REV's tree into a temporary git worktree, replace its
 # test/ with the working tree's, and run every layer there. Exit 0 if some
-# check fails (the tests detect the difference), 1 if all pass.
+# check fails (the tests detect the difference), 1 if all pass. Lint's
+# mutate.py --check is skipped there: a new entry's original text is absent
+# from REV, which would count as a failure whatever the tests detect.
 prove() {
 	local rev tmp out
 	rev="$(git rev-parse --verify --quiet "${1:-HEAD}^{commit}")" \
@@ -57,7 +59,7 @@ prove() {
 	git worktree add --quiet --detach "${tmp}/tree" "${rev}" || return 2
 	rm -r -- "${tmp}/tree/test"
 	cp -a test "${tmp}/tree/test"
-	out="$(cd "${tmp}/tree" && bash test/run-tests.sh all 2>&1)"
+	out="$(cd "${tmp}/tree" && SEQS_SKIP_MUTATION_CHECK=1 bash test/run-tests.sh all 2>&1)"
 	local result=$?
 	git worktree remove --force "${tmp}/tree"
 	rm -rf -- "${tmp}"

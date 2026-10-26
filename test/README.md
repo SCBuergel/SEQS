@@ -28,7 +28,8 @@ template updates break.
 `prove` runs the working tree's tests against the product code of the last
 commit (or a commit you name) in a temporary git worktree. A test written for a
 change must fail there; one that passes would also have passed without the
-change.
+change. The lint check that each `test/mutate.py` entry matches its file is
+skipped there, since a new entry cannot match the old code.
 
 `mutate` weakens one security check at a time, such as the archive validation,
 the air-gap check, or a qrexec deny, from the list in `test/mutate.py`, and

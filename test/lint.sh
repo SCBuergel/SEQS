@@ -89,8 +89,8 @@ fi
 
 echo
 echo "== every mutation in test/mutate.py still applies =="
-if [ -n "${SEQS_MUTATING:-}" ]; then
-	note "SKIP: a mutation is being tested"
+if [ -n "${SEQS_SKIP_MUTATION_CHECK:-}" ]; then
+	note "SKIP: run by mutate or prove, against other product code"
 elif python3 test/mutate.py --check; then
 	note "ok   each mutation's original text occurs once in its file"
 else
