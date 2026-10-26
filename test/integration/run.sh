@@ -366,6 +366,15 @@ i.pax_headers = {"EVIL\x1b]0;PWNED\x07": "1"}
 t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
 out="$(run_setup --all 2>&1)"
 ! grep -q $'\x1b' <<<"$out" && ok || bad "an escape byte from the archive reached the terminal"
+# GNU tar lists a trailing space unquoted, so the name must be checked unsplit.
+python3 -c 'import io, sys, tarfile
+t = tarfile.open(sys.argv[1], "w")
+i = tarfile.TarInfo("salt/seqs/dom0.top "); i.size = 1
+t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "refusing tar entry with whitespace around its name: 'salt/seqs/dom0.top'" <<<"$out" \
+	&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+	|| bad "a name with a trailing space must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 # A compressed archive could expand past the size limit: tar must refuse it
 # instead of decompressing it.
 SEQS_MOCK_TAR="${SBX}/tree.tar.gz"

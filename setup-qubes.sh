@@ -225,10 +225,12 @@ writeRunManifest() {
 # '<perms> <uid>/<gid> <size> <yyyy-mm-dd> <hh:mm> <path>'; every field before
 # the path must have that exact form, or a field such as a huge timestamp,
 # printed as one number, would shift part of the name into the time field.
-# A 7th field means whitespace in the name: reject (no SEQS file has one).
+# A 7th field, or a raw line that does not end in '<hh:mm> <path>', means
+# whitespace in or around the name: reject (no SEQS file has one).
 validateTarListing() {
-	local perms f_owner f_size f_date f_time path extra total=0
-	while read -r perms f_owner f_size f_date f_time path extra; do
+	local line perms f_owner f_size f_date f_time path extra total=0
+	while IFS= read -r line; do
+		read -r perms f_owner f_size f_date f_time path extra <<< "${line}"
 		[[ "${f_owner} ${f_size} ${f_date} ${f_time}" =~ ^[0-9]+/[0-9]+\ [0-9]{1,9}\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]] \
 			|| die "refusing tar entry with an unexpected listing: ${perms} ${f_owner} ${f_size} ${f_date} ${f_time} ${path}"
 		# A sparse entry lists its full size but takes almost no archive space.
@@ -241,6 +243,8 @@ validateTarListing() {
 			*) die "refusing non-regular tar entry (type '${perms:0:1}'): ${path}" ;;
 		esac
 		[ -n "${extra}" ] && die "refusing tar entry with whitespace in its name: ${path} ${extra}"
+		[[ "${line}" == *" ${f_time} ${path}" ]] \
+			|| die "refusing tar entry with whitespace around its name: '${path}'"
 		[[ "${path}" == *..* ]] && die "refusing tar path containing '..': ${path}"
 		[[ "${path}" =~ ^(salt|install-scripts)(/[A-Za-z0-9._-]+)*/?$ ]] \
 			|| die "refusing unsafe tar path: ${path}"

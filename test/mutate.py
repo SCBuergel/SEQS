@@ -70,6 +70,7 @@ MUTATIONS = [
     ("fetch-size-limit", R, '[ "$(stat -c %s -- "${tarball}")" -lt "${MAX_ARCHIVE}" ]', '[ 0 -ge 0 ]'),
     ("fetch-commit-limit", R, "2>/dev/null </dev/null | head -c 100", "2>/dev/null </dev/null"),
     ("tar-whitespace", R, '[ -n "${extra}" ] && die', '[ -n "${extra}" ] && true'),
+    ("tar-whitespace-around", R, '[[ "${line}" == *" ${f_time} ${path}" ]] \\', 'true \\'),
     ("tar-valid", R, 'tar -tf - < "${tarball}" > /dev/null 2>&1 || die', 'tar -tf - < "${tarball}" > /dev/null 2>&1 || true'),
     ("fetch-gitattributes", R, "|| exit 3; }", "|| true; }"),
     ("tar-stdin", R, 'tar -tf - < "${tarball}"', 'tar -tf "${tarball}"'),
