@@ -1281,6 +1281,16 @@ seqs-webcam-usb-backend:
           exit 1
         }
 {% if webcam_mode == 'dedicated' %}
+        # The removals above ignore errors; any other owner left now fails.
+        holders='{ for (i = 2; i < NF; i++) if ($(i + 1) ~ /^\((attached|required)/) { o = $i; sub(/^\*/, "", o); if ($1 == dev && o != vm) print o } }'
+        others="$(printf '%s\n' "$listing" | awk -v vm="{{ webcam_usb_qube }}" -v dev="dom0:{{ webcam_controller }}" "$holders" | sort -u)"
+        if [ -n "$others" ]; then
+          printf '%s\n' "$others" | while IFS= read -r o; do
+            printf '%s\n' "$o" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]*$' || o='a qube with an unsafe name'
+            echo "ERROR: $o still holds dom0:{{ webcam_controller }}; remove it with qvm-pci unassign" >&2
+          done
+          exit 1
+        fi
     # Skipped only while the webcam backend is the controller's sole owner,
     # assigned or attached (a qube listed before "(attached" or "(required"),
     # and holds no other PCI device.

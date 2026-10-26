@@ -193,6 +193,7 @@ MUTATIONS = [
     ("dom0-webcam-stale-unassign", S, '          qvm-pci unassign {{ webcam_usb_qube }} "$dev" 2>/dev/null || true\n', ''),
     ("dom0-webcam-only-check", S, '[ "$(printf \'%s\\n\' "$listing" | awk -v vm="{{ webcam_usb_qube }}" "$owned" | sort -u)" = "dom0:{{ webcam_controller }}" ]', 'true'),
     ("dom0-webcam-stale-bdf", S, "grep -Eq '^dom0:[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$' ||", "grep -Eq '.' ||"),
+    ("dom0-webcam-other-owner", S, '        if [ -n "$others" ]; then\n', '        if false; then\n'),
     ("dom0-webcam-unless-extra", S, "exit !(mine && !other && !extra)", "exit !(mine && !other)"),
     ("dom0-ext-id-anchor", S, "exts[en] | regex_match('^[a-p]{32}\\\\Z')", "exts[en] | regex_match('^[a-p]{32}$')"),
     ("dom0-firewall-anchor", S, "(:[0-9]{1,5})?\\\\Z')", "(:[0-9]{1,5})?$')"),
