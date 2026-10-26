@@ -227,6 +227,7 @@ MUTATIONS = [
     ("wg-allowlist", "install-scripts/components/wireguard/seqs-wireguard", "PersistentKeepalive)[[:space:]]*=.*)?", "PersistentKeepalive|[A-Za-z]+)[[:space:]]*=.*)?"),
     ("wg-full-tunnel", "install-scripts/components/wireguard/seqs-wireguard", "=([^#]*,)?[[:space:]]*0\\.0\\.0\\.0/0[[:space:]]*([,#].*)?$'", "=.*0\\.0\\.0\\.0/0'"),
     ("wg-dns-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook prerouting priority -101;", "nat hook prerouting priority dstnat;"),
+    ("wg-dns-output-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook output priority -101;", "nat hook output priority dstnat;"),
     ("gnosis-autoconnect-destination", "install-scripts/components/gnosisvpn/seqs-gnosisvpn-autoconnect", 'gnosis_vpn-ctl destinations | grep -Fqx -- "$exit_id" ||', "true ||"),
     ("proton-drop-ip6", "install-scripts/components/protonvpn/protonvpn-firewall.sh", 'nft add rule ip6 qubes custom-forward oifname "eth0" counter drop\n', ""),
     ("proton-hook-entry", "install-scripts/components/protonvpn/app-vm.sh", 'printf \'%s\\n\' "${entry}" | sudo tee -a "${hook}"', 'true'),

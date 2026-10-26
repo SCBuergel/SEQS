@@ -688,7 +688,8 @@ failsClosed() {
 
 # WG_IMPORT -- run as the user in the WireGuard qube: the importer refuses a
 # hook, accepts a provider file whose endpoint is unreachable (TEST-NET), and
-# installs the DNS translation to its DNS server.
+# installs the DNS translation to its DNS server, which survives Qubes
+# rewriting its own dnat-dns chain as it does when the uplink is set up.
 WG_IMPORT='set -u
 d=$(mktemp -d); k=$(wg genkey); p=$(wg genkey | wg pubkey)
 printf "[Interface]\nPrivateKey = %s\nAddress = 10.9.0.2/32\nDNS = 198.51.100.53\nPostUp = touch /tmp/seqs-pwn\n\n[Peer]\nPublicKey = %s\nEndpoint = 192.0.2.1:51820\nAllowedIPs = 0.0.0.0/0\n" "$k" "$p" > "$d/x.conf"
@@ -696,7 +697,9 @@ seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 && echo WG-HOOK-ACCEPTED
 { sudo test -e /rw/config/seqs-wireguard/wg0.conf || test -e /tmp/seqs-pwn; } && echo WG-HOOK-RAN
 sed -i /PostUp/d "$d/x.conf"
 seqs-wireguard-import "$d/x.conf" >/dev/null 2>&1 || echo WG-VALID-REFUSED
-sudo nft list chain ip qubes dnat-dns 2>/dev/null | grep -qE "dnat (ip )?to 198\.51\.100\.53" || echo WG-NO-DNAT
+sudo nft list table ip seqs-wireguard-dns 2>/dev/null | grep -qE "dnat (ip )?to 198\.51\.100\.53" || echo WG-NO-DNAT
+sudo /usr/lib/qubes/qubes-setup-dnat-to-ns >/dev/null 2>&1
+sudo nft list table ip seqs-wireguard-dns 2>/dev/null | grep -qE "dnat (ip )?to 198\.51\.100\.53" || echo WG-DNAT-LOST-ON-UPLINK-SETUP
 rm -rf "$d"'
 
 # checkWireguard VM -- the importer, then fail-closed forwarding with no
