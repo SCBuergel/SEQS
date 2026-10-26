@@ -75,7 +75,7 @@ def main():
     vh = read("VERIFY-HUMAN.md")
     fprs = set()
     for p in glob.glob(os.path.join(ROOT, "install-scripts/**/*.sh"), recursive=True):
-        for value in re.findall(r'_FPRS?="([0-9A-F ]+)"', read(os.path.relpath(p, ROOT))):
+        for value in re.findall(r'_FPRS?="([0-9A-F\s]+)"', read(os.path.relpath(p, ROOT))):
             fprs |= set(value.split())
     require(fprs, trust, "TRUST.md", "pinned fingerprint")
     require(fprs, vh, "VERIFY-HUMAN.md", "pinned fingerprint")
