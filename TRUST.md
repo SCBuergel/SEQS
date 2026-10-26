@@ -119,9 +119,9 @@ Trusted unconditionally — nothing in this repo can compensate if these are com
   a listing whose fields are not in their fixed format is refused), refuses
   the whole tree if a file holds a character that can make code display
   other than it runs (a terminal control, Unicode bidirectional control, or
-  invisible character such as a zero-width space), records the resolved ID in
-  `/var/lib/seqs/fetched/source-commit`, and saves the tree under
-  `/var/lib/seqs/fetched`; stage requires its completion marker, displays the
+  invisible character such as a zero-width space or a Unicode tag), records
+  the resolved ID in `/var/lib/seqs/fetched/source-commit`, and saves the
+  tree under `/var/lib/seqs/fetched`; stage requires its completion marker, displays the
   `/srv` diff, and copies it root-owned. Build requires the stage completion
   markers.
 - **Residual risk:** `source-commit` and the transfer SHA256 are provenance and diagnostic records, not independent authentication. These boundaries help only if `REPO_VM` is honest or the operator reviews the fetched data before staging and building it. The README's single invocation stages and builds right after the fetch, without a pause for that review, so there the review rests on the checkout verified in the repository qube.

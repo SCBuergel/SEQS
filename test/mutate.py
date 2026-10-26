@@ -77,6 +77,8 @@ MUTATIONS = [
     ("fetch-bidi", R, '[ "${rc}" -eq 1 ] || die "refusing archive', '[ "${rc}" -ge 0 ] || die "refusing archive'),
     ("fetch-hidden-control", R, "grep -rlaP '[\\x00-\\x08\\x0b-\\x1f\\x7f]|", "grep -rlaP '"),
     ("fetch-hidden-zero-width", R, "\\xe2\\x80[\\x8b-\\x8f\\xa8-\\xae]", "\\xe2\\x80[\\xaa-\\xae]"),
+    ("fetch-hidden-tag", R, "|\\xf3\\xa0' -- ", "' -- "),
+    ("fetch-hidden-variation", R, "|\\xef\\xb8[\\x80-\\x8f]|", "|"),
     ("fetch-owner", R, '"${FETCH_PILLAR_TREE}"; do\n\t\tif sudo test -e "${d}"; then\n\t\t\tsudo test -e "${d}/.seqs-managed" \\\n',
      '"${FETCH_PILLAR_TREE}"; do\n\t\tif sudo test -e "${d}"; then\n\t\t\ttrue \\\n'),
     ("stage-owner", R, 'staging; otherwise a permission error looks\n\t\t# exactly like an absent path and bypasses the ownership guard.\n\t\tif sudo test -e "${d}"; then\n\t\t\tsudo test -e "${d}/.seqs-managed" \\\n',

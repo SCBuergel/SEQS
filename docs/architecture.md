@@ -18,7 +18,8 @@ data flow and controls. For the per-component trust analysis see
    (regular files/dirs only — no symlinks/hardlinks/devices — paths rooted at
    `salt/` or `install-scripts/`, safe charset, no `..`, no absolute paths),
    and a file holding a terminal control, Unicode bidirectional control, or
-   invisible character, which can hide code from review, refuses the whole
+   invisible character (any Unicode default-ignorable code point, such as a
+   zero-width space or a tag), which can hide code from review, refuses the whole
    tree.
    These commit-ID and archive responses are the only VM→dom0 data that dom0
    stages or runs. The transfer SHA256 is printed as a diagnostic. The

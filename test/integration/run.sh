@@ -375,9 +375,11 @@ out="$(run_setup --fetch-only 2>&1)"; rc=$?
 	|| bad "a compressed archive must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 # A right-to-left override can make a line display as a comment while it runs
 # as code, a terminal escape can hide it in a pager, and a zero-width space can
-# make two names look alike; the whole tree is refused, not only that file.
+# make two names look alike, as can a tag or variation selector; the whole tree
+# is refused, not only that file.
 mkdir -p "${evil}/install-scripts"
-for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zero-width space:\xe2\x80\x8b'; do
+for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zero-width space:\xe2\x80\x8b' \
+	'tag character:\xf3\xa0\x80\x81' 'variation selector:\xef\xb8\x8f'; do
 	printf "true # ${hide#*:}; reviewed\\n" > "${evil}/install-scripts/x.sh"
 	SEQS_MOCK_TAR="${SBX}/hidden.tar"
 	tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
