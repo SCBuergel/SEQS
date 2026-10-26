@@ -1054,6 +1054,19 @@ grep -vE '^[[:space:]]*#' "${SBX}/qr.sh" | grep -E '(^|[^-/A-Za-z_])systemctl\b|
 	&& bad "the QR script copy still calls a power command through PATH" || ok
 write_mock() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "${SBX}/bin/$1"; chmod +x "${SBX}/bin/$1"; }
 write_mock sync ':'
+# The watchdog's 840-second sleep records its own and its subshell's PID for
+# qr_stop_watchdog and returns only once a hanging attach has started; every
+# other sleep returns at once.
+write_mock sleep '[ "$1" = 840 ] || exit 0; echo "$PPID $$" > "'"${SBX}"'/watchdog.pid"
+for _ in $(seq 600); do [ -e "'"${SBX}"'/attach_started" ] && exit 0; /bin/sleep 0.1; done'
+qr_stop_watchdog() {  # NAME -- end the watchdog of the last run; it must exist
+	local _
+	for _ in $(seq 50); do [ -s "${SBX}/watchdog.pid" ] && break; /bin/sleep 0.1; done
+	[ -s "${SBX}/watchdog.pid" ] && ok || bad "$1: no power-off watchdog was started"
+	# shellcheck disable=SC2046
+	kill -KILL $(cat "${SBX}/watchdog.pid" 2>/dev/null) 2>/dev/null
+	rm -f "${SBX}/watchdog.pid"
+}
 write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "'"${SBX}"'/running" ;; *) grep -qx "$n" "'"${SBX}"'/exists" ;; esac'
 # The fixture holds "<vm> <property> <flag> <value>" lines; "qvm-prefs -- VM"
 # lists them as "<property> <flag> <value>".
@@ -1093,6 +1106,7 @@ if command -v setsid >/dev/null 2>&1; then
 	out="$(PATH="${SBX}/bin:${PATH}" setsid bash "${SBX}/qr.sh" </dev/null 2>&1)"
 	grep -qF "sys-usb-webcam is already running" <<<"${out}" && grep -qx poweroff "${SBX}/systemctl.log" 2>/dev/null && ok \
 		|| bad "webcam backend running: expected a refusal and a power-off, got: $(tail -n 1 <<<"${out}")"
+	qr_stop_watchdog "webcam backend running"
 	rm -f "${SBX}/systemctl.log"
 	qr_reset; echo seqs-qr-scanner >> "${SBX}/running"; qr_case "scanner running" "seqs-qr-scanner is already running"
 	qr_reset; echo PRESENT > "${SBX}/staged"; qr_case "old key.asc" "already holds an incoming key.asc"
@@ -1116,10 +1130,14 @@ fi
 # After START, the keyboard's controller is exposed to the camera side: every
 # outcome, success included, must end in a power-off. The camera phase runs
 # under a pseudo-terminal that types the answer.
-write_mock sleep ':'
 write_mock qvm-start ':'
 write_mock qvm-shutdown 'sed -i "/^${!#}$/d" "'"${SBX}"'/running"'
-write_mock qvm-usb 'cat "'"${SBX}"'/usb" 2>/dev/null; :'
+# With attach_hangs, an attach hangs until the watchdog forces the power-off.
+write_mock qvm-usb 'if [ "${1:-}" = attach ] && [ -e "'"${SBX}"'/attach_hangs" ]; then
+	touch "'"${SBX}"'/attach_started"
+	for _ in $(seq 100); do grep -qx -- "poweroff --force --force" "'"${SBX}"'/systemctl.log" 2>/dev/null && exit 1; /bin/sleep 0.1; done
+	exit 1
+fi; cat "'"${SBX}"'/usb" 2>/dev/null; :'
 write_mock qvm-run 'case "$*" in *zbarcam*) exit "$(cat "'"${SBX}"'/scan_rc")" ;; *) cat "'"${SBX}"'/staged" ;; esac'
 qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no)
 	local out
@@ -1129,6 +1147,7 @@ qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no)
 	grep -qF -- "$3" <<<"${out}" && ok || bad "$1: expected '$3', got: $(tail -n 2 <<<"${out}" | tr -d '\r')"
 	if [ "$4" = yes ]; then
 		grep -qx poweroff "${SBX}/systemctl.log" 2>/dev/null && ok || bad "$1: the camera phase must end in a power-off"
+		qr_stop_watchdog "$1"
 	else
 		[ ! -e "${SBX}/systemctl.log" ] && ok || bad "$1: the script powered off without START"
 	fi
@@ -1142,6 +1161,13 @@ printf 'sys-usb-webcam:2-1;x Webcam\n' > "${SBX}/usb"
 qr_camera "unsafe device" START "unsafe device identifier" yes
 printf 'sys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"; echo 1 > "${SBX}/scan_rc"
 qr_camera "failed scan" START "scan/copy failed" yes
+# A hang in the camera phase, here a USB attach that never returns, cannot
+# keep the boot running: the watchdog forces the power-off.
+touch "${SBX}/attach_hangs"
+qr_camera "hanging attach" START "could not attach the webcam to seqs-qr-scanner" yes
+grep -qx -- "poweroff --force --force" "${SBX}/systemctl.log" && ok \
+	|| bad "hanging attach: the watchdog must force a power-off"
+rm -f "${SBX}/attach_hangs" "${SBX}/attach_started"
 # A refused orderly power-off falls back to the forced one.
 write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"; [ "$*" != poweroff ]'
 qr_camera "refused power-off" START "scan/copy failed" yes

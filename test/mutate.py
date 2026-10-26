@@ -213,7 +213,8 @@ MUTATIONS = [
     ("reset-remove-order", D, """\t\tif awk -F'|' -v r=" ${remaining[*]} " -v t="${vm}" \\\n\t\t\t\t'$1 != t && index(r, " " $1 " ") { for (i = 2; i <= 7; i++) if ($i == t) exit 1 }' <<< "${rows}"; then""", "\t\tif true; then"),
     ("reset-confirm-word", D, '[ "${answer}" = RESET ] ||', '[ -n "${answer}" ] ||'),
     # The sequential QR script in dom0: offline camera side, one device, power-off.
-    ("qr-running-webcam-poweroff", QR, "\texposed=1; exit 1;", "\texit 1;"),
+    ("qr-running-webcam-poweroff", QR, "\texpose; exit 1;", "\texit 1;"),
+    ("qr-watchdog", QR, "set +e; sleep 840; systemctl poweroff --force --force", "set +e; sleep 840"),
     ("qr-poweroff-force", QR, "systemctl poweroff || systemctl poweroff --force --force", "systemctl poweroff"),
     ("qr-start-word", QR, '[ "$answer" = START ]', '[ -n "$answer" ]'),
     ("qr-one-device", QR, '[ "${#devices[@]}" -eq 1 ] ||', '[ "${#devices[@]}" -ge 1 ] ||'),

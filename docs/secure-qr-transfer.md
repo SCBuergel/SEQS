@@ -1106,10 +1106,12 @@ Otherwise, type `START` in capital letters. After that:
    after 60 seconds without scanning; see the end of
    [Configure and build the QR qubes](#configure-and-build-the-qr-qubes).
    Point the webcam at the QR code.
-4. Unplug the webcam when the script reports that the copy completed, or
-   when it reports an error. Do not reconnect the keyboard or mouse.
-5. The computer powers off, whether the scan worked or not. If it is still
-   running two minutes after you unplugged the webcam, hold the power button
+4. Unplug the webcam when the script reports that the copy completed, when
+   it reports an error, or when the computer turns off. Do not reconnect the
+   keyboard or mouse.
+5. The computer powers off, whether the scan worked or not, at the latest 14
+   minutes after `START`. If it is still running two minutes after you
+   unplugged the webcam, or 15 minutes after `START`, hold the power button
    until it is off.
 
 Once the computer is off, remove every power source you can: unplug the power

@@ -44,6 +44,16 @@ teardown_and_poweroff() {
 	exit "$rc"
 }
 trap teardown_and_poweroff EXIT HUP INT QUIT TERM
+# Once the camera side may have had the controller, no hang in a qube, in
+# qubesd or in this script may keep the boot running: a watchdog that ignores
+# the script's signals and outlives it forces a power-off after 14 minutes.
+# That leaves over 8 minutes beyond the 4-minute scan and the fixed waits
+# for the qubes to start and stop.
+expose() {
+	exposed=1
+	( trap '' HUP INT QUIT TERM; set +e; sleep 840; systemctl poweroff --force --force ) \
+		</dev/null >/dev/null 2>&1 &
+}
 
 # Fail before input is lost if the fixed destination or qubes are unavailable.
 for vm in "$NORMAL_USB_QUBE" "$WEBCAM_USB_QUBE" "$SCANNER_QUBE" "$STAGING_QUBE"; do
@@ -53,7 +63,7 @@ done
 # the controller may not return to the keyboard side without a power cycle.
 qvm-check --running -q -- "$WEBCAM_USB_QUBE" && {
 	echo "ERROR: $WEBCAM_USB_QUBE is already running; it has had the shared controller" >&2
-	exposed=1; exit 1;
+	expose; exit 1;
 }
 qvm-check --running -q -- "$SCANNER_QUBE" && {
 	echo "ERROR: $SCANNER_QUBE is already running" >&2; exit 1;
@@ -122,7 +132,7 @@ read -r -p "Type START to begin: " answer </dev/tty
 
 echo "Unplug keyboard and mouse now. The normal USB backend stops in 10 seconds."
 sleep 10
-exposed=1
+expose
 if qvm-check --running -q -- "$NORMAL_USB_QUBE"; then
 	qvm-shutdown --wait -- "$NORMAL_USB_QUBE"
 fi
