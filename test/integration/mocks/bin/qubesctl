@@ -48,6 +48,12 @@ for n, q in selected.items():
 os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 open(sys.argv[2], "w").write("\n".join(lines) + "\n")
 PY
+    # SEQS_MOCK_DOM0_FAIL_RC fails a dom0 state the way Salt reports it and
+    # exits with that code.
+    if [ -n "${SEQS_MOCK_DOM0_FAIL_RC:-}" ]; then
+      printf '          ID: seqs-firewall\n      Result: False\ndom0: Succeeded: 11  Failed: 1\n'
+      exit "${SEQS_MOCK_DOM0_FAIL_RC}"
+    fi
     echo "dom0: Succeeded: 12  Failed: 0" ;;
   *"state.apply seqs.qube"*)
     [ -z "${SEQS_MOCK_QUBESCTL_LOG:-}" ] || echo "$args" >> "$SEQS_MOCK_QUBESCTL_LOG"

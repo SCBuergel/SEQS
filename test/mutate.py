@@ -57,6 +57,7 @@ MUTATIONS = [
     ("gnosis-cleanup-unverified", R, '\tverifyGnosisUpdateProxyRemoved\n', ''),
     ("gnosis-policy-left", R, '|| die "temporary GnosisVPN updates policy was not removed"', '|| true'),
     ("gnosis-proxy-left", R, '|| die "temporary GnosisVPN updates proxy was not removed"', '|| true'),
+    ("dom0-apply-fail", R, '|| die "seqs.dom0 failed', '|| true "seqs.dom0 failed'),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
     # Runner: fetch and archive validation.

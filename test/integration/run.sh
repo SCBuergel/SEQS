@@ -44,7 +44,7 @@ new_sandbox() {
 	unset SEQS_MOCK_RESOLVED_COMMIT
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG SEQS_MOCK_APPMENUS_LOG
-	unset SEQS_MOCK_FIREWALL_LOG SEQS_MOCK_POLICY_COPY
+	unset SEQS_MOCK_FIREWALL_LOG SEQS_MOCK_POLICY_COPY SEQS_MOCK_DOM0_FAIL_RC
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
@@ -166,6 +166,21 @@ out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes keepass,sig
 	&& ! grep -q -- "--targets=.*A-signal" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
 	|| bad "an unreadable template must stop the run before app qubes are provisioned"
 unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
+rm -rf "${SBX}"
+
+# ── Scenario 1a1: a failed dom0 state stops the run before any qube ──────
+echo "== scenario: a failed seqs.dom0 apply provisions no qube =="
+new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+# Exit 0 with a failed state in the output, then a non-zero exit.
+for SEQS_MOCK_DOM0_FAIL_RC in 0 1; do
+	export SEQS_MOCK_DOM0_FAIL_RC; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+	out="$(run_setup --qubes keepass,signal 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -q "seqs.dom0 failed -- nothing was provisioned" <<<"$out" \
+		&& [ ! -s "${SEQS_MOCK_QUBESCTL_LOG}" ] && ok \
+		|| bad "a failed seqs.dom0 apply (exit ${SEQS_MOCK_DOM0_FAIL_RC}) must stop the run before seqs.qube: ${out}"
+done
+unset SEQS_MOCK_DOM0_FAIL_RC SEQS_MOCK_QUBESCTL_LOG
 rm -rf "${SBX}"
 
 # ── Scenario 1a2: a template left running by an interrupted run is stopped ──
