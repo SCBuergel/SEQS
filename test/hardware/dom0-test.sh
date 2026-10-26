@@ -211,12 +211,13 @@ checkSysUsbMemory() {
 	fi
 }
 
-# checkNuc11HeadsetFix ON -- the patch file and the modprobe option exist with
-# their key lines when nuc11_headset_fix is True (ON), and neither exists
+# checkNuc11HeadsetFix ON CODECS -- the patch file and the modprobe option exist
+# with their key lines when nuc11_headset_fix is True (ON) and CODECS, one
+# "vendor subsystem" line per codec, lists the NUC 11's, and neither exists
 # otherwise. NUC11_FW and NUC11_CONF override the paths for the unit test.
 checkNuc11HeadsetFix() {
 	local fw="${NUC11_FW:-/lib/firmware/seqs-nuc11-headset.fw}" conf="${NUC11_CONF:-/etc/modprobe.d/seqs-nuc11-headset.conf}"
-	if [ "$1" = True ]; then
+	if [ "$1" = True ] && grep -qx '0x10ec0256 0x80863004' <<< "$2"; then
 		if grep -qx '0x19 0x01a1913c' "${fw}" 2>/dev/null \
 			&& grep -qx 'options snd-hda-intel patch=seqs-nuc11-headset.fw' "${conf}" 2>/dev/null; then
 			pass "NUC 11 headset fix is installed"
@@ -224,9 +225,9 @@ checkNuc11HeadsetFix() {
 			fail "nuc11_headset_fix is True, but ${fw} or ${conf} is missing or wrong"
 		fi
 	elif [ -e "${fw}" ] || [ -e "${conf}" ]; then
-		fail "nuc11_headset_fix is off, but ${fw} or ${conf} exists"
+		fail "the NUC 11 headset fix is off or not for this computer, but ${fw} or ${conf} exists"
 	else
-		pass "NUC 11 headset fix is not installed (off)"
+		pass "NUC 11 headset fix is not installed (off or not a NUC 11)"
 	fi
 }
 
@@ -1054,7 +1055,8 @@ check() {
 	[ "${d}" = AskResolution ] && pass "sys-firewall: links to ${BROWSER_VM} need the Qubes prompt" \
 		|| fail "sys-firewall: policy gives ${d:-nothing} for links to ${BROWSER_VM}, expected the Qubes default ask"
 	checkSysUsbMemory "$(pillarValue seqs:sys_usb_memory)"
-	checkNuc11HeadsetFix "$(pillarValue seqs:nuc11_headset_fix)"
+	checkNuc11HeadsetFix "$(pillarValue seqs:nuc11_headset_fix)" \
+		"$(for d in /sys/class/sound/hwC*D*; do echo "$(cat "$d/vendor_id") $(cat "$d/subsystem_id")"; done 2>/dev/null)"
 	if grep -q "^app A-qr-display " < <(sudo cat "${targets}") && grep -q "^app A-qr-camera " < <(sudo cat "${targets}"); then
 		qrRoundTrip
 		qvm-shutdown -- A-qr-display A-qr-camera >/dev/null 2>&1 || true

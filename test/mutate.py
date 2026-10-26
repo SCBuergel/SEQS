@@ -153,7 +153,7 @@ MUTATIONS = [
     ("dom0-sys-usb-memory-int", S, "{% if sys_usb_memory is not integer or sys_usb_memory < 0 %}", "{% if false %}"),
     ("dom0-sys-usb-memory-raise", S, "    - unless: test \"$(qvm-prefs -- sys-usb memory)\" -ge {{ sys_usb_memory }}\n", ""),
     ("dom0-nuc11-headset-bool", S, "{% if nuc11_headset_fix is not sameas true and nuc11_headset_fix is not sameas false %}", "{% if false %}"),
-    ("dom0-nuc11-headset-codec", S, "{%   if '0x10ec0256 0x80863004' not in codecs.splitlines() %}", "{%   if false %}"),
+    ("dom0-nuc11-headset-codec", S, "{%   set nuc11_headset_install = '0x10ec0256 0x80863004' in codecs.splitlines() %}", "{%   set nuc11_headset_install = true %}"),
     ("dom0-qr-filecopy-deny", S, "        qubes.Filecopy  *  {{ webcam_scanner_qube }}  @anyvm  deny\n", ""),
     ("dom0-usb-override-unmarked", S, "    - onlyif: head -n 1 /etc/qubes/policy.d/30-user-input.policy 2>/dev/null | grep -q '^# Managed by SEQS'\n", ""),
     ("dom0-usb-override-kept", S, "{% if release == '4.3' and ('sys-usb' in inventory) and (keyboard_handled.value or not usb_keyboard_prompt) %}", "{% if false %}"),

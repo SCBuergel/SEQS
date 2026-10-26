@@ -18,8 +18,9 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
 {%- set component_timeout = 900 %}
 {#- Minimum memory of sys-usb in MiB (0 leaves it alone); see docs/configuration.md. #}
 {%- set sys_usb_memory = 600 %}
-{#- Intel NUC 11 headset jack fix (True/False); see docs/configuration.md. #}
-{%- set nuc11_headset_fix = False %}
+{#- Intel NUC 11 headset jack fix (True/False), applied only on a NUC 11; see
+    docs/configuration.md. #}
+{%- set nuc11_headset_fix = True %}
 {#- Ask in dom0 before a USB keyboard from sys-usb works where Qubes 4.3 would
     refuse it (True/False); see docs/configuration.md. #}
 {%- set usb_keyboard_prompt = True %}

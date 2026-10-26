@@ -35,13 +35,13 @@ settings; those changes must go through fetch, review, and stage again.
 
 Change a setting in the checkout in the download disposable, after verifying
 its commit (README step 2) and before you install or upgrade. The runner
-installs only committed files, so commit the change. For example, to turn on
+installs only committed files, so commit the change. For example, to turn off
 `nuc11_headset_fix`, in the disposable's terminal:
 
 ```bash
 cd ~/SEQS
-sed -i 's/nuc11_headset_fix = False/nuc11_headset_fix = True/' salt/pillar/seqs/config.sls
-git -c user.name=me -c user.email=me@localhost commit -qam 'Enable nuc11_headset_fix'
+sed -i 's/nuc11_headset_fix = True/nuc11_headset_fix = False/' salt/pillar/seqs/config.sls
+git -c user.name=me -c user.email=me@localhost commit -qam 'Disable nuc11_headset_fix'
 git show HEAD
 ```
 
@@ -69,7 +69,7 @@ The top of `config.sls` sets values that apply to every qube:
 | `browser_vm`, `browser_desktop` | `A-brave`, `open-links-in-browser-qube.desktop` | The qube that opens links handed off by other SEQS qubes, and the desktop entry in those qubes that hands them off; see [below](#browser-link-handoff-requires-a-brave). |
 | `component_timeout` | `900` | Seconds one component may run before Salt stops it. |
 | `sys_usb_memory` | `600` | Minimum memory of `sys-usb` in MiB; see [below](#sys_usb_memory). |
-| `nuc11_headset_fix` | `False` | Makes the headset jack of an Intel NUC 11 Pro work; see [below](#nuc11_headset_fix). |
+| `nuc11_headset_fix` | `True` | Makes the headset jack of an Intel NUC 11 Pro work, and does nothing on other computers; see [below](#nuc11_headset_fix). |
 | `usb_keyboard_prompt` | `True` | Makes dom0 ask before a USB keyboard works where Qubes 4.3 refuses it; see [below](#usb_keyboard_prompt). |
 | `dom0_launchers` | Qube Manager, Qubes Update, Screenshot, Terminal | Dom0 programs that get a launcher in the panel; see [Panel launchers](#panel-launchers). |
 | `window_tiling_keys` | eight `Super` and `Alt` shortcuts | Keyboard shortcuts that tile the focused window; see [below](#window_tiling_keys). |
@@ -327,20 +327,17 @@ echo 4-1 | sudo tee /sys/bus/usb/drivers_probe
 On an Intel NUC 11 Pro (models `NUC11PA...`), Linux sees neither the
 microphone of a headset in the front jack nor that anything is plugged in, so
 the dom0 volume control offers the headset neither for sound nor for calls.
-The firmware leaves the jack's microphone connection unconfigured. Setting
-`nuc11_headset_fix` to `True` makes each build install
+The firmware leaves the jack's microphone connection unconfigured. With
+`nuc11_headset_fix = True`, the default, each build on a NUC 11 installs
 the same correction that the Linux kernel ships for the NUC 10, as two files
 in dom0: `/lib/firmware/seqs-nuc11-headset.fw` and
 `/etc/modprobe.d/seqs-nuc11-headset.conf`. It takes effect at the next boot.
-With `False`, each build removes both files.
 
-The pre-flight refuses `True` on any other computer: the kernel would apply
-the correction to every audio chip of the same type (Realtek ALC256), which
-many laptops use differently.
-
-To turn it on, set `nuc11_headset_fix = True` as described in
-[Changing a setting](#changing-a-setting); a build from a revision without the
-change removes both files again.
+On any other computer, and with `False`, each build removes both files
+instead: the kernel would apply the correction to every audio chip of the
+same type (Realtek ALC256), which many laptops use differently. The build
+recognizes a NUC 11 by its audio codec, a Realtek ALC256 with Intel's
+subsystem ID `0x80863004`.
 
 After the next boot, the headset should appear as the output and input in the
 dom0 volume control while it is plugged in.

@@ -13,7 +13,7 @@
 {% set exts = seqs.get('brave_extensions', {}) %}
 {% set cleanup_dirs = seqs.get('cleanup_dirs', []) %}
 {% set sys_usb_memory = seqs.get('sys_usb_memory', 0) %}
-{% set nuc11_headset_fix = seqs.get('nuc11_headset_fix', false) %}
+{% set nuc11_headset_fix = seqs.get('nuc11_headset_fix', true) %}
 {% set usb_keyboard_prompt = seqs.get('usb_keyboard_prompt', true) %}
 {% set dom0_launchers = seqs.get('dom0_launchers', []) %}
 {% set tiling_keys = seqs.get('window_tiling_keys', {}) %}
@@ -136,14 +136,13 @@ print("END")'{% endset %}
 {% endif %}
 {# The kernel reads a patch file's subsystem ID as a signed number, so it
    cannot match Intel's 0x8086.... IDs and would apply the fix to any ALC256
-   codec: only a computer that has the NUC 11's codec may enable it. #}
+   codec: only a computer that has the NUC 11's codec gets it. #}
+{% set nuc11_headset_install = false %}
 {% if nuc11_headset_fix is not sameas true and nuc11_headset_fix is not sameas false %}
 {%   do errors.append("nuc11_headset_fix '" ~ nuc11_headset_fix ~ "' must be True or False") %}
 {% elif nuc11_headset_fix %}
 {%   set codecs = salt['cmd.shell']('for d in /sys/class/sound/hwC*D*; do echo "$(cat $d/vendor_id) $(cat $d/subsystem_id)"; done 2>/dev/null') %}
-{%   if '0x10ec0256 0x80863004' not in codecs.splitlines() %}
-{%     do errors.append("nuc11_headset_fix is True, but this computer has no Intel NUC 11 audio codec (Realtek ALC256, subsystem 0x80863004)") %}
-{%   endif %}
+{%   set nuc11_headset_install = '0x10ec0256 0x80863004' in codecs.splitlines() %}
 {% endif %}
 {% if usb_keyboard_prompt is not sameas true and usb_keyboard_prompt is not sameas false %}
 {%   do errors.append("usb_keyboard_prompt '" ~ usb_keyboard_prompt ~ "' must be True or False") %}
@@ -696,8 +695,9 @@ seqs-sys-usb-memory:
 {# Intel NUC 11 Pro (NUC11PA*): the firmware leaves the front jack's mic pin
    unconfigured, so Linux sees neither the headset mic nor a plugged-in jack.
    This applies the kernel's NUC 10 fix (pin 0x19 as headset mic, headset
-   mode) when snd-hda-intel next loads, normally at the next boot. #}
-{% if nuc11_headset_fix %}
+   mode) when snd-hda-intel next loads, normally at the next boot. Any other
+   computer, or False, gets neither file. #}
+{% if nuc11_headset_install %}
 seqs-nuc11-headset-patch:
   file.managed:
     - name: /lib/firmware/seqs-nuc11-headset.fw
