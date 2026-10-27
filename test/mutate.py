@@ -155,6 +155,8 @@ MUTATIONS = [
      '\tverify_detached_sig "${dir}/${file}${sig}" "${dir}/${file}" "${fpr}" "${file}"\n'),
     # dom0.sls: names, offline, adoption, policy, pinning, cleanup paths.
     ("dom0-name-re", S, "{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\\\Z' %}", "{% set name_re = '^.*' %}"),
+    ("dom0-browser-vm-name", S, "{%   if browser_vm | regex_match(name_re) is none %}", "{%   if false %}"),
+    ("dom0-component-name", S, "{%       if comp | regex_match(name_re) is none %}", "{%       if false %}"),
     ("dom0-selection-instance", S, " or (fields | length == 2 and fields[1] | regex_match(name_re) is none) %}", " %}"),
     ("dom0-selection-postfix", S, "{%     elif fields | length == 2 and fields[1] | regex_match(name_re) is none %}", "{%     elif false %}"),
     ("dom0-offline-dispvm", S, "        qvm-prefs -- {{ app }} default_dispvm none\n", ""),

@@ -1303,6 +1303,17 @@ def test_dom0_validation_catches_bad_config():
             check(_rejected("%s '%s' has an unsafe name" % (field, value), _bad_pillar(
                 webcam_usb_mode="sequential", webcam_usb_controller="00_14.0", **{field: value})),
                 "%s %r must fail validation" % (field, value))
+    # browser_vm goes unquoted into 29-browser.policy. With only an offline
+    # qube, none hands links to it, so its existence check cannot refuse it.
+    offline = {"vault": {"label": "black", "components": ["brave"], "offline": True}}
+    for value in ("A-brave;id", "A-brave\n"):
+        check(_rejected("browser_vm '%s' has an unsafe name" % value, _bad_pillar(browser_vm=value, catalogue=offline)),
+              "browser_vm %r must fail validation" % value)
+    # Component names reach paths and the root install command.
+    for value in ("x;id", "brave\n"):
+        check(_rejected("qube 'brave' references component with unsafe name '%s'" % value, _bad_pillar(
+            catalogue={"brave": {"label": "red", "components": [value]}})),
+            "component %r must fail validation" % value)
     check(_rejected("webcam_usb_controller is set while webcam_usb_mode is disabled", _bad_pillar(
         webcam_usb_mode="disabled", webcam_usb_controller="00_14.0")),
         "a controller with the mode disabled must fail validation")
