@@ -523,12 +523,13 @@ grep -q "not a complete full-tunnel" <<< "${out}" && ok || bad "split tunnel: wr
 
 echo "== WireGuard dns.sh translates this qube's own DNS only while wg0 is up =="
 # A copy calls stubs by absolute path: nft records its batch, ip reports wg0
-# as up or absent, qubesdb-read names the client resolvers.
+# as up or absent, qubesdb-read names the client resolvers, or QDB_PRIMARY in
+# place of the first and none at all if QDB_PRIMARY is "none".
 wd="${tmp}/wgdns"; mkdir -p "${wd}"
 printf '[Interface]\nDNS = 10.128.0.1\n' > "${wd}/wg0.conf"
 printf '#!/bin/sh\ncat > "%s/batch"\n' "${wd}" > "${wd}/nft"
 printf '#!/bin/sh\n[ -e "%s/up" ] && echo "4: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420"\n' "${wd}" > "${wd}/ip"
-printf '#!/bin/sh\ncase "$1" in */qubes-netvm-primary-dns) echo 10.139.1.1;; */qubes-netvm-secondary-dns) echo 10.139.1.2;; esac\n' > "${wd}/qubesdb-read"
+printf '#!/bin/sh\n[ "${QDB_PRIMARY-}" != none ] || exit 1\ncase "$1" in */qubes-netvm-primary-dns) echo "${QDB_PRIMARY:-10.139.1.1}";; */qubes-netvm-secondary-dns) echo 10.139.1.2;; esac\n' > "${wd}/qubesdb-read"
 chmod +x "${wd}/nft" "${wd}/ip" "${wd}/qubesdb-read"
 sed -e "s#/rw/config/seqs-wireguard/wg0.conf#${wd}/wg0.conf#" -e "s#^nft #${wd}/nft #" \
 	-e "s#qubesdb-read #${wd}/qubesdb-read #" -e "s#if ip link #if ${wd}/ip link #" \
@@ -566,6 +567,17 @@ rm -f "${wd}/up" "${wd}/batch"; bash "${wd}/dns.sh" \
 	&& grep -q 'ip daddr 10.139.1.2 udp dport 53 dnat to 10.2.0.1' "${wd}/batch" \
 	&& ! grep -q '9\.9\.9\.9' "${wd}/batch" \
 	&& ok || bad "dns.sh must ignore a trailing comment on DNS="
+# A malformed or missing address stops dns.sh before nft is called.
+wg_dns_refuses() {  # DNS-LINE QDB_PRIMARY MESSAGE
+	printf '[Interface]\n%s\n' "$1" > "${wd}/wg0.conf"; rm -f "${wd}/batch"
+	out="$(QDB_PRIMARY="$2" bash "${wd}/dns.sh" 2>&1)" && bad "dns.sh accepted [$1] with QubesDB [$2]"
+	[ "${out}" = "$3" ] && [ ! -e "${wd}/batch" ] && ok || bad "[$1], QubesDB [$2]: wrong message or batch applied [${out}]"
+}
+wg_dns_refuses 'DNS = 300.1.1.1' '' "ERROR: refusing malformed DNS address"
+wg_dns_refuses 'DNS = 10.2.0.1' '10.139.1.1;' "ERROR: refusing malformed DNS address"
+wg_dns_refuses 'DNS = 10.2.0.1' 10.139.1.256 "ERROR: refusing malformed DNS address"
+wg_dns_refuses 'DNS = dns.example' '' "ERROR: WireGuard configuration has no IPv4 DNS server"
+wg_dns_refuses 'DNS = 10.2.0.1' none "ERROR: QubesDB exposes no client DNS addresses"
 
 echo "== VPN installers add their fail-closed hook lines on a line of their own, once =="
 # Each copy runs with /rw under a test directory and a stub sudo, called by
