@@ -30,6 +30,13 @@ eq "sanitize colour+bell" "$out" "$(printf 'a[31mRED[0mb\tc')"
 # A UTF-8-encoded C1 (0xC2 0x9B, CSI) must be dropped.
 out="$(printf 'x\xc2\x9by' | sanitize)"
 eq "sanitize utf8 C1" "$out" "xy"
+# iconv drops a raw 8-bit C1 byte and every byte of invalid UTF-8, so that sed
+# cannot join the bytes around a C1 it removes into a new one. iconv names
+# both encodings, so the locale must not matter.
+for loc in C C.UTF-8; do
+	eq "sanitize raw C1 ($loc)" "$(printf 'x\x9by' | LC_ALL="$loc" sanitize)" "xy"
+	eq "sanitize spliced C1 ($loc)" "$(printf 'a\xc2\xc2\x9b\x9bb' | LC_ALL="$loc" sanitize)" "ab"
+done
 
 echo "== confirm() aborts when no terminal can be opened =="
 # confirm reads /dev/tty by design (a piped stdin must never count as

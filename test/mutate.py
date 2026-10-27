@@ -41,6 +41,7 @@ MUTATIONS = [
     # Runner: terminal sanitizing, confirmation, ownership, failure detection.
     ("sanitize-esc", R, r"tr -d '\000-\010\013-\037\177'", r"tr -d '\000-\010\013-\032\177'"),
     ("sanitize-c1", R, r"s/\xc2[\x80-\x9f]//g", r"s/\xc2[\x80-\x8f]//g"),
+    ("sanitize-iconv", R, "\t\t| iconv -f UTF-8 -t UTF-8 -c \\\n", ""),
     ("sanitize-mgmt-log", R, "| sed 's/^.* output: *//' | sanitize |", "| sed 's/^.* output: *//' |"),
     ("sanitize-gnosis-apt", R, "2>&1 </dev/null | sanitize; then", "2>&1 </dev/null | cat; then"),
     ("repo-stderr-commit", R, "2>/dev/null </dev/null | head -c 100", "</dev/null | head -c 100"),
@@ -300,7 +301,7 @@ MUTATIONS = [
 
 def run(cmd, cwd, **kw):
     return subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True, **kw)
+                          stderr=subprocess.STDOUT, text=True, errors="replace", **kw)
 
 
 def make_worktree(parent):
