@@ -77,7 +77,7 @@ For each ✅ component below, SEQS embeds a signing key + a pinned fingerprint (
 
 KeePassXC, BitBox, and OpenOffice also pin the SHA-256 of their release file (`*_SHA256` in the script); after you have checked a download's signature yourself, compare its `sha256sum` with the pin.
 
-Each component's `template-vm.sh` header (Brave: `install-scripts/lib/brave.sh`) also documents the three sources it was cross-checked against and the verification date — read it. GnosisVPN's names only the project itself, so its key needs your own cross-check (see its row).
+Each component's `template-vm.sh` header (Brave: `install-scripts/lib/brave.sh`) also documents the sources it was cross-checked against and the verification date — read it. Most name three; Proton VPN's and Ledger Live's name two, and GnosisVPN's names only the project itself, so its key needs your own cross-check (see its row).
 
 ## 4. Watch the install
 
