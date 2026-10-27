@@ -105,7 +105,9 @@ Runs the **real** `setup-qubes.sh` end to end against a sandbox dom0: mock
 `qvm-*` / `qubesctl` / `sudo` on `PATH` (`test/integration/mocks/bin`) and
 scratch `/srv` + `/var/lib` paths via the `SEQS_*` overrides. A small pty driver
 (`test/lib/pty_run.py`) answers the `confirm()` prompts that read from
-`/dev/tty`. Scenarios: full workflow and the single-step install, a failed template
+`/dev/tty`. The mocked repository qube serves a commit of the working tree's
+`salt/` and `install-scripts/`, uncommitted and untracked files included, made
+without touching the index, HEAD or any branch. Scenarios: full workflow and the single-step install, a failed template
 skipping its app qube, a template left running by an interrupted run,
 the GnosisVPN download proxy, fetch source and HEAD validation, stage/build
 prerequisite guards, privileged reads of the staged tree, a hostile archive

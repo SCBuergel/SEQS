@@ -24,6 +24,23 @@ eq()  { [ "$2" = "$3" ] && ok || bad "$1: expected [$3], got [$2]"; }
 export SEQS_TRIPWIRE_LOG
 SEQS_TRIPWIRE_LOG="$(mktemp)"
 
+# The commit the mocked repository qube serves: HEAD with the working tree's
+# salt/ and install-scripts/, untracked files included, so that this layer
+# fetches the files the other layers test. A temporary index leaves the real
+# index, HEAD and the branches alone.
+worktree_commit() {
+	local idx tree rc
+	idx="$(mktemp -d)" || return 1
+	tree="$(export GIT_INDEX_FILE="${idx}/index"
+		git -C "${REPO}" read-tree HEAD && git -C "${REPO}" add -A -- salt install-scripts \
+			&& git -C "${REPO}" write-tree)"
+	rc=$?
+	rm -rf -- "${idx}"
+	[ "${rc}" -eq 0 ] && git -C "${REPO}" -c user.name=test -c user.email=test@example.invalid \
+		commit-tree --no-gpg-sign -p HEAD -m "integration test: working tree" "${tree}"
+}
+WORKTREE_COMMIT="$(worktree_commit)" || { echo "ERROR: could not commit the working tree" >&2; exit 2; }
+
 # A fresh sandbox + environment for one run of setup-qubes.sh.
 new_sandbox() {
 	SBX="$(mktemp -d)"
@@ -38,7 +55,7 @@ new_sandbox() {
 	export SEQS_DESKTOP_FILE="${SBX}/var/lib/seqs/desktop" XDG_CONFIG_HOME="${SBX}/config"
 	export SEQS_REPO_ROOT="${REPO}"
 	export SEQS_EXPECTED_COMMIT
-	SEQS_EXPECTED_COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
+	SEQS_EXPECTED_COMMIT="${WORKTREE_COMMIT}"
 	export PATH="${HERE}/mocks/bin:${REPO_ORIG_PATH}"
 	unset SEQS_MOCK_TAR SEQS_MOCK_NETVM SEQS_MOCK_STATE SEQS_MOCK_DEFAULT_DISPVM
 	unset SEQS_MOCK_RESOLVED_COMMIT
@@ -107,6 +124,11 @@ eq "the temporary policy" "$(cat "${SEQS_MOCK_POLICY_COPY}")" "$(printf '%s\n' "
 [ -f "${SEQS_SALT_TREE}/.seqs-managed" ] && ok || bad "missing .seqs-managed marker"
 [ "$(cat "${SEQS_FETCH_ROOT}/source-commit" 2>/dev/null)" = "${SEQS_EXPECTED_COMMIT}" ] \
 	&& ok || bad "fetched source commit was not recorded"
+# The fetch staged the working tree's installers, committed or not.
+while IFS= read -r f; do
+	[ ! -e "${REPO}/${f}" ] || cmp -s "${REPO}/${f}" "${SEQS_SALT_TREE}/files/${f#install-scripts/}" \
+		|| bad "the fetch did not stage the working tree's ${f}"
+done < <(git -C "${REPO}" ls-files -co --exclude-standard -- install-scripts)
 [ -f "${SEQS_SALT_TREE}/files/components/brave/template-vm.sh" ] && ok \
 	|| bad "component payload not staged into files/"
 [ -f "${SEQS_TARGETS_FILE}" ] && ok || bad "targets file not written by dom0 apply"
@@ -482,7 +504,7 @@ unset SEQS_MOCK_ENDLESS_LOG
 # file's $Format:%b$ becomes the commit message body, so the staged bytes are
 # not the reviewed blobs. A commit holding one anywhere is refused unexported.
 attr="$(mktemp -d)"
-git -C "${REPO}" archive HEAD salt install-scripts | tar -C "${attr}" -xf -
+git -C "${REPO}" archive "${WORKTREE_COMMIT}" salt install-scripts | tar -C "${attr}" -xf -
 git -C "${attr}" init -q -b main
 for where in . install-scripts/lib; do
 	echo '* export-subst' > "${attr}/${where}/.gitattributes"

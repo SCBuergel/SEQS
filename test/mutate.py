@@ -3,9 +3,8 @@
 
 Each entry in MUTATIONS replaces one exact string in the product code with a
 weaker version. For every entry, a temporary git worktree gets the working
-tree's files plus that one change, committed (the integration layer fetches
-the committed tree), and the Qubes-free layers run cheapest first until one
-fails twice in a row. A mutation that every layer accepts SURVIVES: no test
+tree's files plus that one change, and the Qubes-free layers run cheapest
+first until one fails twice in a row. A mutation that every layer accepts SURVIVES: no test
 guards that check. One that fails a layer only once is FLAKY. One that breaks
 the syntax of its file is BROKEN: lint would catch it, not a test of the
 check. The tests must pass without a mutation first.
