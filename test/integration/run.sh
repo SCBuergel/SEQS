@@ -1124,12 +1124,11 @@ write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "
 # lists them as "<property> <flag> <value>".
 write_mock qvm-prefs 'awk -v v="${!#}" '"'"'$1 == v { print $2, $3, $4 }'"'"' "'"${SBX}"'/prefs"'
 write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; cat "'"${SBX}"'/staged"'
-write_mock qvm-usb ':'
+write_mock qvm-usb 'cat "'"${SBX}"'/usb" 2>/dev/null; :'
 write_mock qvm-kill ':'
 write_mock qvm-shutdown ':'
 write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"'
-qr_case() {  # NAME EXPECTED-OUTPUT -- run with the current fixture files
-	local out
+qr_case() {  # NAME EXPECTED-OUTPUT -- run with the current fixture files; sets out
 	out="$(PATH="${SBX}/bin:${PATH}" setsid bash "${SBX}/qr.sh" </dev/null 2>&1)" \
 		&& bad "$1: the script must not succeed without START"
 	grep -qF -- "$2" <<<"${out}" && ok || bad "$1: expected '$2', got: $(tail -n 1 <<<"${out}")"
@@ -1142,6 +1141,7 @@ qr_reset() {
 	printf '%s\n' sys-usb sys-usb-webcam seqs-qr-scanner A-qr-staging > "${SBX}/exists"
 	echo sys-usb > "${SBX}/running"
 	echo ABSENT > "${SBX}/staged"
+	rm -f "${SBX}/usb"
 	: > "${SBX}/prefs"
 	for vm in sys-usb-webcam seqs-qr-scanner A-qr-staging; do
 		printf '%s netvm - None\n%s default_dispvm - None\n' "${vm}" "${vm}" >> "${SBX}/prefs"
@@ -1149,6 +1149,14 @@ qr_reset() {
 }
 if command -v setsid >/dev/null 2>&1; then
 	qr_reset; qr_case "a safe state" "SEQS SEQUENTIAL-PATH QR SCAN"
+	# The normal backend's device list reaches the dom0 terminal: only its
+	# own lines, with control characters stripped.
+	qr_reset; printf 'sys-usb:2-3 Evil\033[2Jhidden\nsys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"
+	qr_case "escape in a device description" "sys-usb:2-3 Evil[2Jhidden"
+	[[ "${out}" != *$'\e'* && "${out}" != *"sys-usb-webcam:2-1"* ]] && ok \
+		|| bad "the device list must hold only sys-usb's lines, without control characters"
+	qr_reset; : > "${SBX}/running"
+	qr_case "normal backend stopped" "  (sys-usb is not running, so its devices cannot be listed)"
 	qr_reset; echo 'SCANNER_QUBE="x;y"' >> "${SBX}/conf"; qr_case "unsafe name" "unsafe qube name"
 	qr_reset; echo 'CONTROLLER=00_14.0x' >> "${SBX}/conf"; qr_case "bad BDF" "invalid controller BDF"
 	qr_reset; sed -i '/^A-qr-staging$/d' "${SBX}/exists"; qr_case "missing qube" "required qube 'A-qr-staging' is missing"

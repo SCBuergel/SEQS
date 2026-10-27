@@ -239,6 +239,8 @@ MUTATIONS = [
     ("qr-conf-bdf", QR, '[[ "$CONTROLLER" =~ ^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]$ ]] || {', 'true || {'),
     ("qr-scanner-running", QR, 'qvm-check --running -q -- "$SCANNER_QUBE" && {', 'false && {'),
     ("qr-old-key", QR, "	ABSENT) ;;", "	ABSENT|PRESENT) ;;"),
+    ("qr-strip-control", QR, " | LC_ALL=C tr -cd '[:print:]\\t\\n')\" || {", ")\" || {"),
+    ("qr-normal-not-running", QR, 'if ! qvm-check --running -q -- "$NORMAL_USB_QUBE"; then', 'if false; then'),
     ("wg-allowlist", "install-scripts/components/wireguard/seqs-wireguard", "PersistentKeepalive)[[:space:]]*=.*)?", "PersistentKeepalive|[A-Za-z]+)[[:space:]]*=.*)?"),
     ("wg-full-tunnel", "install-scripts/components/wireguard/seqs-wireguard", "=([^#]*,)?[[:space:]]*0\\.0\\.0\\.0/0[[:space:]]*([,#].*)?$'", "=.*0\\.0\\.0\\.0/0'"),
     ("wg-dns-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook prerouting priority -101;", "nat hook prerouting priority dstnat;"),
