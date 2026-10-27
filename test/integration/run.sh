@@ -241,7 +241,7 @@ printf '%s\n' "debian-13-xfce halted" "Z-keepass running" > "${SEQS_MOCK_STATE}"
 out="$(run_setup --qubes keepass 2>&1)"; rc=$?
 grep -q "Z-keepass is still running, perhaps from an interrupted run; shutting it down" <<<"$out" && ok \
 	|| bad "a running target template must be shut down before provisioning ($rc)"
-# One that neither shuts down nor can be killed stops the run before any apply.
+# One that neither shuts down nor can be killed stops the run before any template is provisioned.
 printf '%s\n' "debian-13-xfce halted" "Z-keepass running" > "${SEQS_MOCK_STATE}"
 export SEQS_MOCK_SHUTDOWN_STUCK=Z-keepass SEQS_MOCK_KILL_FAIL=Z-keepass SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
 : > "${SEQS_MOCK_QUBESCTL_LOG}"
