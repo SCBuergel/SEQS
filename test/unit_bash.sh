@@ -588,6 +588,52 @@ hook_is "${vh}/wireguard/rw/config/rc.local" "${vh}/wireguard/rw/config/seqs-wir
 hook_is "${vh}/wireguard/rw/config/qubes-firewall-user-script" "${vh}/wireguard/rw/config/seqs-wireguard/firewall.sh"
 hook_is "${vh}/gnosisvpn/rw/config/qubes-firewall-user-script" /usr/sbin/seqs-gnosisvpn-firewall
 
+echo "== seqs-gnosisvpn-dns: no translation unless the tunnel is up and carries the resolvers =="
+# A copy keeps its state, lock and resolver file under a test directory and
+# calls stubs by absolute path: nft logs its calls and records its batch, ip
+# reports the tunnel as up or absent and routes every address via the device
+# in route-dev, qubesdb-read answers from qdb/<key>, flock does nothing.
+gd="${tmp}/gnosisdns"; mkdir -p "${gd}/qdb" "${gd}/resolv" "${gd}/state"
+printf '#!/bin/sh\necho "$*" >> "%s/nft.log"\ncase "$*" in "list table"*) [ -e "%s/table" ];; "delete table"*) rm -f "%s/table";; "--file -") cat > "%s/batch";; esac\n' \
+	"${gd}" "${gd}" "${gd}" "${gd}" > "${gd}/nft"
+printf '#!/bin/sh\ncase "$*" in "link show"*) [ -e "%s/up" ] && echo "5: wg0_gnosisvpn: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420";; "-4 route get"*) echo "$4 dev $(cat "%s/route-dev") src 10.8.0.2";; esac\nexit 0\n' \
+	"${gd}" "${gd}" > "${gd}/ip"
+printf '#!/bin/sh\ncat "%s/qdb/${1##*/}" 2>/dev/null\n' "${gd}" > "${gd}/qubesdb-read"
+printf '#!/bin/sh\nexit 0\n' > "${gd}/flock"
+chmod +x "${gd}/nft" "${gd}/ip" "${gd}/qubesdb-read" "${gd}/flock"
+sed -E -e "s#/run/resolvconf/interfaces/#${gd}/resolv/#" -e "s#/run/seqs-gnosisvpn-dns#${gd}/state/seqs-gnosisvpn-dns#g" \
+	-e "s#(^|[^-/A-Za-z_])(nft (list|delete|--file)|qubesdb-read|flock) #\\1${gd}/\\2 #g" \
+	-e "s#(\\\$\\(|! )ip (link|-4) #\\1${gd}/ip \\2 #" \
+	install-scripts/components/gnosisvpn/seqs-gnosisvpn-dns > "${gd}/dns"
+grep -vE '^[[:space:]]*#' "${gd}/dns" | grep -qE '(^[[:space:]]*|if |\$\(|! |&& |\|\| )(nft|ip|qubesdb-read|flock) |/run' \
+	&& bad "the seqs-gnosisvpn-dns copy still calls a command through PATH or uses /run" || ok
+gdns() {  # [up] ROUTE-DEV QUBES-PRIMARY-DNS [NAMESERVER] -- run the copy; its stderr in ${out}
+	rm -f "${gd}/up" "${gd}/batch" "${gd}/nft.log" "${gd}/state/"*; touch "${gd}/table"
+	[ "$1" != up ] || { touch "${gd}/up"; shift; }
+	echo "$1" > "${gd}/route-dev"; echo "$2" > "${gd}/qdb/qubes-primary-dns"
+	echo 10.139.1.1 > "${gd}/qdb/qubes-netvm-primary-dns"
+	printf 'nameserver %s\n' "${3:-10.8.0.1}" > "${gd}/resolv/wg0_gnosisvpn"
+	out="$(bash "${gd}/dns" 2>&1)"
+}
+removed() { grep -qx 'delete table ip seqs_gnosisvpn_dns' "${gd}/nft.log" && [ ! -e "${gd}/batch" ]; }
+gdns eth0 10.139.1.1 && removed && ok || bad "with the tunnel down, the table must be removed and nothing applied [${out}]"
+gdns up eth0 10.139.1.1 && bad "a resolver routed via eth0 was accepted"
+[ "${out}" = "ERROR: GnosisVPN DNS destination does not route through wg0_gnosisvpn" ] && removed && ok \
+	|| bad "a resolver routed via eth0: wrong message or table kept [${out}]"
+for bad_value in '10.139.1.1;' 300.1.1.1; do
+	gdns up wg0_gnosisvpn "${bad_value}" && bad "a QubesDB address [${bad_value}] was accepted"
+	[ "${out}" = "ERROR: refusing malformed GnosisVPN or Qubes DNS address" ] && removed && ok \
+		|| bad "QubesDB address [${bad_value}]: wrong message or table kept [${out}]"
+done
+gdns up wg0_gnosisvpn 10.139.1.1 300.1.1.1 && bad "a provider resolver 300.1.1.1 was accepted"
+[ "${out}" = "ERROR: refusing malformed GnosisVPN or Qubes DNS address" ] && removed && ok \
+	|| bad "provider resolver 300.1.1.1: wrong message or table kept [${out}]"
+gdns up wg0_gnosisvpn 10.139.1.1 \
+	&& grep -qx 'ip daddr 10.8.0.1 udp dport 53 oifname != "wg0_gnosisvpn" counter drop' "${gd}/batch" \
+	&& grep -qx 'ip daddr 10.8.0.1 tcp dport 53 oifname != "wg0_gnosisvpn" counter drop' "${gd}/batch" \
+	&& grep -qx 'ip daddr 10.139.1.1 udp dport 53 counter dnat to 10.8.0.1' "${gd}/batch" && ok \
+	|| bad "a routed resolver must be translated, and its DNS dropped on any other interface [${out}]"
+
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 # Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
 qctl() { ( sudo() { "$@"; }; qubesctl() { printf '%b\n' "$1"; }; runQubesctl "$1" ) >/dev/null 2>&1; }

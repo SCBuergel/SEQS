@@ -35,6 +35,7 @@ VM = "salt/seqs/files/seqs-vpn-monitor"
 L = "install-scripts/components/ledger/template-vm.sh"
 B = "install-scripts/lib/brave.sh"
 GV = "install-scripts/components/gnosisvpn/template-vm.sh"
+GD = "install-scripts/components/gnosisvpn/seqs-gnosisvpn-dns"
 
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
@@ -284,6 +285,11 @@ MUTATIONS = [
     ("wg-dns-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook prerouting priority -101;", "nat hook prerouting priority dstnat;"),
     ("wg-dns-output-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook output priority -101;", "nat hook output priority dstnat;"),
     ("gnosis-autoconnect-destination", "install-scripts/components/gnosisvpn/seqs-gnosisvpn-autoconnect", 'gnosis_vpn-ctl destinations | grep -Fqx -- "$exit_id" ||', "true ||"),
+    ("gnosis-dns-route", GD, 'if [[ " $route " != *" dev ${interface} "* ]]; then', "if false; then"),
+    ("gnosis-dns-leak-udp", GD, 'udp dport 53 oifname != \\"${interface}\\" counter drop', 'udp dport 53 oifname != \\"${interface}\\" counter accept'),
+    ("gnosis-dns-leak-tcp", GD, 'tcp dport 53 oifname != \\"${interface}\\" counter drop', 'tcp dport 53 oifname != \\"${interface}\\" counter accept'),
+    ("gnosis-dns-inactive", GD, "\t\tgrep -Eq '<([^>]*,)?UP(,|>)'; then\n\tremove_table\n\texit 0\n", "\t\tgrep -Eq '<([^>]*,)?UP(,|>)'; then\n\t:\n"),
+    ("gnosis-dns-is-ipv4", GD, '\tif ! is_ipv4 "$address"; then\n\t\tremove_table\n\t\techo "ERROR: refusing malformed', '\tif false; then\n\t\tremove_table\n\t\techo "ERROR: refusing malformed'),
     ("proton-drop-ip4", "install-scripts/components/protonvpn/protonvpn-firewall.sh", 'nft add rule ip qubes custom-forward oifname "eth0" counter drop\n', ""),
     ("wg-drop-ip4", "install-scripts/components/wireguard/wireguard-firewall.sh", 'nft add rule ip qubes custom-forward oifname "eth0" counter drop\n', ""),
     ("wg-drop-ip6", "install-scripts/components/wireguard/wireguard-firewall.sh", 'nft add rule ip6 qubes custom-forward oifname "eth0" counter drop\n', ""),
