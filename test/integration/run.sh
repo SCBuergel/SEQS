@@ -1113,6 +1113,11 @@ out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="y" python3 "${REPO}/test/lib
 	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "not confirmed -- nothing was changed" <<<"$out" && [ "$(reset_vms)" = "${before}" ] \
 	&& [ -e "${SEQS_SALT_TREE}/dom0.sls" ] && ok || bad "an answer other than RESET must change nothing: ${out}"
+# A RESET on stdin, with no terminal, does not count either.
+out="$(printf 'RESET\n' | timeout 60 setsid bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF "ERROR: no terminal available to confirm -- nothing was changed" <<<"$out" \
+	&& [ "$(reset_vms)" = "${before}" ] && [ -e "${SEQS_SALT_TREE}/dom0.sls" ] && ok \
+	|| bad "a RESET piped on stdin must change nothing: rc=$rc ${out}"
 # The confirmed reset: SEQS qubes go in dependency order (the qvm-remove mock
 # refuses a template or NetVM still in use), the user's qubes stay, the
 # NetVM user is disconnected, marked dom0 files go, unmarked ones stay.
@@ -1313,6 +1318,13 @@ qr_reset() {
 }
 if command -v setsid >/dev/null 2>&1; then
 	qr_reset; qr_case "a safe state" "SEQS SEQUENTIAL-PATH QR SCAN"
+	# A START on stdin, with no terminal, does not begin the camera phase.
+	qr_reset
+	out="$(printf 'START\n' | PATH="${SBX}/bin:${PATH}" timeout 60 setsid bash "${SBX}/qr.sh" 2>&1)" \
+		&& bad "piped START: the script must not succeed"
+	[[ "${out}" == *"SEQS SEQUENTIAL-PATH QR SCAN"* && "${out}" != *"Unplug keyboard and mouse now"* ]] \
+		&& [ ! -e "${SBX}/systemctl.log" ] && ok \
+		|| bad "piped START: a START on stdin must not begin the camera phase: $(tail -n 2 <<<"${out}")"
 	# The normal backend's device list reaches the dom0 terminal: only its
 	# own lines, with control characters stripped.
 	qr_reset; printf 'sys-usb:2-3 Evil\033[2Jhidden\nsys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"

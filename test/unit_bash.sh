@@ -38,7 +38,7 @@ for loc in C C.UTF-8; do
 	eq "sanitize spliced C1 ($loc)" "$(printf 'a\xc2\xc2\x9b\x9bb' | LC_ALL="$loc" sanitize)" "ab"
 done
 
-echo "== confirm() aborts when no terminal can be opened =="
+echo "== confirm() aborts when no terminal can be opened, even with y on stdin =="
 # confirm reads /dev/tty by design (a piped stdin must never count as
 # approval), so run it under setsid -- a session with no controlling
 # terminal -- to make the tty open fail the same way everywhere. Without
@@ -46,10 +46,13 @@ echo "== confirm() aborts when no terminal can be opened =="
 # The accept path (typing y on a real pty) is exercised by the
 # Layer 4 integration run via test/lib/pty_run.py.
 if command -v setsid >/dev/null 2>&1; then
-	if setsid bash -c 'SEQS_SOURCE_ONLY=1 source ./setup-qubes.sh && confirm "p"' \
-			</dev/null >/dev/null 2>&1; then
-		bad "confirm should abort when /dev/tty cannot be opened"
-	else ok; fi
+	confirm_notty() { timeout 60 setsid bash -c 'SEQS_SOURCE_ONLY=1 source ./setup-qubes.sh && confirm "p"' 2>&1; }
+	for stdin in "empty" "y"; do
+		if [ "${stdin}" = y ]; then out="$(printf 'y\n' | confirm_notty)"; else out="$(confirm_notty </dev/null)"; fi \
+			&& bad "confirm accepted ${stdin} stdin without a terminal"
+		grep -qF "ERROR: no terminal available to confirm -- aborting." <<<"${out}" && ok \
+			|| bad "confirm with ${stdin} stdin and no terminal: wrong message [${out}]"
+	done
 else
 	printf '  skip: setsid not available\n'
 fi
