@@ -61,8 +61,13 @@ PY
     # template provisioning saw it; the runner removes it afterwards.
     [ -z "${SEQS_MOCK_POLICY_COPY:-}" ] \
       || cp "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" "${SEQS_MOCK_POLICY_COPY}" 2>/dev/null || true
-    # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it.
+    # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it,
+    # after an OK line for each other target except SEQS_MOCK_NO_RESULT.
     fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
+    targets="${args#*--targets=}"; targets="${targets%% *}"
+    for t in ${targets//,/ }; do
+      [ "$t" = "$fail" ] || [ "$t" = "${SEQS_MOCK_NO_RESULT:-}" ] || echo "$t: OK"
+    done
     if [ -n "$fail" ] && [[ "$args" == *"$fail"* ]]; then
       [ -n "${SEQS_MOCK_FAIL_QUIET:-}" ] || echo "$fail: ERROR (exit code 20, details in /var/log/qubes/mgmt-$fail.log)"
       # SEQS_MOCK_FAIL_OUTPUT: further lines, such as a target's own output.

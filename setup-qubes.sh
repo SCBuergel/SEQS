@@ -114,7 +114,9 @@ runQubesctl() {
 		rc=1
 		UNATTRIBUTED_FAILURE=1
 	fi
-	# qubesctl prints only "VM: ERROR" per failed qube; show why from its log.
+	# qubesctl prints "VM: OK" or "VM: ERROR ..." per finished qube; show why
+	# a qube failed from its log.
+	mapfile -t OK_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): OK$/\1/p' <<< "${out}")
 	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
 	[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1
 	# With --show-output the stream holds the targets' own output, so a target
@@ -1070,11 +1072,20 @@ buildQubes() {
 		echo "         with --verbose for full per-state output)." >&2
 		echo "         Re-run to converge -- finished components are skipped." >&2
 		FAILED=1
-		# qubesctl's own per-qube ERROR lines name the failed templates. Without
-		# them, or when a template's output could have forged one, every
-		# template counts as failed.
-		[ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ] \
-			|| FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
+		# With qubesctl's own per-qube ERROR lines, a template counts as
+		# provisioned only if it has an OK line and no ERROR line: one with
+		# neither did not finish. Without ERROR lines, or when a template's
+		# output could have forged one, every template counts as failed.
+		if [ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ]; then
+			local -a failed=()
+			for vm in "${TEMPLATE_TARGETS[@]}"; do
+				[[ " ${OK_QUBES[*]} " == *" ${vm} "* && " ${FAILED_QUBES[*]} " != *" ${vm} "* ]] \
+					|| failed+=("${vm}")
+			done
+			FAILED_QUBES=("${failed[@]}")
+		else
+			FAILED_QUBES=("${TEMPLATE_TARGETS[@]}")
+		fi
 	fi
 	FAILED_TEMPLATES=("${FAILED_QUBES[@]}")
 	cleanupGnosisUpdateProxy

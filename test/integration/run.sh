@@ -139,25 +139,41 @@ export SEQS_MOCK_FAIL_RC=0
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "WITH FAILURES" <<<"$out" && ok \
 	|| bad "a qube reported as ERROR must fail the run even when qubesctl exits 0"
+# A template with no result line did not finish, even when another reports ERROR.
+export SEQS_MOCK_FAIL_RC=20 SEQS_MOCK_NO_RESULT=Z-signal
+: > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "skipping A-signal: its template failed" <<<"$out" \
+	&& ! grep -q -- "--targets=.*A-signal" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "a template without a result line must count as failed"
+# An OK line never clears a template that also reports ERROR.
+unset SEQS_MOCK_NO_RESULT; export SEQS_MOCK_FAIL_OUTPUT='Z-keepass: OK'
+: > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" \
+	&& grep -q -- "--targets=A-signal state.apply" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "an OK line must not clear a template that reports ERROR"
+unset SEQS_MOCK_FAIL_OUTPUT
 # A failure without a per-qube ERROR line counts for every template.
 export SEQS_MOCK_FAIL_TEMPLATE=Z-keepass SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_RC=20
 : > "${SEQS_MOCK_QUBESCTL_LOG}"
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-signal: its template failed" <<<"$out" && ok \
 	|| bad "an unattributed template failure must skip every app qube"
-# Neither may an ERROR line printed by another template narrow it down.
-export SEQS_MOCK_FAIL_RC=0 SEQS_MOCK_FAIL_OUTPUT='          Result: False\nZ-signal: ERROR forged by a template'
+# Neither may an ERROR line printed by another template narrow it down, here
+# while qubesctl reports OK for the failed template, which exited 0.
+export SEQS_MOCK_FAIL_RC=0 SEQS_MOCK_FAIL_OUTPUT='          Result: False\nZ-keepass: OK\nZ-signal: ERROR forged by a template'
 out="$(run_setup --build-only --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
 	|| bad "a forged ERROR line must not narrow an unattributed failure"
-# With --verbose the output holds the templates' own lines, so a forged ERROR
-# line must not narrow a non-zero exit either.
-export SEQS_MOCK_FAIL_RC=20 SEQS_MOCK_FAIL_OUTPUT='Z-signal: ERROR forged by a template'
+# With --verbose the output holds the templates' own lines, so forged OK and
+# ERROR lines must not narrow a non-zero exit either.
+export SEQS_MOCK_FAIL_RC=20 SEQS_MOCK_FAIL_OUTPUT='Z-keepass: OK\nZ-signal: ERROR forged by a template'
 : > "${SEQS_MOCK_QUBESCTL_LOG}"
 out="$(run_setup --build-only --verbose --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "skipping A-keepass: its template failed" <<<"$out" \
 	&& ! grep -q -- "--targets=A-keepass\|--targets=.*,A-keepass" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
-	|| bad "with --verbose a forged ERROR line must not narrow an unattributed failure"
+	|| bad "with --verbose forged result lines must not narrow an unattributed failure"
 # An app qube whose template cannot be read might be based on the failed one.
 unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT; export SEQS_MOCK_FAIL_RC=20
 echo "A-signal template " > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
