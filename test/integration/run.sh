@@ -1049,6 +1049,15 @@ out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_GLOBAL_PREF
 [ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" && [ ! -e "${SEQS_POLICY_DIR}/29-browser.policy" ] \
 	&& [ "$(reset_vms)" = "A-notes debian-13-xfce my-wallet-backup personal sys-firewall sys-net vault " ] && ok \
 	|| bad "a reset with no SEQS qube left must remove the SEQS files and succeed: rc=$rc ${out}"
+# With nothing of SEQS left, not even the names record, a reset finds nothing
+# to do and succeeds.
+left="$(ls -A "${SEQS_POLICY_DIR}")"
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_GLOBAL_PREFS="${SBX}/global" \
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ ! -e "${SEQS_STATE_DIR}/names" ] && [ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" \
+	&& [ "$(reset_vms)" = "A-notes debian-13-xfce my-wallet-backup personal sys-firewall sys-net vault " ] \
+	&& [ "$(ls -A "${SEQS_POLICY_DIR}")" = "${left}" ] && ok \
+	|| bad "a reset with nothing of SEQS left must succeed and change nothing: rc=$rc ${out}"
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_NUC11_FW SEQS_NUC11_CONF SEQS_MOCK_UNMANAGED
 unset SEQS_MOCK_FEATURES SEQS_MOCK_PREFS SEQS_MOCK_NETVM_STATE
 unset -f reset_vms
