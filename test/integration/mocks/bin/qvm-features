@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # Mock qvm-features. Reading seqs-managed prints 1 for a D-/A-/Z- qube not
 # listed in SEQS_MOCK_UNMANAGED; SEQS_MOCK_FEATURES may hold "<vm> <feature>
-# <value>" lines; every other call succeeds silently.
+# <value>" lines; SEQS_MOCK_PROVISIONED lists the qubes whose seqs-provisioned
+# was set to 1; every other call succeeds silently.
 args=()
 for a in "$@"; do [ "$a" = "--" ] || args+=("$a"); done
+if [ "${args[1]:-}" = seqs-provisioned ] && [ -n "${SEQS_MOCK_PROVISIONED:-}" ]; then
+	if [ "${#args[@]}" -eq 3 ]; then
+		[ "${args[2]}" != 1 ] || echo "${args[0]}" >> "${SEQS_MOCK_PROVISIONED}"
+	elif grep -qxF -- "${args[0]}" "${SEQS_MOCK_PROVISIONED}" 2>/dev/null; then
+		echo 1
+	fi
+	exit 0
+fi
 if [ "${#args[@]}" -eq 2 ] && [ -n "${SEQS_MOCK_FEATURES:-}" ] \
 	&& awk -v v="${args[0]}" -v f="${args[1]}" '$1 == v && $2 == f { print $3; x=1 } END { exit !x }' "${SEQS_MOCK_FEATURES}"; then
 	exit 0

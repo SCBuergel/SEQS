@@ -261,10 +261,20 @@ printf 'template Z-anon anon\napp A-anon anon netvm=x;id\n' > "${TARGETS_FILE}"
 out="$( ( readTargets ) 2>&1 )" && bad "readTargets accepted an unsafe netvm"
 grep -q "unsafe netvm in ${TARGETS_FILE}: 'netvm=x;id'" <<< "${out}" && ok || bad "unsafe netvm: wrong message [${out}]"
 NETVM_TARGETS=("A-anon A-gnosisvpn")
+# The provider's seqs-provisioned feature, from a stub: PROVISIONED=1 sets it.
+printf '#!/bin/sh\necho "${PROVISIONED:-}"\n' > "${stub}/qvm-features"; chmod +x "${stub}/qvm-features"
+export PROVISIONED=1
 if ( NETVM=A-gnosisvpn verifyNetvm ) >/dev/null 2>&1; then ok; else bad "verifyNetvm failed the declared NetVM"; fi
 out="$( ( NETVM=sys-firewall verifyNetvm ) 2>&1 )" && bad "verifyNetvm passed another NetVM"
 grep -q "qube 'A-anon' does not have its netvm explicitly set to 'A-gnosisvpn'" <<< "${out}" && ok || bad "verifyNetvm: wrong message [${out}]"
 if ( NETVM=A-gnosisvpn FLAG=D verifyNetvm ) >/dev/null 2>&1; then bad "verifyNetvm passed an inherited NetVM"; else ok; fi
+# Before the provider was provisioned, its killswitch is missing: no NetVM.
+unset PROVISIONED
+out="$( ( verifyNetvm ) 2>&1 )" && grep -qF "NetVM verified: A-anon has none until A-gnosisvpn is provisioned." <<< "${out}" \
+	&& ok || bad "verifyNetvm failed a qube without a NetVM before its provider was provisioned [${out}]"
+out="$( ( NETVM=A-gnosisvpn verifyNetvm ) 2>&1 )" && bad "verifyNetvm passed a provider that was never provisioned"
+grep -q "qube 'A-anon' does not have its netvm explicitly set to 'None'" <<< "${out}" && ok || bad "verifyNetvm: wrong message [${out}]"
+rm "${stub}/qvm-features"
 
 echo "== readTargets() and verifyNoDispvm(): a no_handoff qube has no default disposable =="
 printf 'template Z-wallet wallet\napp A-wallet wallet nodispvm\napp A-anon anon netvm=A-gnosisvpn nodispvm\n' > "${TARGETS_FILE}"

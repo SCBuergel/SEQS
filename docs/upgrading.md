@@ -192,6 +192,7 @@ USB/QR setup has hardware and policy checks in
 | Change a component's files (installer, pinned version, key) or the shared libraries | Runs the component again over its earlier installation |
 | Rerun with no change to a component | Skips it: its completion marker records the same content hash |
 | Remove a component from a qube | Stops managing it; does not uninstall its existing software or data |
+| Select a qube routed through a `netvm` provider, such as `anon` | Gives it and its named disposable that NetVM only once the provider was provisioned successfully (its `seqs-provisioned` feature); a provider built before SEQS recorded this must be selected in the same run once |
 | Omit a catalogue entry from `--qubes` | Does not target or recreate its VMs; only updates their link-handoff tag |
 | Remove a qube from a custom `qube_catalog` | Makes it unavailable to future selections; does not delete the existing VM |
 | Change `base_template` | Affects newly cloned templates; does not replace existing managed templates |

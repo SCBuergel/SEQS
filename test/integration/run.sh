@@ -64,6 +64,7 @@ new_sandbox() {
 	unset SEQS_MOCK_FIREWALL_LOG SEQS_MOCK_POLICY_COPY SEQS_MOCK_DOM0_FAIL_RC
 	unset SEQS_MOCK_SHUTDOWN_STUCK SEQS_MOCK_KILL_FAIL
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
+	export SEQS_MOCK_PROVISIONED="${SBX}/provisioned"
 }
 REPO_ORIG_PATH="${PATH}"
 # In en_US.UTF-8, bash's [a-z] also matches look-alikes such as U+0251 (C.UTF-8
@@ -304,14 +305,43 @@ rm -rf "${SBX}"
 echo "== scenario: a qube with a 'netvm' is verified, then provisioned after its provider =="
 new_sandbox
 export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+export SEQS_MOCK_NETVM_STATE="${SBX}/netvms"; : > "${SEQS_MOCK_NETVM_STATE}"
+# Until the provider was provisioned, which installs its killswitch, neither
+# routed qube gets it as NetVM, and A-anon is not provisioned: here its
+# template fails, then its app qube, then its app qube with an OK line that
+# no ERROR line makes attributable.
+for SEQS_MOCK_FAIL_TEMPLATE in Z-gnosisvpn A-gnosisvpn A-gnosisvpn:forged; do
+	unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
+	[[ "${SEQS_MOCK_FAIL_TEMPLATE}" != *:forged ]] \
+		|| export SEQS_MOCK_FAIL_TEMPLATE=A-gnosisvpn SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_OUTPUT='A-gnosisvpn: OK'
+	export SEQS_MOCK_FAIL_TEMPLATE; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+	out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF "NetVM verified: A-anon has none until A-gnosisvpn is provisioned." <<<"$out" \
+		&& grep -qF "WARNING: A-anon stays without a netvm: A-gnosisvpn was not provisioned, so its killswitch is not installed" <<<"$out" \
+		&& grep -qF "WARNING: D-anon stays without a netvm: A-gnosisvpn was not provisioned" <<<"$out" \
+		&& ! grep -q -- "--targets=A-anon" "${SEQS_MOCK_QUBESCTL_LOG}" && ! grep -q anon "${SEQS_MOCK_NETVM_STATE}" && ok \
+		|| bad "a failed ${SEQS_MOCK_FAIL_TEMPLATE} must leave A-anon and D-anon without a netvm, unprovisioned ($rc): ${out}"
+done
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -q "NetVM verified: A-anon uses A-gnosisvpn" <<<"$out" \
 	&& grep -q "NetVM verified: D-anon uses A-gnosisvpn" <<<"$out" && ok \
 	|| bad "both NetVMs must be verified ($rc): $(tail -n 3 <<<"$out")"
+eq "the NetVMs the runner set" "$(grep anon "${SEQS_MOCK_NETVM_STATE}" | sort)" "$(printf '%s\n' "A-anon A-gnosisvpn" "D-anon A-gnosisvpn")"
 grep -qF "No default disposable verified on A-anon A-gnosisvpn D-anon." <<<"$out" && ok \
 	|| bad "the no_handoff qubes' default disposable must be verified: $(grep -i 'default disposable' <<<"$out")"
 eq "the provider's wave comes first" "$(grep -o -- "--targets=A-[^ ]*" "${SEQS_MOCK_QUBESCTL_LOG}" | tail -n 2 | tr '\n' ' ')" \
 	"--targets=A-gnosisvpn --targets=A-anon "
+# A provider that was provisioned before keeps its killswitch; one that fails
+# again, in its template or its app qube, still holds back its routed qube.
+for SEQS_MOCK_FAIL_TEMPLATE in Z-gnosisvpn A-gnosisvpn; do
+	export SEQS_MOCK_FAIL_TEMPLATE; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+	out="$(run_setup --build-only --qubes gnosisvpn,anon 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF "WARNING: skipping A-anon: its netvm A-gnosisvpn failed to provision" <<<"$out" \
+		&& ! grep -q -- "--targets=A-anon" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+		|| bad "a routed qube must not be provisioned after ${SEQS_MOCK_FAIL_TEMPLATE} failed ($rc): ${out}"
+done
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_NETVM_STATE
 echo "A-anon netvm sys-firewall" > "${SBX}/prefs"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes gnosisvpn,anon 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "qube 'A-anon' does not have its netvm explicitly set to 'A-gnosisvpn'" <<<"$out" \

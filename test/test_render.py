@@ -1003,8 +1003,23 @@ def test_dom0_named_disposable():
 
 def test_dom0_netvm_key():
     case("dom0.sls: 'netvm' routes a qube and its named disposable through a network provider")
+    # Until the provider was provisioned, which installs its killswitch, both
+    # have no NetVM; the runner sets the provider after provisioning it.
     _, parsed = render_state("dom0", "dom0", Scenario(selection="gnosisvpn\nanon"))
     check("seqs-validation-failed" not in parsed, "anon with gnosisvpn must pass validation: " + _errors(parsed))
+    app = parsed.get("seqs-app-anon", {}).get("qvm.vm", [])
+    check(not [p for p in next((i["prefs"] for i in app if "prefs" in i), []) if "netvm" in p],
+          "A-anon must get no NetVM before A-gnosisvpn was provisioned")
+    check(state_arg(parsed, "seqs-netvm-pending-anon", "cmd.run", "name") == "qvm-prefs -- A-anon netvm none",
+          "A-anon's NetVM must be cleared before A-gnosisvpn was provisioned")
+    check("qvm-prefs -- D-anon netvm none\n" in state_arg(parsed, "seqs-disposable-prefs-anon", "cmd.run", "name"),
+          "D-anon must get no NetVM before A-gnosisvpn was provisioned")
+    # A provisioned provider is used, also when it is not selected.
+    provisioned = dict(existing_qubes=["A-gnosisvpn"], tagged_qubes=["A-gnosisvpn"],
+                       recipes={"A-gnosisvpn": "gnosisvpn"}, provisioned_qubes=["A-gnosisvpn"])
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="gnosisvpn\nanon", **provisioned))
+    check("seqs-validation-failed" not in parsed, "anon with gnosisvpn must pass validation: " + _errors(parsed))
+    check("seqs-netvm-pending-anon" not in parsed, "a provisioned provider must not clear A-anon's NetVM")
     app = parsed.get("seqs-app-anon", {}).get("qvm.vm", [])
     check({"netvm": "A-gnosisvpn"} in next((i["prefs"] for i in app if "prefs" in i), []),
           "A-anon must get A-gnosisvpn as NetVM")
@@ -1036,7 +1051,11 @@ def test_dom0_netvm_key():
     check("needs its netvm 'A-gnosisvpn'" in _errors(parsed), "a provider built for another recipe must not count")
     _, parsed = render_state("dom0", "dom0", Scenario(selection="anon", existing_qubes=["A-gnosisvpn"],
                                                       tagged_qubes=["A-gnosisvpn"], recipes={"A-gnosisvpn": "gnosisvpn"}))
-    check("seqs-validation-failed" not in parsed, "anon with an existing A-gnosisvpn must pass: " + _errors(parsed))
+    check("needs its netvm 'A-gnosisvpn'" in _errors(parsed), "a provider never provisioned must not count")
+    _, parsed = render_state("dom0", "dom0", Scenario(selection="anon", **provisioned))
+    check("seqs-validation-failed" not in parsed, "anon with a provisioned A-gnosisvpn must pass: " + _errors(parsed))
+    check("qvm-prefs -- D-anon netvm A-gnosisvpn\n" in state_arg(parsed, "seqs-disposable-prefs-anon", "cmd.run", "name"),
+          "D-anon must use an unselected provisioned provider")
     check("seqs-network-provider-gnosisvpn" not in str(parsed.get("seqs-app-anon", "")),
           "an unselected provider has no state to wait for")
     for entry, why in [({"netvm": "brave"}, "a qube that provides no network"),

@@ -585,16 +585,30 @@ verifyAirgap() {
 	fi
 }
 
-# verifyNetvm -- independent post-apply check that every qube whose catalogue
-# entry names a 'netvm' provider has exactly that NetVM, set explicitly: one
-# inherited from the global default would bypass the VPN.
+# isProvisioned VM -- whether VM's seqs.qube apply once succeeded: the runner
+# then sets seqs-provisioned from dom0, which a qube cannot do itself. For a
+# network provider it means that its killswitch, the firewall hook its
+# app-vm.sh installs, is in place.
+isProvisioned() {
+	[ "$(qvm-features -- "$1" seqs-provisioned 2>/dev/null)" = 1 ]
+}
+
+# verifyNetvm -- independent check that every qube whose catalogue entry names
+# a 'netvm' provider has exactly that NetVM once the provider was provisioned,
+# and none before, set explicitly: one inherited from the global default would
+# bypass the VPN.
 verifyNetvm() {
-	local entry vm netvm
+	local entry vm netvm want
 	for entry in "${NETVM_TARGETS[@]}"; do
-		vm="${entry% *}" netvm="${entry#* }"
-		qvm-prefs -- "${vm}" 2>/dev/null | awk -v n="${netvm}" '$1 == "netvm" && $2 == "-" && $3 == n { f = 1 } END { exit !f }' \
-			|| die "qube '${vm}' does not have its netvm explicitly set to '${netvm}' after the dom0 apply -- refusing to provision."
-		echo "    NetVM verified: ${vm} uses ${netvm}."
+		vm="${entry% *}" netvm="${entry#* }" want=None
+		! isProvisioned "${netvm}" || want="${netvm}"
+		qvm-prefs -- "${vm}" 2>/dev/null | awk -v n="${want}" '$1 == "netvm" && $2 == "-" && $3 == n { f = 1 } END { exit !f }' \
+			|| die "qube '${vm}' does not have its netvm explicitly set to '${want}' -- refusing to provision."
+		if [ "${want}" = None ]; then
+			echo "    NetVM verified: ${vm} has none until ${netvm} is provisioned."
+		else
+			echo "    NetVM verified: ${vm} uses ${netvm}."
+		fi
 	done
 }
 
@@ -1017,15 +1031,33 @@ setupGnosisUpdateProxy() {
 		|| die "could not install temporary GnosisVPN updates policy"
 }
 
-# provisionApps VM... -- apply seqs.qube to the app qubes VM...; a failure
-# marks the run failed.
+# finished VM -- whether the last runQubesctl printed an OK line and no ERROR
+# line for VM.
+finished() {
+	[[ " ${OK_QUBES[*]} " == *" $1 "* && " ${FAILED_QUBES[*]} " != *" $1 "* ]]
+}
+
+# provisionApps VM... -- apply seqs.qube to the app qubes VM..., add the
+# failed ones to FAILED_APPS, and mark the others provisioned. As for
+# templates, after a failure a qube counts as provisioned only if qubesctl's
+# own ERROR lines name the failed ones and no target's output could have
+# forged them; and always only if it finished.
 provisionApps() {
 	[ "$#" -gt 0 ] || return 0
+	local vm attributed=1
 	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" --targets="$(joinCsv "$@")" state.apply seqs.qube; then
 		echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
 		echo "         with --verbose for full per-state output)." >&2
 		FAILED=1
+		[ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ] || attributed=0
 	fi
+	for vm in "$@"; do
+		if [ "${attributed}" -eq 1 ] && finished "${vm}"; then
+			qvm-features -- "${vm}" seqs-provisioned 1 || die "could not record that ${vm} was provisioned"
+		else
+			FAILED_APPS+=("${vm}")
+		fi
+	done
 }
 
 buildQubes() {
@@ -1086,8 +1118,7 @@ buildQubes() {
 		if [ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ]; then
 			local -a failed=()
 			for vm in "${TEMPLATE_TARGETS[@]}"; do
-				[[ " ${OK_QUBES[*]} " == *" ${vm} "* && " ${FAILED_QUBES[*]} " != *" ${vm} "* ]] \
-					|| failed+=("${vm}")
+				finished "${vm}" || failed+=("${vm}")
 			done
 			FAILED_QUBES=("${failed[@]}")
 		else
@@ -1119,12 +1150,14 @@ buildQubes() {
 
 	# An app qube of a failed template would be provisioned on a partial install.
 	apps=()
+	FAILED_APPS=()
 	local tpl
 	for vm in "${APP_TARGETS[@]}"; do
 		tpl="$(qvm-prefs -- "${vm}" template)" && [ -n "${tpl}" ] || die "could not read the template of ${vm}"
 		if [[ " ${FAILED_TEMPLATES[*]} " == *" ${tpl} "* ]]; then
 			echo "WARNING: skipping ${vm}: its template failed" >&2
 			FAILED=1
+			FAILED_APPS+=("${vm}")
 		else
 			apps+=("${vm}")
 		fi
@@ -1133,17 +1166,37 @@ buildQubes() {
 
 	# Qubes with a 'netvm' go in a second wave: Salt shuts each qube down after
 	# provisioning it, and Qubes refuses to shut down a NetVM that a running
-	# qube uses.
-	local entry
+	# qube uses. They also need their provider provisioned first.
+	local entry netvm
 	local -a routed=() first=() second=()
 	for entry in "${NETVM_TARGETS[@]}"; do routed+=("${entry% *}"); done
 	for vm in "${APP_TARGETS[@]}"; do
-		if [[ " ${routed[*]} " == *" ${vm} "* ]]; then second+=("${vm}"); else first+=("${vm}"); fi
+		[[ " ${routed[*]} " == *" ${vm} "* ]] || first+=("${vm}")
 	done
 
 	echo ""
 	echo "==> [3/3] Provisioning ${#APP_TARGETS[@]} app qube(s): ${APP_TARGETS[*]}"
 	provisionApps "${first[@]}"
+	# A routed qube and its named disposable get their provider as NetVM only
+	# once the provider was provisioned, and are provisioned only if this run
+	# did not fail it.
+	for entry in "${NETVM_TARGETS[@]}"; do
+		vm="${entry% *}" netvm="${entry#* }"
+		if ! isProvisioned "${netvm}"; then
+			echo "WARNING: ${vm} stays without a netvm: ${netvm} was not provisioned, so its killswitch is not installed" >&2
+			FAILED=1
+			continue
+		fi
+		qvm-prefs -- "${vm}" netvm "${netvm}" || die "could not set the netvm of ${vm} to ${netvm}"
+		[[ " ${APP_TARGETS[*]} " == *" ${vm} "* ]] || continue
+		if [[ " ${FAILED_APPS[*]} " == *" ${netvm} "* ]]; then
+			echo "WARNING: skipping ${vm}: its netvm ${netvm} failed to provision" >&2
+			FAILED=1
+		else
+			second+=("${vm}")
+		fi
+	done
+	verifyNetvm
 	provisionApps "${second[@]}"
 
 	shutdownAll "${second[@]}" "${first[@]}"

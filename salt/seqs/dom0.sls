@@ -44,7 +44,8 @@
 {% set inventory_cmd %}python3 -c 'import qubesadmin
 for vm in qubesadmin.Qubes().domains:
     f = vm.features
-    print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()))
+    print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()),
+          "1" if f.get("seqs-provisioned") == "1" else "0")
 print("END")'{% endset %}
 {% set inventory = {} %}
 {% set inventory_lines = salt['cmd.shell'](inventory_cmd | trim).splitlines() %}
@@ -53,8 +54,8 @@ print("END")'{% endset %}
 {% endif %}
 {% for line in inventory_lines %}
 {%   set f = line.split() %}
-{%   if f | length == 3 %}
-{%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2]}}) %}
+{%   if f | length == 4 %}
+{%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2], 'provisioned': f[3] == '1'}}) %}
 {%   endif %}
 {% endfor %}
 {% if 'dom0' not in inventory %}
@@ -363,10 +364,12 @@ print("END")'{% endset %}
 {% endfor %}
 
 {# ── A selected qube's 'netvm' provider must be selected in this run or be
-     an existing qube SEQS built for that recipe. ── #}
+     an existing qube SEQS built for that recipe and provisioned
+     (seqs-provisioned, which the runner sets from dom0 after the provider's
+     seqs.qube apply: only then is its killswitch installed). ── #}
 {% for name, q in qmap.items() if q.get('netvm') is string and q.netvm in qcatalog %}
 {%   set provider = papp ~ q.netvm %}
-{%   if q.netvm not in qmap and inventory.get(provider, {}).get('recipe') != q.netvm %}
+{%   if q.netvm not in qmap and (inventory.get(provider, {}).get('recipe') != q.netvm or not inventory[provider].provisioned) %}
 {%     do errors.append("qube '" ~ name ~ "' needs its netvm '" ~ provider ~ "': select '" ~ q.netvm ~ "' in this run or build it first") %}
 {%   endif %}
 {% endfor %}
@@ -796,6 +799,11 @@ seqs-stale-intent-{{ m }}:
 {%   set tpl_tagged = tpl_exists and inventory.get(tpl, {}).get('managed') %}
 {%   set app_tagged = app_exists and inventory.get(app, {}).get('managed') %}
 {%   set dvm_tagged = dvm_exists and inventory.get(dvm, {}).get('managed') %}
+{#   A routed qube gets its 'netvm' provider only once the provider was
+     provisioned, which installs the firewall hook that keeps the qube offline
+     while the VPN is down; until then it has none, and the runner sets the
+     provider after provisioning it. #}
+{%   set routed_netvm = (papp ~ q.netvm) if q.get('netvm') and inventory.get(papp ~ q.netvm, {}).get('provisioned') else 'none' %}
 
 {%   if tpl_tagged %}
 seqs-existing-template-{{ name }}:
@@ -863,8 +871,8 @@ seqs-app-{{ name }}:
 {%   if q.get('network_provider') %}
       - provides_network: True
 {%   endif %}
-{%   if q.get('netvm') %}
-      - netvm: {{ papp ~ q.netvm }}
+{%   if routed_netvm != 'none' %}
+      - netvm: {{ routed_netvm }}
 {%   endif %}
 {%   if q.get('cpu_pinning') %}
       - vcpus: {{ q.cpu_pinning.cpus | length }}
@@ -883,6 +891,16 @@ seqs-app-{{ name }}:
 {%     if provider_selected %}
       - cmd: seqs-network-provider-{{ q.netvm }}
 {%     endif %}
+{%   endif %}
+
+{%   if q.get('netvm') and routed_netvm == 'none' %}
+# Its provider was not provisioned yet: no NetVM (see routed_netvm).
+seqs-netvm-pending-{{ name }}:
+  cmd.run:
+    - name: qvm-prefs -- {{ app }} netvm none
+    - unless: qvm-prefs -- {{ app }} | awk '$1 == "netvm" && $2 == "-" && $3 == "None" { f = 1 } END { exit !f }'
+    - require:
+      - qvm: seqs-app-{{ name }}
 {%   endif %}
 
 {%   if q.get('offline') %}
@@ -1088,19 +1106,18 @@ seqs-create-disposable-{{ name }}:
       - file: seqs-intent-disposable-{{ name }}
 {%     endif %}
 
-# Set the NetVM of every named disposable explicitly: the 'netvm' provider
-# if its entry names one, otherwise none. Clear its default disposable, and
-# suppress the dispvm-launcher menu entries so this disposable shows normal
-# app launchers, not "start a disposable from me".
-{%     set dvm_netvm = (papp ~ q.netvm) if q.get('netvm') else 'none' %}
+# Set the NetVM of every named disposable explicitly: routed_netvm (the
+# 'netvm' provider once it was provisioned) or none. Clear its default
+# disposable, and suppress the dispvm-launcher menu entries so this disposable
+# shows normal app launchers, not "start a disposable from me".
 seqs-disposable-prefs-{{ name }}:
   cmd.run:
     - name: |
         set -e
-        qvm-prefs -- {{ dvm }} netvm {{ dvm_netvm }}
+        qvm-prefs -- {{ dvm }} netvm {{ routed_netvm }}
         qvm-prefs -- {{ dvm }} default_dispvm none
         qvm-features -- {{ dvm }} appmenus-dispvm ''
-    - unless: qvm-prefs -- {{ dvm }} | awk '$2 == "-" && (($1 == "netvm" && $3 == "{{ 'None' if dvm_netvm == 'none' else dvm_netvm }}") || ($1 == "default_dispvm" && $3 == "None")) { n++ } END { exit n != 2 }' && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
+    - unless: qvm-prefs -- {{ dvm }} | awk '$2 == "-" && (($1 == "netvm" && $3 == "{{ 'None' if routed_netvm == 'none' else routed_netvm }}") || ($1 == "default_dispvm" && $3 == "None")) { n++ } END { exit n != 2 }' && [ -z "$(qvm-features -- {{ dvm }} appmenus-dispvm 2>/dev/null)" ]
     - require:
       - qvm: seqs-app-{{ name }}
 {%     if not dvm_exists %}

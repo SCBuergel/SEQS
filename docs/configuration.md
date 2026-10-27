@@ -169,8 +169,10 @@ is one of red, orange, yellow, green, gray, blue, purple, or black. The flags:
   `bluetooth` entry uses it; see [bluetooth.md](bluetooth.md).
 - `'netvm': 'gnosisvpn'` — the app qube and its named disposable use the app
   qube of that catalogue entry (here `A-gnosisvpn`), which must set
-  `network_provider`, as their NetVM. The provider must be selected in the
-  same build or already built; a postfixed provider cannot be named, so a
+  `network_provider`, as their NetVM, once that provider was provisioned
+  successfully; until then they have none, and the app qube is not
+  provisioned. The provider must be selected in the same build or already
+  built successfully; a postfixed provider cannot be named, so a
   postfixed instance such as `anon-x` still uses the unpostfixed
   `A-gnosisvpn`, also with `--all --postfix x`. The
   shipped `anon` entry, a Brave disposable (`D-anon`), uses it. The runner

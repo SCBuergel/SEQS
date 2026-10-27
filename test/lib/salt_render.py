@@ -83,6 +83,7 @@ class Scenario:
         top_content=None,        # contents of /srv/pillar/seqs/config.top
         selection="@all",        # runtime catalogue selection, one name per line
         recipes=None,            # name -> seqs-recipe feature of existing qubes
+        provisioned_qubes=None,  # names whose `seqs-provisioned` feature is '1'
         qubesd_up=True,          # False: the qube inventory query returns nothing
         inventory_complete=True,  # False: the inventory query stops before its END line
         host_cpus="4",           # what `xl info` reports as nr_cpus
@@ -93,6 +94,7 @@ class Scenario:
         self.host_cpus = host_cpus
         self.hda_codecs = list(hda_codecs)
         self.recipes = dict(recipes or {})
+        self.provisioned_qubes = set(provisioned_qubes or [])
         self.qubesd_up = qubesd_up
         self.inventory_complete = inventory_complete
         self.existing_qubes = set(existing_qubes or [])
@@ -122,12 +124,13 @@ class Scenario:
 
     def cmd_shell(self, cmd, **_):
         if "import qubesadmin" in cmd:
-            # The dom0 inventory: "<name> <managed 1|0> <recipe or ->" per
-            # qube, as printed by the one-shot qubesadmin query in dom0.sls.
+            # The dom0 inventory: "<name> <managed 1|0> <recipe or ->
+            # <provisioned 1|0>" per qube, as printed by the one-shot
+            # qubesadmin query in dom0.sls.
             names = sorted(self.existing_qubes | {"dom0"}) if self.qubesd_up else []
             return "\n".join(
-                "%s %s %s" % (n, "1" if n in self.tagged_qubes else "0",
-                              self.recipes.get(n, "-"))
+                "%s %s %s %s" % (n, "1" if n in self.tagged_qubes else "0",
+                                 self.recipes.get(n, "-"), "1" if n in self.provisioned_qubes else "0")
                 for n in names) + ("\nEND" if self.qubesd_up and self.inventory_complete else "")
         if "/var/lib/seqs/selection" in cmd:
             return self.selection
