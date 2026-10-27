@@ -9,6 +9,7 @@ config=/rw/config/seqs-wireguard/wg0.conf
 mapfile -t provider_dns < <(
 	awk -F= '
 		/^[[:space:]]*DNS[[:space:]]*=/ {
+			sub(/#.*/, "")	# a comment, as wg-quick strips it
 			gsub(/[[:space:]]/, "", $2)
 			n = split($2, servers, ",")
 			for (i = 1; i <= n; i++)

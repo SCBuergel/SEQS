@@ -480,6 +480,12 @@ wg_conf; rm -f "${wg}/sudo.log"
 out="$(wg_import)" && grep -q "seqs-wireguard/wg0.conf" "${wg}/sudo.log" && ok || bad "a provider export was refused: ${out}"
 wg_conf; sed -i 's|^AllowedIPs = .*|AllowedIPs = 0.0.0.0/0 # all traffic|' "${wg}/t.conf"; rm -f "${wg}/sudo.log"
 out="$(wg_import)" && ok || bad "a full tunnel with a trailing comment was refused: ${out}"
+# Like dns.sh, the DNS check ignores an address that is only in a comment.
+wg_conf; sed -i 's|^DNS = .*|DNS = 10.2.0.1 # resolver|' "${wg}/t.conf"
+out="$(wg_import)" && ok || bad "a DNS server with a trailing comment was refused: ${out}"
+wg_conf; sed -i 's|^DNS = .*|DNS = dns.example # 10.2.0.1|' "${wg}/t.conf"
+out="$(wg_import)" && bad "the import accepted an IPv4 DNS server only in a comment"
+grep -q "not a complete full-tunnel" <<< "${out}" && ok || bad "DNS in a comment: wrong message [${out}]"
 for extra in 'PostUp = touch /tmp/x' $'Post\x01Up = touch /tmp/x' 'Table = off' 'SaveConfig = true'; do
 	wg_conf "${extra}"; rm -f "${wg}/sudo.log"
 	out="$(wg_import)" && bad "the import accepted [${extra}]"
@@ -534,6 +540,12 @@ rm -f "${wd}/batch"; bash "${wd}/seqs-wireguard" stop \
 	&& ! grep -qF "${out_chain}" "${wd}/batch" \
 	&& grep -q 'ip daddr 10.139.1.1 udp dport 53 dnat to 10.128.0.1' "${wd}/batch" \
 	&& ok || bad "seqs-wireguard stop must take wg0 down and drop only this qube's own DNS translation"
+# wg-quick strips a trailing comment; dns.sh must too, and use no address in it.
+printf '[Interface]\nDNS = 10.2.0.1 # resolver, not 9.9.9.9\n' > "${wd}/wg0.conf"
+rm -f "${wd}/up" "${wd}/batch"; bash "${wd}/dns.sh" \
+	&& grep -q 'ip daddr 10.139.1.2 udp dport 53 dnat to 10.2.0.1' "${wd}/batch" \
+	&& ! grep -q '9\.9\.9\.9' "${wd}/batch" \
+	&& ok || bad "dns.sh must ignore a trailing comment on DNS="
 
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 # Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
