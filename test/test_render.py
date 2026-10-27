@@ -1430,6 +1430,63 @@ def test_dom0_firewall_states():
             "firewall entry %r must be accepted" % good)
 
 
+_FAKE_QVM_FIREWALL = r"""#!/usr/bin/env bash
+# qvm-firewall [--raw] -- A-wallet list | add [--before N] RULE... | del --rule-no N,
+# on the rules file next to this script, one rule per line, numbered from 0.
+f="$(dirname "$0")/rules"; args=()
+for a in "$@"; do case "$a" in --raw|--) ;; *) args+=("$a") ;; esac; done
+[ "${args[0]}" = A-wallet ] || exit 2
+n="$(wc -l < "$f")"
+case "${args[1]}" in
+	list) cat "$f" ;;
+	add) if [ "${args[2]}" = --before ]; then at="${args[3]}"; rule="${args[*]:4}"; else at="$n"; rule="${args[*]:2}"; fi
+		[ "$at" -le "$n" ] || exit 1
+		awk -v at="$at" -v r="$rule" 'NR == at + 1 { print r } { print } END { if (NR == at) print r }' "$f" > "$f.new" ;;
+	del) [ "${args[2]}" = --rule-no ] && [ "${args[3]}" -lt "$n" ] || exit 1
+		awk -v at="${args[3]}" 'NR != at + 1' "$f" > "$f.new" ;;
+	*) exit 2 ;;
+esac
+[ ! -e "$f.new" ] || mv "$f.new" "$f"
+"""
+
+
+def test_dom0_firewall_ruleset():
+    case("dom0.sls: the allowlist command leaves exactly the accepts, then one drop")
+    pillar = _bad_pillar(catalogue={
+        "wallet": {"label": "gray", "components": ["brave"],
+                   "firewall": ["dns", "rpc.example.com:443"]}})
+    _, parsed = render_state("dom0", "dom0", Scenario(existing_qubes=["A-brave"]), pillar_seqs=pillar)
+    expected = ["accept specialtarget=dns", "accept dsthost=rpc.example.com proto=tcp dstports=443", "drop"]
+    with tempfile.TemporaryDirectory() as d:
+        # The commands run against a fake qvm-firewall, with the marker
+        # directory moved into the test directory.
+        fake = os.path.join(d, "qvm-firewall")
+        with open(fake, "w", encoding="utf-8") as f:
+            f.write(_FAKE_QVM_FIREWALL)
+        os.chmod(fake, 0o755)
+        env = dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"])
+        state = os.path.join(d, "state")
+
+        def run(key):
+            script = state_arg(parsed, "seqs-firewall-wallet", "cmd.run", key)
+            check("/var/lib/seqs/firewall" in script, "the %s command must use the marker directory" % key)
+            script = script.replace("/var/lib/seqs/firewall", state)
+            return subprocess.run(["bash", "-c", script], env=env, timeout=60,
+                                  capture_output=True, text=True)
+
+        # The Qubes default, and a ruleset edited by hand.
+        for start in (["accept"], ["accept dsthost=old.example", "drop", "accept proto=icmp", "accept"]):
+            with open(os.path.join(d, "rules"), "w", encoding="utf-8") as f:
+                f.write("".join(r + "\n" for r in start))
+            done = run("name")
+            with open(os.path.join(d, "rules"), encoding="utf-8") as f:
+                rules = f.read().splitlines()
+            check(done.returncode == 0 and rules == expected,
+                  "from %r the allowlist must leave %r, got %r (rc %d: %s)"
+                  % (start, expected, rules, done.returncode, done.stderr))
+            check(run("unless").returncode == 0, "from %r the marker must make the rerun a no-op" % start)
+
+
 def test_dom0_network_provider():
     case("dom0.sls: a network provider exposes networking and enables firewall")
     pillar = _bad_pillar(catalogue={

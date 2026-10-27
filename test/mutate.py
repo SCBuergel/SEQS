@@ -243,6 +243,8 @@ MUTATIONS = [
     ("desktop-shortcut", R, '[[ "${a}" =~ ${shortcut_re} && "${b}" =~ ^[a-z][a-z_]*_key$ ]] \\', 'true \\'),
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "{%           if e not in ['dns', 'icmp'] and ((es", "{%           if false and ((es"),
+    ("dom0-firewall-delete-old", S, "del --rule-no 1; done", "del --rule-no 0; done"),
+    ("dom0-firewall-accept-index", S, "add --before {{ loop.index0 }} {{ r }}", "add --before {{ loop.index }} {{ r }}"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]\\\\Z') is none %}", "regex_match('^.*$') is none %}"),
     # \Z, not $, which also matches before a trailing newline.
     ("dom0-webcam-bdf-anchor", S, "[0-7]\\\\Z') is none %}", "[0-7]$') is none %}"),
