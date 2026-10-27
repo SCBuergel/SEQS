@@ -856,7 +856,7 @@ eq "a fifth number is refused" "$(mon '1 2 3 4 5' A-gnosisvpn)" " VPN: n/a"
 # In en_US.UTF-8, bash's [0-9] also matches digits such as U+FF11 (fullwidth 1).
 utf8="$(locale -a 2>/dev/null | grep -m1 -ix 'en_US\.utf-\?8')"
 if [ -n "${utf8}" ]; then
-	eq "a non-ASCII digit is refused" "$(LC_ALL="${utf8}" mon $'\xef\xbc\x91 2 3 4' A-gnosisvpn)" " VPN: n/a"
+	eq "a non-ASCII digit is refused" "$(LANG="${utf8}" LC_ALL="${utf8}" mon $'\xef\xbc\x91 2 3 4' A-gnosisvpn)" " VPN: n/a"
 else
 	echo "  skipped: non-ASCII digit (no en_US UTF-8 locale)"
 fi

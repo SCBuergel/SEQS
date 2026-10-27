@@ -8,7 +8,7 @@ shopt -s inherit_errexit
 # matches look-alikes such as U+0251 and digits such as U+00B2. Every check here
 # is ASCII-only, so bash itself runs in the C locale. LC_ALL is not exported,
 # so the commands it runs follow the operator's LANG and LC_* settings (an
-# exported LC_ALL is dropped for them).
+# exported LC_ALL is dropped for them: with no LANG, they run in C).
 export -n LC_ALL
 LC_ALL=C
 

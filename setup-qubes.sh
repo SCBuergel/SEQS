@@ -21,7 +21,7 @@ set -uo pipefail
 # matches look-alikes such as U+0251 and digits such as U+00B2. Every check here
 # is ASCII-only, so bash itself runs in the C locale. LC_ALL is not exported,
 # so the commands it runs follow the operator's LANG and LC_* settings (an
-# exported LC_ALL is dropped for them).
+# exported LC_ALL is dropped for them: with no LANG, they run in C).
 export -n LC_ALL
 LC_ALL=C
 
@@ -123,8 +123,8 @@ runQubesctl() {
 	fi
 	# qubesctl prints "VM: OK" or "VM: ERROR ..." per finished qube; show why
 	# a qube failed from its log.
-	mapfile -t OK_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): OK$/\1/p' <<< "${out}")
-	mapfile -t FAILED_QUBES < <(sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
+	mapfile -t OK_QUBES < <(LC_ALL=C sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): OK$/\1/p' <<< "${out}")
+	mapfile -t FAILED_QUBES < <(LC_ALL=C sed -nE 's/^([A-Za-z0-9_][A-Za-z0-9._-]*): ERROR .*/\1/p' <<< "${out}")
 	[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1
 	# With --show-output the stream holds the targets' own output, so a target
 	# could forge an ERROR line: then no qube is singled out as the failed one.

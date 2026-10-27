@@ -482,7 +482,7 @@ if [ -n "${UTF8_LOCALE}" ]; then
 t = tarfile.open(sys.argv[1], "w", encoding="utf-8")
 i = tarfile.TarInfo("salt/seqs/templ\u0251te.sls"); i.size = 1
 t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
-	out="$(LC_ALL="${UTF8_LOCALE}" run_setup --fetch-only 2>&1)"; rc=$?
+	out="$(LANG="${UTF8_LOCALE}" LC_ALL="${UTF8_LOCALE}" run_setup --fetch-only 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qF $'refusing unsafe tar path: salt/seqs/templ\xc9\x91te.sls' <<<"$out" \
 		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
 		|| bad "a look-alike letter in a name must be refused: rc=$rc $(tail -n 2 <<<"$out")"
@@ -650,7 +650,7 @@ out="$(run_setup --build-only --qubes brave --postfix '../unsafe' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "unsafe or empty postfix" <<<"$out" && ok \
 	|| bad "unsafe postfix should be refused before the build"
 if [ -n "${UTF8_LOCALE}" ]; then
-	out="$(LC_ALL="${UTF8_LOCALE}" run_setup --build-only --qubes brave --postfix $'\xc9\x91' 2>&1)"; rc=$?
+	out="$(LANG="${UTF8_LOCALE}" LC_ALL="${UTF8_LOCALE}" run_setup --build-only --qubes brave --postfix $'\xc9\x91' 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qF $'unsafe or empty postfix \'\xc9\x91\'' <<<"$out" && ok \
 		|| bad "a look-alike postfix should be refused: rc=$rc $(tail -n 2 <<<"$out")"
 else
@@ -923,7 +923,7 @@ out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
 grep -q "refusing unsafe name" <<<"$out" && ok || bad "expected the unsafe-name error"
 if [ -n "${UTF8_LOCALE}" ]; then
-	out="$(LC_ALL="${UTF8_LOCALE}" bash "${REPO}/delete-vms.sh" $'qr-displ\xc9\x91y' 2>&1)"; rc=$?
+	out="$(LANG="${UTF8_LOCALE}" LC_ALL="${UTF8_LOCALE}" bash "${REPO}/delete-vms.sh" $'qr-displ\xc9\x91y' 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qF $'refusing unsafe name \'qr-displ\xc9\x91y\'' <<<"$out" && ok \
 		|| bad "a look-alike name must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 else
@@ -1257,7 +1257,7 @@ if command -v setsid >/dev/null 2>&1; then
 	qr_reset; echo 'CONTROLLER=00_14.0x' >> "${SBX}/conf"; qr_case "bad BDF" "invalid controller BDF"
 	if [ -n "${UTF8_LOCALE}" ]; then
 		qr_reset; printf 'SCANNER_QUBE=seqs-qr-sc\xc9\x91nner\n' >> "${SBX}/conf"
-		LC_ALL="${UTF8_LOCALE}" qr_case "look-alike name" "unsafe qube name"
+		LANG="${UTF8_LOCALE}" LC_ALL="${UTF8_LOCALE}" qr_case "look-alike name" "unsafe qube name"
 	else
 		echo "  skipped: look-alike QR qube name (no en_US UTF-8 locale)"
 	fi
