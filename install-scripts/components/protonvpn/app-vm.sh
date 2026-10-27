@@ -13,7 +13,8 @@ if [ "$(sudo head -c 2 "${hook}" 2>/dev/null)" != '#!' ]; then
 fi
 sudo chmod 0755 "${hook}"
 if ! sudo grep -Fqx "${entry}" "${hook}"; then
-	printf '%s\n' "${entry}" | sudo tee -a "${hook}" >/dev/null
+	# A last line without its newline would swallow the entry.
+	{ [ -z "$(sudo tail -c 1 -- "${hook}")" ] || echo; printf '%s\n' "${entry}"; } | sudo tee -a "${hook}" >/dev/null
 fi
 
 echo "Proton VPN NetVM ready: start Proton VPN from the menu and sign in."

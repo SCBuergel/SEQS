@@ -547,6 +547,30 @@ rm -f "${wd}/up" "${wd}/batch"; bash "${wd}/dns.sh" \
 	&& ! grep -q '9\.9\.9\.9' "${wd}/batch" \
 	&& ok || bad "dns.sh must ignore a trailing comment on DNS="
 
+echo "== VPN installers add their fail-closed hook lines on a line of their own, once =="
+# Each copy runs with /rw under a test directory and a stub sudo, called by
+# absolute path, that runs the command unprivileged. Every hook starts with a
+# last line that has no newline; the line added must not merge into it.
+vh="${tmp}/vpnhook"; mkdir -p "${vh}/bin"
+printf '#!/bin/sh\nexec "$@"\n' > "${vh}/bin/sudo"; chmod +x "${vh}/bin/sudo"
+for c in protonvpn/app-vm.sh wireguard/app-vm.sh gnosisvpn/seqs-gnosisvpn-prepare-app; do
+	d="${vh}/${c%%/*}"; mkdir -p "${d}/rw/config"
+	cp "install-scripts/components/${c%%/*}"/* "${d}/"
+	sed -E -e "s#(^|[^-/A-Za-z_])sudo #\\1${vh}/bin/sudo #g" -e "s#/rw/#${d}/rw/#g" \
+		-e 's#^\[\[ \$\{EUID\} -eq 0 \]\]#true#' -e 's#^/usr/sbin/seqs-gnosisvpn-dns$#true#' \
+		"install-scripts/components/${c}" > "${d}/run"
+	grep -vE '^[[:space:]]*#' "${d}/run" | grep -qE '(^|[^-/A-Za-z_])sudo ' && bad "${c}: the copy still calls sudo through PATH"
+	for h in rc.local qubes-firewall-user-script; do printf '#!/bin/sh\n# my rules' > "${d}/rw/config/${h}"; done
+	for run in 1 2; do HOME="${d}" bash "${d}/run" >/dev/null 2>&1 || bad "${c} failed on run ${run}"; done
+done
+hook_is() {  # FILE LINE -- FILE holds the operator's lines, then LINE once
+	printf '#!/bin/sh\n# my rules\n%s\n' "$2" | cmp -s - "$1" && ok || bad "$1: [$(cat -A "$1")]"
+}
+hook_is "${vh}/protonvpn/rw/config/qubes-firewall-user-script" "${vh}/protonvpn/rw/config/seqs-protonvpn-firewall.sh"
+hook_is "${vh}/wireguard/rw/config/rc.local" "${vh}/wireguard/rw/config/seqs-wireguard/boot.sh"
+hook_is "${vh}/wireguard/rw/config/qubes-firewall-user-script" "${vh}/wireguard/rw/config/seqs-wireguard/firewall.sh"
+hook_is "${vh}/gnosisvpn/rw/config/qubes-firewall-user-script" /usr/sbin/seqs-gnosisvpn-firewall
+
 echo "== runQubesctl() fails on a failed state even when qubesctl exits 0 =="
 # Shell functions, not stubs on PATH: they cannot fall through to the host's sudo.
 qctl() { ( sudo() { "$@"; }; qubesctl() { printf '%b\n' "$1"; }; runQubesctl "$1" ) >/dev/null 2>&1; }

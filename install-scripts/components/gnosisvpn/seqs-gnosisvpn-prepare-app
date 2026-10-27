@@ -21,7 +21,8 @@ if [[ "$(head -c 2 "$hook" 2>/dev/null)" != '#!' ]]; then
 fi
 chmod 0755 "$hook"
 if ! grep -Fqx "$entry" "$hook"; then
-	printf '%s\n' "$entry" >> "$hook"
+	# A last line without its newline would swallow the entry.
+	{ [[ -z "$(tail -c 1 -- "$hook")" ]] || echo; printf '%s\n' "$entry"; } >> "$hook"
 fi
 
 install -d -m 0755 "${bind_dir_config%/*}"

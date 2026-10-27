@@ -241,7 +241,11 @@ MUTATIONS = [
     ("wg-dns-output-before-qubes", "install-scripts/components/wireguard/wireguard-dns.sh", "nat hook output priority -101;", "nat hook output priority dstnat;"),
     ("gnosis-autoconnect-destination", "install-scripts/components/gnosisvpn/seqs-gnosisvpn-autoconnect", 'gnosis_vpn-ctl destinations | grep -Fqx -- "$exit_id" ||', "true ||"),
     ("proton-drop-ip6", "install-scripts/components/protonvpn/protonvpn-firewall.sh", 'nft add rule ip6 qubes custom-forward oifname "eth0" counter drop\n', ""),
-    ("proton-hook-entry", "install-scripts/components/protonvpn/app-vm.sh", 'printf \'%s\\n\' "${entry}" | sudo tee -a "${hook}"', 'true'),
+    ("proton-hook-entry", "install-scripts/components/protonvpn/app-vm.sh", 'printf \'%s\\n\' "${entry}"; } | sudo tee -a "${hook}"', 'true; } | true'),
+    ("proton-hook-newline", "install-scripts/components/protonvpn/app-vm.sh", '[ -z "$(sudo tail -c 1 -- "${hook}")" ] || echo;', ''),
+    ("wg-rclocal-newline", "install-scripts/components/wireguard/app-vm.sh", '[ -z "$(sudo tail -c 1 -- /rw/config/rc.local)" ] || echo;', ''),
+    ("wg-hook-newline", "install-scripts/components/wireguard/app-vm.sh", '[ -z "$(sudo tail -c 1 -- /rw/config/qubes-firewall-user-script)" ] || echo;', ''),
+    ("gnosis-hook-newline", "install-scripts/components/gnosisvpn/seqs-gnosisvpn-prepare-app", '[[ -z "$(tail -c 1 -- "$hook")" ]] || echo;', ''),
     # Installer helpers: pinned keys, signatures, hashes, apt pins.
     ("gpg-exact-keys", G, '[[ "${got}" != "${expected}" ]]', '[[ -z "${got}" ]]'),
     ("gpg-lock-recheck", G, '| require_exact_keys "${1}" "${2}" || exit 1', '>/dev/null || true'),

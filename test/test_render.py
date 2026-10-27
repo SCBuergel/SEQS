@@ -1031,7 +1031,7 @@ def test_protonvpn_fail_closed_hook():
               "the hook must drop forwarded %s traffic to eth0" % family)
     check(hook.startswith("#!/bin/sh\n") and "\nset -e\n" in hook, "the hook must run directly and stop on a missing chain")
     check("entry=/rw/config/seqs-protonvpn-firewall.sh" in app and
-          'printf \'%s\\n\' "${entry}" | sudo tee -a "${hook}"' in app and
+          'printf \'%s\\n\' "${entry}"; } | sudo tee -a "${hook}"' in app and
           "hook=/rw/config/qubes-firewall-user-script" in app,
           "app-vm.sh must add the hook to qubes-firewall-user-script")
 
