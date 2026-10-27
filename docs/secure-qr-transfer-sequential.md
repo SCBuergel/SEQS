@@ -195,7 +195,7 @@ check that it changes only those lines, and commit it:
 
 ```bash
 cd ~/SEQS && git diff salt/pillar/seqs/config.sls
-git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
+git -c user.name=me -c user.email=me@localhost commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
 ```
 
 If the repository qube is a disposable, repeat the edit before every later

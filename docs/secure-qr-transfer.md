@@ -656,13 +656,11 @@ review and commit the change:
 ```bash
 cd ~/SEQS
 git diff salt/pillar/seqs/config.sls
-git commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
+git -c user.name=me -c user.email=me@localhost commit -m 'Configure QR webcam controller' salt/pillar/seqs/config.sls
 ```
 
-The diff should show only the lines you changed. If Git refuses to commit
-because it does not know your name and email, set them with `git config
-user.name` and `git config user.email` and commit again. If the repository qube
-is a disposable, the commit disappears when it shuts down, and you must repeat
+The diff should show only the lines you changed. If the repository qube is a
+disposable, the commit disappears when it shuts down, and you must repeat
 the edit before any later SEQS run on this computer.
 
 Then run SEQS from dom0 on each computer, choosing the qubes with `--qubes`.
