@@ -1414,6 +1414,11 @@ def test_dom0_firewall_states():
     check("qvm-prefs -- A-wallet default_dispvm none"
           in state_arg(parsed, "seqs-no-dispvm-wallet", "cmd.run", "name"),
           "a firewalled qube must not keep a networked default disposable")
+    # The nodispvm flag, here from the firewall key alone, makes the runner
+    # re-check that default_dispvm before provisioning.
+    targets = state_arg(parsed, "seqs-targets", "file.managed", "contents")
+    check("\napp A-wallet wallet nodispvm\n" in "\n" + targets,
+          "the targets file must mark a firewalled qube nodispvm: %r" % targets)
     # Qubes would refuse these only at apply time, after egress is closed.
     for bad in ["h:0", "h:65536", "999.1.1.1", "256.1.1.1", "010.1.1.1", "1.2.3", "1.2.3.4.5"]:
         check(_rejected("invalid firewall entry '%s'" % bad, _bad_pillar(catalogue={
