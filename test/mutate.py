@@ -152,6 +152,8 @@ MUTATIONS = [
     ("dom0-audio-policy-get", S, "'%-40s %s  @tag:audiovm-%s  allow target=dom0' | format(arg, a, a)", "'%-40s %s  @anyvm  allow target=dom0' | format(arg, a)"),
     ("dom0-audio-own-audiovm", S, "        qvm-prefs -- {{ app }} audiovm ''\n", ""),
     ("runner-audio-policy-takeover", R, '\t"${POLICY_DIR}/50-seqs-audiovm.policy"\n', ""),
+    ("runner-qr-input-policy-takeover", R, '\t"${POLICY_DIR}/00-seqs-qr-input-deny.policy"\n', ''),
+    ("runner-browser-suppress-policy-takeover", R, '\t"${POLICY_DIR}/28-browser-suppress.policy"\n', ''),
     ("dom0-netvm-provider", S, " or not qcatalog.get(nv, {}).get('network_provider') %}", " %}"),
     ("dom0-netvm-offline", S, "{%       elif q.get('offline') or q.get('network_provider') %}", "{%       elif false %}"),
     ("dom0-netvm-built", S, "{%   if q.netvm not in qmap and inventory.get(provider, {}).get('recipe') != q.netvm %}", "{%   if false %}"),

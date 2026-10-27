@@ -10,6 +10,7 @@ milliseconds with no Qubes.
 Run directly: `python3 test/test_render.py` (exits non-zero on failure).
 """
 import os
+import re
 import sys
 import copy
 import subprocess
@@ -475,6 +476,35 @@ def test_dom0_adopts_via_intent_marker():
     check(ids_containing(parsed, "seqs-stale-intent-") == ["seqs-stale-intent-A-gone"],
           "only the marker of a qube that neither exists nor is built now is removed, got %r"
           % ids_containing(parsed, "seqs-stale-intent-"))
+
+
+def test_dom0_policy_files_match_runner_takeover_list():
+    case("dom0.sls: every qrexec policy file it writes is in the runner's POLICY_FILES")
+    # seqs.dom0 overwrites its policy files without looking for the marker;
+    # only the runner's takeover check, which reads POLICY_FILES, protects an
+    # operator's unmarked file of the same name.
+    with open(os.path.join(sr.REPO_ROOT, "setup-qubes.sh"), encoding="utf-8") as f:
+        block = re.search(r"\nPOLICY_FILES=\(\n(.*?)\n\)\n", f.read(), re.S)
+    runner = set(re.findall(r'"\$\{POLICY_DIR\}/([0-9a-z.-]+\.policy)"', block.group(1) if block else ""))
+    check(block is not None and len(runner) == len(block.group(1).splitlines()),
+          "POLICY_FILES in setup-qubes.sh must be one quoted ${POLICY_DIR}/NAME.policy per line")
+    # Renders that write every conditional policy: QR sequential mode (00-,
+    # 01-), Qubes 4.3 with sys-usb (30-), an audio qube in @all (50-).
+    qr = copy.deepcopy(render_pillar("dom0"))
+    qr.update({"webcam_usb_mode": "sequential", "webcam_usb_controller": "00_14.0"})
+    managed, named = set(), set()
+    for pillar in (None, qr):
+        text, parsed = render_state("dom0", "dom0", Scenario(release="4.3", sys_usb=True), pillar_seqs=pillar)
+        check("seqs-validation-failed" not in parsed, "policy render must pass validation: " + _errors(parsed))
+        named |= set(re.findall(r"/etc/qubes/policy\.d/([^\s'\"]+)", text))
+        for body in parsed.values():
+            for arg in (body.get("file.managed") or []) if isinstance(body, dict) else []:
+                if isinstance(arg, dict) and str(arg.get("name", "")).startswith("/etc/qubes/policy.d/"):
+                    managed.add(arg["name"][len("/etc/qubes/policy.d/"):])
+    check(managed == runner, "the policy files seqs.dom0 writes %s must be POLICY_FILES %s"
+          % (sorted(managed), sorted(runner)))
+    # A policy file written another way, such as by a cmd.run, needs the guard too.
+    check(named <= runner, "policy files named in seqs.dom0 but not in POLICY_FILES: %s" % sorted(named - runner))
 
 
 def test_dom0_usb_policy_release_gated():
