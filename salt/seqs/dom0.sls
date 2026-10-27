@@ -304,6 +304,9 @@ print("END")'{% endset %}
 {%     if q.get('label') not in labels %}
 {%       do errors.append("qube '" ~ name ~ "' has unknown label '" ~ q.get('label') ~ "'") %}
 {%     endif %}
+{%     for comp in q.get('components', []) | unique if q.get('components', []).count(comp) > 1 %}
+{%       do errors.append("qube '" ~ name ~ "' lists component '" ~ comp ~ "' more than once") %}
+{%     endfor %}
 {%     for comp in q.get('components', []) %}
 {%       if comp | regex_match(name_re) is none %}
 {%         do errors.append("qube '" ~ name ~ "' references component with unsafe name '" ~ comp ~ "'") %}

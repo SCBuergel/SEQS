@@ -400,6 +400,24 @@ def test_dom0_component_menu_entries():
           "a disposable template gets no menu entries and no launcher: they would run in it")
 
 
+def test_repeated_component():
+    case("a component listed twice: the pre-flight refuses it; the harness, like Salt, rejects its repeated IDs")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar["catalogue"]["keepass"]["components"] = ["keepass", "keepass"]
+    parsed = render_state("dom0", "dom0", Scenario(selection="keepass"), pillar_seqs=pillar)[1]
+    check(_errors(parsed) == "qube 'keepass' lists component 'keepass' more than once",
+          "a repeated component must be refused before any qube is created: %r" % _errors(parsed))
+    spec = copy.deepcopy(render_pillar("Z-keepass"))
+    spec["spec"]["components"] = ["keepass", "keepass"]
+    try:
+        render_state("qube", "Z-keepass", pillar_seqs=spec)
+        error = ""
+    except yaml.constructor.ConstructorError as e:
+        error = str(e)
+    check("found conflicting ID 'seqs-stage-keepass'" in error,
+          "a state ID rendered twice must fail to parse, as in Salt: %r" % error)
+
+
 def test_dom0_launcher_items():
     case("dom0.sls: each app qube's launcher lists its main app, a terminal and a file manager")
     _, parsed = render_state("dom0", "dom0", Scenario(selection="qr-display\nkeepass\nbrave\nqr-staging"))

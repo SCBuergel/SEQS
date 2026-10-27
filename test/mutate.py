@@ -128,6 +128,7 @@ MUTATIONS = [
     ("netvm-verify-call", R, "\tverifyAirgap\n\tverifyNetvm\n", "\tverifyAirgap\n"),
     ("nodispvm-verify-call", R, "\tverifyNetvm\n\tverifyNoDispvm\n", "\tverifyNetvm\n"),
     ("nodispvm-inherited", R, '$1 == "default_dispvm" && $2 == "-" && $3 == "None" { f = 1 }', '$1 == "default_dispvm" && $3 == "None" { f = 1 }'),
+    ("dom0-repeated-component", S, "if q.get('components', []).count(comp) > 1 %}", "if false %}"),
     ("nodispvm-flag", S, "{{ ' nodispvm' if not", "{{ '' if not"),
     ("netvm-second-wave", R, '[[ " ${routed[*]} " == *" ${vm} "* ]] || first+=("${vm}")', 'first+=("${vm}")'),
     ("netvm-provider-ready", R, '\t\tif ! isProvisioned "${netvm}"; then', '\t\tif false; then'),

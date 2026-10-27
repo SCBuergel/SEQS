@@ -20,7 +20,8 @@ Salt would reject at runtime). What it DOES catch, in well under a second and
 with no Qubes at all:
 
   * Jinja syntax / logic errors in dom0.sls, qube.sls, config.sls
-  * YAML that no longer parses after rendering
+  * YAML that no longer parses after rendering, including a state ID or
+    other mapping key that appears twice, which Salt rejects
   * the pre-flight validation logic in dom0.sls / qube.sls (bad label,
     unknown component, unsafe name, duplicate qube, offline+firewall, ...)
   * config <-> repo drift (a component referenced with no directory, an
@@ -225,16 +226,34 @@ def _template(rel):
     return _TEMPLATES[src]
 
 
+def load_yaml(text):
+    """Parse rendered SLS as Salt does: a repeated mapping key, such as two
+    states with one ID, is an error ("found conflicting ID"), where PyYAML's
+    safe_load would silently keep the last."""
+    import yaml
+
+    class Loader(yaml.SafeLoader):
+        def construct_mapping(self, node, deep=False):
+            seen = set()
+            for key_node, _ in node.value:
+                key = self.construct_object(key_node, deep=deep)
+                if key in seen:
+                    raise yaml.constructor.ConstructorError(
+                        None, None, "found conflicting ID '%s'" % (key,), key_node.start_mark)
+                seen.add(key)
+            return super().construct_mapping(node, deep)
+
+    return yaml.load(text, Loader=Loader) or {}
+
+
 def render_pillar(minion_id):
     """Render salt/pillar/seqs/config.sls as it would compile for `minion_id`.
 
     Returns the parsed `seqs:` mapping (an empty dict for a qube that matches
     the Z-*/A-* glob but has no spec).
     """
-    import yaml
-
     out = _template("salt/pillar/seqs/config.sls").render(grains={"id": minion_id})
-    data = yaml.safe_load(out) or {}
+    data = load_yaml(out)
     return data.get("seqs", {})
 
 
@@ -244,8 +263,6 @@ def render_state(state, minion_id, scenario=None, pillar_seqs=None):
     `state` is 'dom0' or 'qube'. When `pillar_seqs` is omitted it is compiled
     from config.sls for `minion_id`, matching what Salt would deliver.
     """
-    import yaml
-
     if pillar_seqs is None:
         pillar_seqs = render_pillar(minion_id)
     if scenario is None:
@@ -256,5 +273,4 @@ def render_state(state, minion_id, scenario=None, pillar_seqs=None):
     text = _template("salt/seqs/%s.sls" % state).render(
         grains={"id": minion_id}, pillar=pillar, salt=salt
     )
-    parsed = yaml.safe_load(text) or {}
-    return text, parsed
+    return text, load_yaml(text)

@@ -128,9 +128,10 @@ needs `A-brave` too; see
 ## `qube_catalog` flags
 
 Each entry is `{'name': ..., 'label': ..., 'components': [...]}` plus optional
-flags; a duplicate name, a key not listed here, or a `True` flag set to
-anything but `True` or `False` aborts the pre-flight. The label (window colour)
-is one of red, orange, yellow, green, gray, blue, purple, or black. The flags:
+flags; a duplicate name, a component listed twice, a key not listed here, or a
+`True` flag set to anything but `True` or `False` aborts the pre-flight. The
+label (window colour) is one of red, orange, yellow, green, gray, blue, purple,
+or black. The flags:
 
 - `'offline': True` — detaches the app qube from netvm (air gap) and unsets its
   default disposable, which would otherwise have network access. Implies
