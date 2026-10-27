@@ -162,6 +162,42 @@ grep -q "is larger than the remote file" <<< "${out}" \
 	|| bad "adb-pull must leave a larger local file unchanged: ${out}"
 rm -rf "${tmpd}"
 
+echo "== adb-pull aborts when the device serial changes or vanishes after a reconnect =="
+# A short second chunk forces the retry path, which re-checks the device. The
+# fake adb answers only these requests, from local files, and the copy waits
+# 0 seconds between retries.
+tmpd="$(mktemp -d)"
+yes | head -c 2097152 > "${tmpd}/remote"
+cat > "${tmpd}/adb" <<'MOCK'
+#!/usr/bin/env bash
+d="$(dirname "$0")"
+case "$*" in
+	devices) printf 'List of devices attached\nphone\tdevice\n' ;;
+	*getprop*) if [ -e "${d}/captured" ]; then cat "${d}/serial2"; else touch "${d}/captured"; echo SER; fi ;;
+	*stat*) stat -c%s "${d}/remote" ;;
+	*sha256sum*) sha256sum "${d}/remote" ;;
+	*dd\ *skip=1\ *) [ -e "${d}/short" ] || { touch "${d}/short"; head -c 100 "${d}/remote"; exit 0; }
+		tail -c 1048576 "${d}/remote" ;;
+	*dd\ *skip=0\ *) head -c 1048576 "${d}/remote" ;;
+	*) echo "unexpected adb call: $*" >&2; exit 1 ;;
+esac
+MOCK
+chmod +x "${tmpd}/adb"
+sed -e "s#^ADB=/usr/bin/adb#ADB=${tmpd}/adb#" -e 's#^RETRY_DELAY=5$#RETRY_DELAY=0#' \
+	install-scripts/components/adb/adb-pull.sh > "${tmpd}/adb-pull"
+head -c 1048576 "${tmpd}/remote" > "${tmpd}/first"
+for serial2 in OTHER ""; do
+	rm -f "${tmpd}/captured" "${tmpd}/short" "${tmpd}/out"; echo "${serial2}" > "${tmpd}/serial2"
+	out="$(HOME="${tmpd}" timeout 60 bash "${tmpd}/adb-pull" -c 1 /sdcard/f "${tmpd}/out" 2>&1 </dev/null)" \
+		&& bad "adb-pull must abort when the serial is [${serial2}] after a reconnect"
+	if [ -n "${serial2}" ]; then msg="ERROR: device serial CHANGED mid-run!"
+	else msg="ERROR: could not read device serial after reconnect -- aborting."; fi
+	# Only the chunk from before the reconnect is kept.
+	grep -qxF "${msg}" <<< "${out}" && cmp -s "${tmpd}/first" "${tmpd}/out" && ok \
+		|| bad "serial [${serial2}] after a reconnect: expected '${msg}' and only the first chunk kept: ${out}"
+done
+rm -rf "${tmpd}"
+
 echo "== joinCsv() =="
 eq "joinCsv" "$(joinCsv a b c)" "a,b,c"
 eq "joinCsv one" "$(joinCsv solo)" "solo"

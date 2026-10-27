@@ -346,6 +346,8 @@ MUTATIONS = [
     ("ledger-sha512", L, "| sha512sum --check --strict --quiet \\\n", "| true \\\n"),
     ("ledger-signature", L, "openssl dgst -sha256 -verify", "true || openssl dgst -sha256 -verify"),
     ("ledger-listed", L, "'$1 == h && $2 == f { ok = 1 }", "'{ ok = 1 }"),
+    ("adb-serial-empty", "install-scripts/components/adb/adb-pull.sh", 'if [[ -z "$now" ]]; then', 'if false; then'),
+    ("adb-serial-changed", "install-scripts/components/adb/adb-pull.sh", 'if [[ "$now" != "$INITIAL_SERIAL" ]]; then', 'if false; then'),
     ("qube-component-name", Q, "{%   if comp | regex_match(name_re) is none %}", "{%   if false %}"),
     ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}\\\\Z') is none %}", "{%     if false %}"),
     ("qube-browser-vm", Q, "{% if browser_vm | regex_match(name_re) is none %}", "{% if false %}"),
