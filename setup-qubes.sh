@@ -17,6 +17,13 @@
 #   --verbose      show full per-state qubesctl output (debug)
 
 set -uo pipefail
+# Bash matches [A-Za-z0-9] by the locale's collation: in en_US.UTF-8 it also
+# matches look-alikes such as U+0251 and digits such as U+00B2. Every check here
+# is ASCII-only, so bash itself runs in the C locale. LC_ALL is not exported,
+# so the commands it runs follow the operator's LANG and LC_* settings (an
+# exported LC_ALL is dropped for them).
+export -n LC_ALL
+LC_ALL=C
 
 # ---- Config -- usually set once when first installing SEQS. -----------------
 # The fetch source qube has no default: every fetch must name it explicitly.

@@ -853,6 +853,13 @@ mon() { OUT="$1" PATH="${vb}:${PATH}" bash salt/seqs/files/seqs-vpn-monitor "$2"
 eq "traffic is shown" "$(mon '1073741824 2048 1048576 0' A-gnosisvpn)" " ↑ 2.00KiB (+ 0.00B), ↓ 1.00GiB (+ 1.00MiB)"
 eq "markup is refused" "$(mon '<span>1</span> 2 3 4' A-gnosisvpn)" " VPN: n/a"
 eq "a fifth number is refused" "$(mon '1 2 3 4 5' A-gnosisvpn)" " VPN: n/a"
+# In en_US.UTF-8, bash's [0-9] also matches digits such as U+FF11 (fullwidth 1).
+utf8="$(locale -a 2>/dev/null | grep -m1 -ix 'en_US\.utf-\?8')"
+if [ -n "${utf8}" ]; then
+	eq "a non-ASCII digit is refused" "$(LC_ALL="${utf8}" mon $'\xef\xbc\x91 2 3 4' A-gnosisvpn)" " VPN: n/a"
+else
+	echo "  skipped: non-ASCII digit (no en_US UTF-8 locale)"
+fi
 eq "no output (tunnel down) shows n/a" "$(mon '' A-gnosisvpn)" " VPN: n/a"
 grep -q -- "--no-autostart --pass-io -- A-gnosisvpn seqs-gnosisvpn-rates" "${vb}/args" && ok \
 	|| bad "the monitor must not start the qube: $(head -n 1 "${vb}/args")"

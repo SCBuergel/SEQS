@@ -2,6 +2,10 @@
 # Managed by SEQS. Sequential-path QR scan on a USB controller shared with
 # the keyboard; installed in dom0 and configured by /etc/seqs/qr-sequential.conf.
 set -Eeuo pipefail
+# The C locale keeps [0-9] and [A-Za-z] ASCII-only (in en_US.UTF-8 they also
+# match look-alikes); LC_ALL is not exported to the commands run below.
+export -n LC_ALL
+LC_ALL=C
 
 CONF=/etc/seqs/qr-sequential.conf
 [ -r "$CONF" ] || { echo "ERROR: $CONF is missing" >&2; exit 1; }

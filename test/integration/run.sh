@@ -66,6 +66,9 @@ new_sandbox() {
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
+# In en_US.UTF-8, bash's [a-z] also matches look-alikes such as U+0251 (C.UTF-8
+# does not); the look-alike cases need it and are skipped without it.
+UTF8_LOCALE="$(locale -a 2>/dev/null | grep -m1 -ix 'en_US\.utf-\?8')"
 
 # write_names PREFIX... -- the record of names seqs.dom0 writes for
 # delete-vms.sh, with these prefixes and the QR camera qubes (by default
@@ -473,6 +476,19 @@ out="$(run_setup --fetch-only 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -qF "refusing tar entry with whitespace around its name: 'salt/seqs/dom0.top'" <<<"$out" \
 	&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
 	|| bad "a name with a trailing space must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+# U+0251 looks like 'a'; the operator's UTF-8 locale must not admit it.
+if [ -n "${UTF8_LOCALE}" ]; then
+	python3 -c 'import io, sys, tarfile
+t = tarfile.open(sys.argv[1], "w", encoding="utf-8")
+i = tarfile.TarInfo("salt/seqs/templ\u0251te.sls"); i.size = 1
+t.addfile(i, io.BytesIO(b"x")); t.close()' "${SEQS_MOCK_TAR}"
+	out="$(LC_ALL="${UTF8_LOCALE}" run_setup --fetch-only 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF $'refusing unsafe tar path: salt/seqs/templ\xc9\x91te.sls' <<<"$out" \
+		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+		|| bad "a look-alike letter in a name must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+else
+	echo "  skipped: look-alike tar name (no en_US UTF-8 locale)"
+fi
 # A compressed archive could expand past the size limit: tar must refuse it
 # instead of decompressing it.
 SEQS_MOCK_TAR="${SBX}/tree.tar.gz"
@@ -633,6 +649,13 @@ grep -q 'Z-gnosisvpn-alpha' <<<"$out" && ok \
 out="$(run_setup --build-only --qubes brave --postfix '../unsafe' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "unsafe or empty postfix" <<<"$out" && ok \
 	|| bad "unsafe postfix should be refused before the build"
+if [ -n "${UTF8_LOCALE}" ]; then
+	out="$(LC_ALL="${UTF8_LOCALE}" run_setup --build-only --qubes brave --postfix $'\xc9\x91' 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF $'unsafe or empty postfix \'\xc9\x91\'' <<<"$out" && ok \
+		|| bad "a look-alike postfix should be refused: rc=$rc $(tail -n 2 <<<"$out")"
+else
+	echo "  skipped: look-alike postfix (no en_US UTF-8 locale)"
+fi
 rm -rf "${SBX}"
 
 # ── Scenario 6b: the single-step install runs fetch+stage+build in one go ──
@@ -899,6 +922,13 @@ a_line="$(grep -n '^  A-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
 out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
 grep -q "refusing unsafe name" <<<"$out" && ok || bad "expected the unsafe-name error"
+if [ -n "${UTF8_LOCALE}" ]; then
+	out="$(LC_ALL="${UTF8_LOCALE}" bash "${REPO}/delete-vms.sh" $'qr-displ\xc9\x91y' 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF $'refusing unsafe name \'qr-displ\xc9\x91y\'' <<<"$out" && ok \
+		|| bad "a look-alike name must be refused: rc=$rc $(tail -n 2 <<<"$out")"
+else
+	echo "  skipped: look-alike delete name (no en_US UTF-8 locale)"
+fi
 # Configured prefixes: the record names them, and only they are looked for.
 write_names app- tpl-
 printf '%s\n' "app-keepass halted" "tpl-keepass halted" "A-keepass halted" > "${SEQS_MOCK_STATE}"
@@ -1225,6 +1255,12 @@ if command -v setsid >/dev/null 2>&1; then
 	qr_case "normal backend stopped" "  (sys-usb is not running, so its devices cannot be listed)"
 	qr_reset; echo 'SCANNER_QUBE="x;y"' >> "${SBX}/conf"; qr_case "unsafe name" "unsafe qube name"
 	qr_reset; echo 'CONTROLLER=00_14.0x' >> "${SBX}/conf"; qr_case "bad BDF" "invalid controller BDF"
+	if [ -n "${UTF8_LOCALE}" ]; then
+		qr_reset; printf 'SCANNER_QUBE=seqs-qr-sc\xc9\x91nner\n' >> "${SBX}/conf"
+		LC_ALL="${UTF8_LOCALE}" qr_case "look-alike name" "unsafe qube name"
+	else
+		echo "  skipped: look-alike QR qube name (no en_US UTF-8 locale)"
+	fi
 	qr_reset; sed -i '/^A-qr-staging$/d' "${SBX}/exists"; qr_case "missing qube" "required qube 'A-qr-staging' is missing"
 	# A webcam backend running before the script has had the shared
 	# controller: refuse, but end this boot with a power-off.
