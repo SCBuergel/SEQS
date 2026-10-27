@@ -970,8 +970,8 @@ grep -q "^A-notes " "${SEQS_MOCK_STATE}" && grep -q "^Z-notes " "${SEQS_MOCK_STA
 export SEQS_LIBVIRT_DIR="${SBX}/libvirt"
 mkdir -p "${SEQS_STATE_DIR}/intents" "${SEQS_LIBVIRT_DIR}"
 touch "${SEQS_STATE_DIR}/intents/A-notes"
-printf '%s\n' '{# Managed by SEQS (salt state seqs.dom0) #}' x > "${SEQS_LIBVIRT_DIR}/A-notes.xml"
-printf '%s\n' '<!-- operator -->' > "${SEQS_LIBVIRT_DIR}/Z-notes.xml"
+printf '%s\n' '{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}' x > "${SEQS_LIBVIRT_DIR}/A-notes.xml"
+printf '%s\n' '{# my own pinning, replaces the one Managed by SEQS #}' > "${SEQS_LIBVIRT_DIR}/Z-notes.xml"
 printf '%s\n' "A-notes halted" "Z-notes halted" > "${SEQS_MOCK_STATE}"
 out="$(SEQS_MOCK_UNMANAGED="A-notes" SEQS_MOCK_SUDO_LOG="${SBX}/sudo3.log" bash "${REPO}/delete-vms.sh" notes 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -q "^A-notes " "${SEQS_MOCK_STATE}" && ok \

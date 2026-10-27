@@ -2034,10 +2034,23 @@ def test_dom0_cpu_pinning_removed():
     case("dom0.sls: removing cpu_pinning deletes only the file SEQS wrote")
     sc = Scenario(selection="signal\nbrave", existing_files=[PIN_FILE])
     _, parsed = render_state("dom0", "dom0", sc)
-    clear = parsed.get("seqs-cpu-pinning-clear-signal")
-    check(clear is not None and "grep -qF 'Managed by SEQS'" in state_arg(
-        parsed, "seqs-cpu-pinning-clear-signal", "cmd.run", "onlyif"),
-          "a leftover pinning file must be removed only if SEQS wrote it")
+    check("seqs-cpu-pinning-clear-signal" in parsed, "a leftover pinning file must be considered for removal")
+    onlyif = state_arg(parsed, "seqs-cpu-pinning-clear-signal", "cmd.run", "onlyif")
+    marker = "{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}"
+    check(_owns(onlyif, PIN_FILE, marker + "\n{% extends 'libvirt/xen.xml' %}\n"),
+          "the pinning file SEQS wrote must be removed: %s" % onlyif)
+    for mine in ("{# my own pinning, replaces the one Managed by SEQS #}\n", "<!-- mine -->\n# Managed by SEQS\n"):
+        check(not _owns(onlyif, PIN_FILE, mine), "an operator's pinning file %r must stay" % mine)
+
+
+def _owns(onlyif, path, content):
+    """True if the rendered ownership check ONLYIF accepts PATH holding CONTENT."""
+    with tempfile.TemporaryDirectory() as d:
+        f = os.path.join(d, "file")
+        with open(f, "w", encoding="utf-8") as h:
+            h.write(content)
+        check(path in onlyif, "the check must read %s" % path)
+        return subprocess.run(["bash", "-c", onlyif.replace(path, f)], timeout=60).returncode == 0
 
 def test_dom0_vcpus():
     case("dom0.sls: the vcpus key sets the qube's vCPU count; GnosisVPN gets 4")
@@ -2070,8 +2083,13 @@ def test_gnosisvpn_panel_monitor():
     del pillar["catalogue"]["gnosisvpn"]
     pillar["catalogue"].pop("anon", None)
     _, parsed = render_state("dom0", "dom0", Scenario(selection="brave"), pillar_seqs=pillar)
-    check("Managed by SEQS" in state_arg(parsed, "seqs-vpn-monitor", "cmd.run", "onlyif"),
-          "without GnosisVPN in the catalogue, dom0 removes only the monitor SEQS wrote")
+    onlyif = state_arg(parsed, "seqs-vpn-monitor", "cmd.run", "onlyif")
+    monitor = "/usr/local/bin/seqs-vpn-monitor"
+    with open(os.path.join(sr.REPO_ROOT, "salt", "seqs", "files", "seqs-vpn-monitor"), encoding="utf-8") as f:
+        check(_owns(onlyif, monitor, f.read()), "without GnosisVPN in the catalogue, dom0 removes the monitor SEQS wrote")
+    check(_owns(onlyif, monitor, "# Managed by SEQS\n"), "a marker on line 1 counts too")
+    for mine in ("#!/bin/sh\n# not Managed by SEQS\n", "# mine\n# Managed by SEQS\n"):
+        check(not _owns(onlyif, monitor, mine), "an operator's %s %r must stay" % (monitor, mine))
     with open(os.path.join(sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn", "template-vm.sh"), encoding="utf-8") as f:
         check('"${ASSET_DIR}/seqs-gnosisvpn-rates" /usr/bin/seqs-gnosisvpn-rates' in f.read(),
               "the template must install the traffic reporter the monitor calls")

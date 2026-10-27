@@ -1086,7 +1086,7 @@ seqs-cpu-pinning-{{ name }}:
 seqs-cpu-pinning-clear-{{ name }}:
   cmd.run:
     - name: rm -f -- {{ pin_file }}
-    - onlyif: head -n 1 {{ pin_file }} | grep -qF 'Managed by SEQS'
+    - onlyif: head -n 1 -- {{ pin_file }} | grep -q '^{{ '{#' }} Managed by SEQS'
 {%   endif %}
 
 {%   if not app_tagged %}
@@ -1386,7 +1386,8 @@ seqs-vpn-monitor:
 seqs-vpn-monitor:
   cmd.run:
     - name: rm -f /usr/local/bin/seqs-vpn-monitor
-    - onlyif: head -n 2 /usr/local/bin/seqs-vpn-monitor | grep -q 'Managed by SEQS'
+    # SEQS wrote it: the marker starts line 1, or line 2 after a shebang.
+    - onlyif: "head -n 2 /usr/local/bin/seqs-vpn-monitor | awk 'NR == 1 { s = /^#!/; f = /^# Managed by SEQS/ } NR == 2 && s && /^# Managed by SEQS/ { f = 1 } END { exit !f }'"
 {% endif %}
 
 {% if webcam_mode == 'sequential' %}
