@@ -39,8 +39,8 @@
 {% set intents_dir = '/var/lib/seqs/intents' %}
 {% set errors = [] %}
 
-{#- One qubesd query lists every qube with its seqs-managed and seqs-recipe
-    features, instead of one qvm-check/qvm-features process per name. An
+{#- One qubesd query lists every qube with its seqs-managed, seqs-recipe and
+    seqs-provisioned features and, for a disposable, its template, instead of one qvm-check/qvm-features process per name. An
     empty, unreadable, or partial list must never read as "no such qube
     exists": that would let the no-clobber guard below pass, so the run stops
     unless dom0 is in it and the query printed its final END line. #}
@@ -48,7 +48,7 @@
 for vm in qubesadmin.Qubes().domains:
     f = vm.features
     print(vm.name, "1" if f.get("seqs-managed") == "1" else "0", "".join((f.get("seqs-recipe") or "-").split()),
-          "1" if f.get("seqs-provisioned") == "1" else "0")
+          "1" if f.get("seqs-provisioned") == "1" else "0", vm.template.name if vm.klass == "DispVM" else "-")
 print("END")'{% endset %}
 {% set inventory = {} %}
 {% set inventory_lines = salt['cmd.shell'](inventory_cmd | trim).splitlines() %}
@@ -57,8 +57,9 @@ print("END")'{% endset %}
 {% endif %}
 {% for line in inventory_lines %}
 {%   set f = line.split() %}
-{%   if f | length == 4 %}
-{%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2], 'provisioned': f[3] == '1'}}) %}
+{%   if f | length == 5 %}
+{%     do inventory.update({f[0]: {'managed': f[1] == '1', 'recipe': '' if f[2] == '-' else f[2], 'provisioned': f[3] == '1',
+                                   'dispvm_of': '' if f[4] == '-' else f[4]}}) %}
 {%   endif %}
 {% endfor %}
 {% if 'dom0' not in inventory %}
@@ -203,9 +204,12 @@ print("END")'{% endset %}
 {% if webcam_mode == 'sequential' and (webcam_normal_usb_qube not in inventory) %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
-{# The camera-side qubes are their own qubes: seqs-managed with no recipe,
-   never a qube of a catalogue entry or selected instance (built or not) or
-   the normal USB qube, whose settings the webcam states would overwrite. #}
+{# The camera-side qubes are their own qubes, never a qube of a catalogue
+   entry or selected instance (built or not) or the normal USB qube, whose
+   settings the webcam states would overwrite. An existing one is managed and
+   a disposable of qr-camera, from which it inherits seqs-recipe qr-camera
+   (none if built before SEQS recorded recipes); any other recipe marks a
+   catalogue qube. #}
 {% set catalogue_vms = [] %}
 {% for name, q in (qcatalog | dictsort) + (qmap | dictsort) %}
 {%   do catalogue_vms.extend([ptpl ~ name, papp ~ name] + ([pdvm ~ name] if q.get('named_disposable') and pdvm else [])) %}
@@ -214,7 +218,8 @@ print("END")'{% endset %}
 {%   if (special in inventory) and not inventory.get(special, {}).get('managed') %}
 {%     do errors.append("special qube '" ~ special ~ "' already exists but is not marked seqs-managed -- refusing to adopt it") %}
 {%   endif %}
-{%   if special in catalogue_vms or inventory.get(special, {}).get('recipe') %}
+{%   set found = inventory.get(special, {}) %}
+{%   if special in catalogue_vms or (found.get('recipe') and not (found.recipe == 'qr-camera' and found.dispvm_of == webcam_scanner_dvm)) %}
 {%     do errors.append(field ~ " '" ~ special ~ "' is a qube SEQS builds from the catalogue -- choose another name") %}
 {%   endif %}
 {%   if special == webcam_normal_usb_qube %}

@@ -795,20 +795,32 @@ def test_dom0_qr_special_qubes_are_their_own():
     case("dom0.sls: the camera-side qubes are never a catalogue qube or the normal USB qube")
     pillar = copy.deepcopy(render_pillar("dom0"))
     pillar.update(webcam_usb_mode="sequential", webcam_usb_controller="00_14.0", webcam_usb_strict_reset=True)
-    built = ["A-brave", "A-qr-camera", "A-qr-staging", "A-keepass", "A-brave-old"]
+    # As Qubes leaves them, the camera-side qubes are disposables of A-qr-camera
+    # with its seqs-recipe; A-qr-camera-x is a postfixed qr-camera instance,
+    # cam-x a disposable of it, and cam-y one of A-qr-camera with another recipe.
+    built = ["A-brave", "A-qr-camera", "A-qr-staging", "A-keepass", "A-brave-old", "A-qr-camera-x", "cam-x", "cam-y"]
     recipes = {"A-brave": "brave", "A-qr-camera": "qr-camera", "A-qr-staging": "qr-staging", "A-keepass": "keepass",
-               "A-brave-old": "brave"}
+               "A-brave-old": "brave", "A-qr-camera-x": "qr-camera", "cam-x": "qr-camera", "cam-y": "keepass",
+               "sys-usb-webcam": "qr-camera", "seqs-qr-scanner": "qr-camera"}
+    dispvms = {"sys-usb-webcam": "A-qr-camera", "seqs-qr-scanner": "A-qr-camera", "cam-x": "A-qr-camera-x",
+               "cam-y": "A-qr-camera"}
 
-    def errors(specials=(), **names):
+    def errors(specials=(), recipes=recipes, **names):
         _, parsed = render_state("dom0", "dom0", Scenario(
             sys_usb=True, selection="brave", existing_qubes=built + list(specials),
-            tagged_qubes=built + list(specials), recipes=recipes), pillar_seqs=dict(pillar, **names))
+            tagged_qubes=built + list(specials), recipes=recipes, dispvm_templates=dispvms),
+            pillar_seqs=dict(pillar, **names))
         return _errors(parsed)
 
-    check(errors(["sys-usb-webcam", "seqs-qr-scanner"]) == "",
-          "already-built camera-side qubes (managed, no recipe) must be adopted: %s"
-          % errors(["sys-usb-webcam", "seqs-qr-scanner"]))
+    specials = ["sys-usb-webcam", "seqs-qr-scanner"]
+    check(errors(specials) == "", "already-built camera-side qubes must be adopted: %s" % errors(specials))
+    legacy = {k: v for k, v in recipes.items() if k not in specials}
+    check(errors(specials, recipes=legacy) == "",
+          "camera-side qubes built before SEQS recorded recipes must be adopted: %s" % errors(specials, recipes=legacy))
     for field, value, message in (
+            ("webcam_usb_qube", "A-qr-camera-x", "is a qube SEQS builds from the catalogue"),  # qr-camera, not a disposable
+            ("webcam_scanner_qube", "cam-x", "is a qube SEQS builds from the catalogue"),  # a disposable of another qube
+            ("webcam_scanner_qube", "cam-y", "is a qube SEQS builds from the catalogue"),  # another recipe
             ("webcam_usb_qube", "A-keepass", "is a qube SEQS builds from the catalogue"),  # built earlier
             ("webcam_usb_qube", "A-brave-old", "is a qube SEQS builds from the catalogue"),  # an instance built earlier
             ("webcam_scanner_qube", "Z-brave", "is a qube SEQS builds from the catalogue"),  # built in this run
