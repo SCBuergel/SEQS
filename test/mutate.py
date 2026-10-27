@@ -356,6 +356,7 @@ MUTATIONS = [
     ("qube-component-name", Q, "{%   if comp | regex_match(name_re) is none %}", "{%   if false %}"),
     ("qube-extension-id", Q, "{%     if exts.get(comp[16:], '') | regex_match('^[a-p]{32}\\\\Z') is none %}", "{%     if false %}"),
     ("qube-browser-vm", Q, "{% if browser_vm | regex_match(name_re) is none %}", "{% if false %}"),
+    ("qube-no-handoff-firewall", Q, " or spec.get('firewall') is not none %}", " %}"),
     ("qube-name-re-anchor", Q, "{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\\\Z' %}", "{% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*$' %}"),
     ("qube-browser-desktop", Q, "{% if browser_desktop | regex_match('^[A-Za-z0-9._-]+\\\\.desktop\\\\Z') is none %}", "{% if false %}"),
     ("qube-timeout-number", Q, "{% if timeout is not number %}", "{% if false %}"),

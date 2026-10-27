@@ -1584,6 +1584,15 @@ def test_qube_app_sets_browser_default():
     _, parsed = render_state("qube", "A-element")
     check("seqs-default-browser" in parsed,
           "a normal networked app qube should default its browser to the handoff")
+    # A handoff would carry links past a firewall allowlist: the same qube
+    # with a firewall key, and still no no_handoff, keeps its own browser.
+    pillar = copy.deepcopy(render_pillar("A-element"))
+    check(not pillar["spec"].get("no_handoff") and not pillar["spec"].get("offline"),
+          "A-element must be a handoff qube for this case")
+    pillar["spec"]["firewall"] = ["dns", "rpc.example.com:443"]
+    _, parsed = render_state("qube", "A-element", pillar_seqs=pillar)
+    check("seqs-qube-validation-failed" not in parsed and "seqs-default-browser" not in parsed,
+          "a firewalled app qube must not hand its links to the browser qube")
 
 
 def test_qube_wireguard_component():
