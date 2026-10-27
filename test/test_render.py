@@ -1275,6 +1275,27 @@ def test_protonvpn_fail_closed_hook():
           "app-vm.sh must add the hook to qubes-firewall-user-script")
 
 
+def test_apt_repo_keyrings_locked():
+    case("apt-repo installers: each re-checks and locks its pinned keyring after its last apt-get install")
+    comps = os.path.join(sr.REPO_ROOT, "install-scripts", "components")
+    found = []
+    for name in sorted(os.listdir(comps)):
+        path = os.path.join(comps, name, "template-vm.sh")
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        for line in lines:
+            m = re.match(r'add_pinned_apt_repo \S+ ("\$\{\w+\}") ("\$\{\w+\}")', line)
+            if m:
+                found.append(name)
+                lock = "lock_keyring %s %s" % m.groups()
+                last_install = max(i for i, l in enumerate(lines) if "apt-get install" in l)
+                check(lock in lines[last_install + 1:],
+                      "%s must run '%s' after its last apt-get install" % (name, lock))
+    check(len(found) >= 5, "expected the apt-repo installers that call add_pinned_apt_repo, found %s" % found)
+
+
 def test_vpn_fail_closed_hooks():
     case("VPN NetVMs: each firewall hook drops forwarding to eth0, IPv4 first, and stops on an error")
     comps = os.path.join(sr.REPO_ROOT, "install-scripts", "components")
