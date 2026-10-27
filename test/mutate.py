@@ -64,6 +64,8 @@ MUTATIONS = [
     ("gnosis-proxy-left", R, '|| die "temporary GnosisVPN updates proxy was not removed"', '|| true'),
     ("dom0-apply-fail", R, '|| die "seqs.dom0 failed', '|| true "seqs.dom0 failed'),
     ("qubesctl-failed-qube", R, '[ "${#FAILED_QUBES[@]}" -eq 0 ] || rc=1', "true"),
+    ("template-still-running", R, '\t\t\tFAILED_TEMPLATES+=("${vm}")\n', ''),
+    ("template-cannot-stop", R, '|| die "could not stop ${vm}"', '|| true "could not stop ${vm}"'),
     ("safe-name-dash", R, "SAFE_NAME='^[A-Za-z0-9_][A-Za-z0-9._-]*$'", "SAFE_NAME='^[A-Za-z0-9_-][A-Za-z0-9._-]*$'"),
     # Runner: fetch and archive validation.
     ("commit-id-any", R, "^([0-9a-f]{40}|[0-9a-f]{64})$", "^[0-9a-f]+"),

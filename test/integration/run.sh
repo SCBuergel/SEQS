@@ -62,6 +62,7 @@ new_sandbox() {
 	unset SEQS_MOCK_SUDO_LOG
 	unset SEQS_MOCK_UPDATEVM SEQS_MOCK_QVM_CREATE_LOG SEQS_MOCK_APPMENUS_LOG
 	unset SEQS_MOCK_FIREWALL_LOG SEQS_MOCK_POLICY_COPY SEQS_MOCK_DOM0_FAIL_RC
+	unset SEQS_MOCK_SHUTDOWN_STUCK SEQS_MOCK_KILL_FAIL
 	export SEQS_MOCK_EXISTING="debian-13-xfce"
 }
 REPO_ORIG_PATH="${PATH}"
@@ -240,7 +241,31 @@ printf '%s\n' "debian-13-xfce halted" "Z-keepass running" > "${SEQS_MOCK_STATE}"
 out="$(run_setup --qubes keepass 2>&1)"; rc=$?
 grep -q "Z-keepass is still running, perhaps from an interrupted run; shutting it down" <<<"$out" && ok \
 	|| bad "a running target template must be shut down before provisioning ($rc)"
-unset SEQS_MOCK_STATE
+# One that neither shuts down nor can be killed stops the run before any apply.
+printf '%s\n' "debian-13-xfce halted" "Z-keepass running" > "${SEQS_MOCK_STATE}"
+export SEQS_MOCK_SHUTDOWN_STUCK=Z-keepass SEQS_MOCK_KILL_FAIL=Z-keepass SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+: > "${SEQS_MOCK_QUBESCTL_LOG}"
+out="$(run_setup --build-only --qubes keepass 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "ERROR: could not stop Z-keepass" <<<"$out" && [ ! -s "${SEQS_MOCK_QUBESCTL_LOG}" ] && ok \
+	|| bad "a running template that cannot be stopped must stop the run before provisioning ($rc): ${out}"
+unset SEQS_MOCK_STATE SEQS_MOCK_SHUTDOWN_STUCK SEQS_MOCK_KILL_FAIL SEQS_MOCK_QUBESCTL_LOG
+rm -rf "${SBX}"
+
+# ── Scenario 1a3: a template still running after provisioning has failed ──
+echo "== scenario: an app qube of a template that did not shut down is not provisioned =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state" SEQS_MOCK_SHUTDOWN_STUCK=Z-keepass SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+printf '%s halted\n' debian-13-xfce Z-keepass Z-signal A-keepass A-signal > "${SEQS_MOCK_STATE}"
+out="$(run_setup --qubes keepass,signal 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "a template that did not shut down must fail the run"
+grep -q "WARNING: Z-keepass did not shut down" <<<"$out" \
+	&& grep -q "WARNING: skipping A-keepass: its template failed" <<<"$out" && ok \
+	|| bad "the template must be reported as not shut down and its app qube as skipped: ${out}"
+grep -q -- "--targets=A-signal state.apply" "${SEQS_MOCK_QUBESCTL_LOG}" \
+	&& ! grep -q -- "--targets=A-keepass\|--targets=.*,A-keepass" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+	|| bad "only the app qube of the template that shut down may be provisioned"
+grep -q "WITH FAILURES" <<<"$out" && ok || bad "the run must end with the failure message"
+unset SEQS_MOCK_STATE SEQS_MOCK_SHUTDOWN_STUCK SEQS_MOCK_QUBESCTL_LOG
 rm -rf "${SBX}"
 
 # ── Scenario 1b: nested UpdateVM templates resolve to a real TemplateVM ────
