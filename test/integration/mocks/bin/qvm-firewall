@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
-# Mock qvm-firewall: SEQS_MOCK_FIREWALL_LOG records each call's arguments.
+# Mock qvm-firewall: SEQS_MOCK_FIREWALL_LOG records each call's arguments; a
+# call whose arguments match the glob SEQS_MOCK_FIREWALL_FAIL fails.
 [ -z "${SEQS_MOCK_FIREWALL_LOG:-}" ] || echo "$*" >> "${SEQS_MOCK_FIREWALL_LOG}"
+# shellcheck disable=SC2053 # the glob is meant to match
+[ -z "${SEQS_MOCK_FIREWALL_FAIL:-}" ] || [[ "$*" != ${SEQS_MOCK_FIREWALL_FAIL} ]] || exit 1
 exit 0

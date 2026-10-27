@@ -154,6 +154,8 @@ MUTATIONS = [
     ("panel-items-name", R, '[[ "${items}" =~ ^${name_re}( ${name_re})*$ ]] \\', '[[ -n "${items}" ]] \\'),
     # Runner: the temporary GnosisVPN download proxy and its policy.
     ("gnosis-proxy-drop", R, 'qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" add drop \\\n', 'true \\\n'),
+    ("gnosis-proxy-allow-all-die", R, '|| die "could not remove temporary proxy\'s default allow rule"', "|| true"),
+    ("gnosis-proxy-drop-die", R, '|| die "could not install temporary proxy default deny"', "|| true"),
     ("gnosis-proxy-allow-all", R, 'qvm-firewall -- "${GNOSIS_UPDATE_PROXY}" del --rule-no 0 \\\n', 'true \\\n'),
     ("gnosis-policy-deny", R, "\t\t\tprintf 'qubes.UpdatesProxy * %s @anyvm deny\\n' \"${template}\"\n", ""),
     ("gnosis-whonix", R, 'whonix-gw 2>/dev/null)" != "1" ]', 'whonix-gw 2>/dev/null)" != "x" ]'),

@@ -429,6 +429,22 @@ out="$(run_setup --build-only --qubes gnosisvpn 2>&1)"; rc=$?
 unset SEQS_MOCK_STATE SEQS_MOCK_NETVM_STATE
 rm -rf "${SBX}"
 
+# ── Scenario 1b5: a proxy firewall that cannot be restricted stops the build ─
+echo "== scenario: a GnosisVPN build stops when a proxy firewall rule fails =="
+new_sandbox
+export SEQS_MOCK_STATE="${SBX}/qubes.state" SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+for c in "del --rule-no 0|could not remove temporary proxy's default allow rule" \
+		"add drop|could not install temporary proxy default deny"; do
+	echo "debian-13-xfce halted" > "${SEQS_MOCK_STATE}"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+	out="$(SEQS_MOCK_FIREWALL_FAIL="*${c%%|*}" run_setup --qubes gnosisvpn 2>&1)"; rc=$?
+	[ "$rc" -ne 0 ] && grep -qF "ERROR: ${c#*|}" <<<"$out" && ! grep -q "seqs.qube" "${SEQS_MOCK_QUBESCTL_LOG}" \
+		&& ! grep -q "^seqs-gnosisvpn-update-proxy " "${SEQS_MOCK_STATE}" \
+		&& [ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" ] && ok \
+		|| bad "a failed '${c%%|*}' must stop the build and remove the proxy: rc=$rc $(tail -n 1 <<<"$out")"
+done
+unset SEQS_MOCK_STATE SEQS_MOCK_QUBESCTL_LOG
+rm -rf "${SBX}"
+
 # ── Scenario 1c: existing GnosisVPN targets are rebuilt like other qubes ───
 # Hash-based completion markers make a rerun reinstall a changed component,
 # so an existing GnosisVPN instance converges in place like every other qube.
