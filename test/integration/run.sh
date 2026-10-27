@@ -903,21 +903,19 @@ out="$(bash "${REPO}/delete-vms.sh" wireguard mail 2>&1)"; rc=$?
 unset SEQS_MOCK_NETVM_STATE
 # A named_disposable qube adds a D- object; all three of D-/A-/Z- must go, and
 # the disposable (D-) must be removed before the A- dispvm template it derives
-# from so qvm-remove does not fail on a live dependency.
+# from: the qvm-remove mock refuses A-qr-display while D-qr-display exists.
+# With A- listed before D-, removing in the order found would fail.
+write_names A- D- Z-
+printf '%s\n' "D-qr-display template A-qr-display" > "${SBX}/prefs"
 printf '%s\n' "D-qr-display running" "A-qr-display halted" "Z-qr-display halted" \
 	"A-brave halted" > "${SEQS_MOCK_STATE}"
-out="$(bash "${REPO}/delete-vms.sh" qr-display 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] && ok || bad "disposable delete run exited non-zero ($rc)"
+out="$(SEQS_MOCK_PREFS="${SBX}/prefs" bash "${REPO}/delete-vms.sh" qr-display 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok || bad "disposable delete run exited non-zero ($rc): ${out}"
 grep -q "^D-qr-display " "${SEQS_MOCK_STATE}" && bad "D-qr-display should have been removed" || ok
 grep -q "^A-qr-display " "${SEQS_MOCK_STATE}" && bad "A-qr-display should have been removed" || ok
 grep -q "^Z-qr-display " "${SEQS_MOCK_STATE}" && bad "Z-qr-display should have been removed" || ok
 grep -q "^A-brave " "${SEQS_MOCK_STATE}" && ok || bad "unrelated A-brave was removed"
-# D- must be listed before A- in the removal order (dependency safety). The
-# indented "found:" lines are unique per qube, unlike the header that names all.
-d_line="$(grep -n '^  D-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
-a_line="$(grep -n '^  A-qr-display$' <<<"$out" | head -1 | cut -d: -f1)"
-[ -n "$d_line" ] && [ -n "$a_line" ] && [ "$d_line" -lt "$a_line" ] \
-	&& ok || bad "the disposable D-qr-display must be removed before its A- template"
+write_names D- A- Z-
 # Unsafe name: refused before anything is looked up.
 out="$(bash "${REPO}/delete-vms.sh" '../evil' 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "unsafe name must be refused"
