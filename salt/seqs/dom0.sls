@@ -203,11 +203,27 @@ print("END")'{% endset %}
 {% if webcam_mode == 'sequential' and (webcam_normal_usb_qube not in inventory) %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
-{% for special in [webcam_usb_qube, webcam_scanner_qube] %}
-{%   if webcam_mode in ['dedicated', 'sequential'] and (special in inventory) and not inventory.get(special, {}).get('managed') %}
+{# The camera-side qubes are their own qubes: seqs-managed with no recipe,
+   never a catalogue qube or the normal USB qube, whose settings the webcam
+   states would overwrite. #}
+{% set catalogue_vms = [] %}
+{% for name, q in qmap.items() %}
+{%   do catalogue_vms.extend([ptpl ~ name, papp ~ name] + ([pdvm ~ name] if q.get('named_disposable') and pdvm else [])) %}
+{% endfor %}
+{% for field, special in [('webcam_usb_qube', webcam_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube)] if webcam_mode in ['dedicated', 'sequential'] %}
+{%   if (special in inventory) and not inventory.get(special, {}).get('managed') %}
 {%     do errors.append("special qube '" ~ special ~ "' already exists but is not marked seqs-managed -- refusing to adopt it") %}
 {%   endif %}
+{%   if special in catalogue_vms or inventory.get(special, {}).get('recipe') %}
+{%     do errors.append(field ~ " '" ~ special ~ "' is a qube SEQS builds from the catalogue -- choose another name") %}
+{%   endif %}
+{%   if special == webcam_normal_usb_qube %}
+{%     do errors.append(field ~ " '" ~ special ~ "' is the normal USB qube (webcam_normal_usb_qube) -- choose another name") %}
+{%   endif %}
 {% endfor %}
+{% if webcam_mode in ['dedicated', 'sequential'] and webcam_usb_qube == webcam_scanner_qube %}
+{%   do errors.append("webcam_usb_qube and webcam_scanner_qube are both '" ~ webcam_usb_qube ~ "' -- they must name different qubes") %}
+{% endif %}
 
 {# ── Errors detected while the pillar itself was compiled (duplicate qube
      names etc. -- see qube_catalog handling in pillar config.sls). ─────── #}

@@ -791,6 +791,33 @@ def test_dom0_qr_qubes_are_the_catalogue_qubes():
             check(message in _errors(parsed), "%s %s must not stand in for %s" % (what, vm, name))
 
 
+def test_dom0_qr_special_qubes_are_their_own():
+    case("dom0.sls: the camera-side qubes are never a catalogue qube or the normal USB qube")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update(webcam_usb_mode="sequential", webcam_usb_controller="00_14.0", webcam_usb_strict_reset=True)
+    built = ["A-brave", "A-qr-camera", "A-qr-staging", "A-keepass"]
+    recipes = {"A-brave": "brave", "A-qr-camera": "qr-camera", "A-qr-staging": "qr-staging", "A-keepass": "keepass"}
+
+    def errors(specials=(), **names):
+        _, parsed = render_state("dom0", "dom0", Scenario(
+            sys_usb=True, selection="brave", existing_qubes=built + list(specials),
+            tagged_qubes=built + list(specials), recipes=recipes), pillar_seqs=dict(pillar, **names))
+        return _errors(parsed)
+
+    check(errors(["sys-usb-webcam", "seqs-qr-scanner"]) == "",
+          "already-built camera-side qubes (managed, no recipe) must be adopted: %s"
+          % errors(["sys-usb-webcam", "seqs-qr-scanner"]))
+    for field, value, message in (
+            ("webcam_usb_qube", "A-keepass", "is a qube SEQS builds from the catalogue"),  # built earlier
+            ("webcam_scanner_qube", "Z-brave", "is a qube SEQS builds from the catalogue"),  # built in this run
+            ("webcam_scanner_qube", "sys-usb", "is the normal USB qube (webcam_normal_usb_qube)")):
+        check("%s '%s' %s -- choose another name" % (field, value, message) in errors(**{field: value}),
+              "%s '%s' must be refused" % (field, value))
+    check("webcam_usb_qube and webcam_scanner_qube are both 'cam' -- they must name different qubes"
+          in errors(webcam_usb_qube="cam", webcam_scanner_qube="cam"),
+          "the two camera-side qubes must differ")
+
+
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
     case("dom0.sls: sequential QR mode accepts webcam_usb_strict_reset = False without a reset method")
     pillar = copy.deepcopy(render_pillar("dom0"))
