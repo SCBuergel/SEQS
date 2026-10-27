@@ -63,7 +63,10 @@ PY
       || cp "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" "${SEQS_MOCK_POLICY_COPY}" 2>/dev/null || true
     # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it,
     # after an OK line for each other target except SEQS_MOCK_NO_RESULT. With
-    # --show-output, qubesctl prints a target's output in place of OK.
+    # --show-output, qubesctl prints a target's output in place of OK. Every
+    # apply also prints a line of a target's own output with control bytes
+    # (OSC, BEL, C1) and an invalid byte, which no OK or ERROR parser matches.
+    printf 'installer of the target: \e]0;HOSTILE-SALT\a\xc2\x9b\xff done\n'
     fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
     result=OK; [[ " $args " != *" --show-output "* ]] || result="output of the target"
     targets="${args#*--targets=}"; targets="${targets%% *}"

@@ -107,9 +107,11 @@ grep -q "Fetching salt tree from source HEAD commit ${SEQS_EXPECTED_COMMIT}" <<<
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
-# Control bytes from qubes (mocks/bin/qvm-run) reach the terminal only
-# sanitized: the repository qube's stderr not at all, apt's output stripped.
+# Control bytes from qubes (mocks/bin/qvm-run, mocks/bin/qubesctl) reach the
+# terminal only sanitized: the repository qube's stderr not at all, apt's and
+# qubesctl's output stripped.
 grep -qF 'apt: ]0;HOSTILE-APT done' <<<"$out" && ok || bad "expected apt's output, sanitized"
+grep -qF 'installer of the target: ]0;HOSTILE-SALT done' <<<"$out" && ok || bad "expected qubesctl's output, sanitized"
 ! grep -q HOSTILE-REPO <<<"$out" && ok || bad "the repository qube's stderr reached the terminal"
 ! LC_ALL=C grep -qE $'[\a\e]|\xc2[\x80-\x9f]' <<<"$out" && ok || bad "a control byte from a qube reached the terminal"
 grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out" \
@@ -348,6 +350,9 @@ eq "the NetVMs the runner set" "$(grep anon "${SEQS_MOCK_NETVM_STATE}" | sort)" 
 out="$(run_setup --build-only --verbose --qubes gnosisvpn,anon 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && grep -q "NetVM verified: A-anon uses A-gnosisvpn" <<<"$out" && ok \
 	|| bad "a clean --verbose run must provision the provider and its routed qube ($rc): $(tail -n 5 <<<"$out")"
+grep -qF 'installer of the target: ]0;HOSTILE-SALT done' <<<"$out" \
+	&& ! LC_ALL=C grep -qE $'[\a\e]|\xc2[\x80-\x9f]' <<<"$out" && ok \
+	|| bad "with --verbose, qubesctl's output must reach the terminal sanitized"
 grep -qF "No default disposable verified on A-anon A-gnosisvpn D-anon." <<<"$out" && ok \
 	|| bad "the no_handoff qubes' default disposable must be verified: $(grep -i 'default disposable' <<<"$out")"
 eq "the provider's wave comes first" "$(grep -o -- "--targets=A-[^ ]*" "${SEQS_MOCK_QUBESCTL_LOG}" | tail -n 2 | tr '\n' ' ')" \

@@ -52,6 +52,7 @@ MUTATIONS = [
     ("sanitize-esc", R, r"tr -d '\000-\010\013-\037\177'", r"tr -d '\000-\010\013-\032\177'"),
     ("sanitize-c1", R, r"s/\xc2[\x80-\x9f]//g", r"s/\xc2[\x80-\x8f]//g"),
     ("sanitize-iconv", R, "\t\t| iconv -f UTF-8 -t UTF-8 -c \\\n", ""),
+    ("sanitize-qubesctl-stream", R, '2>&1 | sanitize | tee /dev/stderr;', '2>&1 | tee /dev/stderr | sanitize;'),
     ("sanitize-mgmt-log", R, "| sed 's/^.* output: *//' | sanitize |", "| sed 's/^.* output: *//' |"),
     ("sanitize-gnosis-apt", R, "2>&1 </dev/null | sanitize\n", "2>&1 </dev/null | cat\n"),
     ("gnosis-apt-fail", R, '|| die "could not install GnosisVPN prerequisites', '|| true "could not install GnosisVPN prerequisites'),
