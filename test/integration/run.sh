@@ -422,6 +422,23 @@ for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zer
 		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
 		|| bad "an archive with a ${hide%%:*} must be refused: rc=$rc $(tail -n 2 <<<"$out")"
 done
+# One file per remaining alternative of the scan, among them the bidi isolates
+# RLI and PDI, so that narrowing any alternative drops a file from the refusal.
+mkdir -p "${evil}/install-scripts/h"
+n=0
+for c in '\x7f' '\xc2\x9b' '\xc2\xad' '\xcd\x8f' '\xd8\x9c' '\xe1\x85\x9f' '\xe1\x9e\xb4' '\xe1\xa0\x8e' \
+	'\xe2\x80\xa8' '\xe2\x81\xa7' '\xe2\x81\xa9' '\xe3\x85\xa4' '\xef\xbb\xbf' '\xef\xbe\xa0' '\xef\xbf\xb9' \
+	'\xf0\x9b\xb2\xa0' '\xf0\x9d\x85\xb3'; do
+	n=$((n + 1)); printf "true # ${c}; reviewed\\n" > "${evil}/install-scripts/h/${n}.sh"
+done
+tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
+tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/h
+out="$(run_setup --fetch-only 2>&1)"; rc=$?
+refusal="$(grep -F "refusing archive: " <<<"$out" | grep -F " has control or invisible characters")"
+missed=""
+for i in $(seq "$n"); do grep -qF " install-scripts/h/${i}.sh " <<<"$refusal" || missed+=" ${i}"; done
+[ "$rc" -ne 0 ] && [ -n "$refusal" ] && [ -z "$missed" ] && [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
+	|| bad "every hiding character must be refused, missed sample(s):${missed}: rc=$rc $(tail -n 2 <<<"$out")"
 # An endless answer from the repository qube is cut off, not stored whole.
 unset SEQS_MOCK_TAR
 export SEQS_MOCK_ENDLESS_LOG="${SBX}/endless.log"
