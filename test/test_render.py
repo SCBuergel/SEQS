@@ -1731,7 +1731,9 @@ def test_qube_validation_catches_bad_component():
     for key, value, expected in [
             ("spec", {"components": ["../etc/passwd"]}, "unsafe component name '../etc/passwd'"),
             ("spec", {"components": ["brave-extension-x"]}, "missing or invalid extension ID for 'brave-extension-x'"),
+            ("spec", {"components": ["brave\n"]}, "unsafe component name 'brave\n'"),
             ("browser_vm", "A-brave;id", "unsafe browser_vm 'A-brave;id'"),
+            ("browser_vm", "A-brave\n", "unsafe browser_vm 'A-brave\n'"),
             ("browser_desktop", "x;id.desktop", "unsafe browser_desktop 'x;id.desktop'"),
             ("browser_desktop", "x.desktop\n", "unsafe browser_desktop 'x.desktop\n'"),
             ("component_timeout", "900\n    - shell: /bin/x", "component_timeout must be a number")]:
