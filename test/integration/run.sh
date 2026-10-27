@@ -639,6 +639,25 @@ done
 	|| bad "a refused fetch must leave no temporary files"
 rm -rf "${SBX}" "${evil}" "${attr}"
 
+# ── Scenario 3a: the staging diff reaches the terminal only sanitized ──────
+# The fetch scan lets a raw 8-bit C1 byte and invalid UTF-8 through; only
+# sanitize() keeps them from the terminal when staging shows the change.
+echo "== scenario: the staging diff of a changed file is shown sanitized =="
+new_sandbox
+run_setup --fetch-only >/dev/null 2>&1 && run_setup --stage-only >/dev/null 2>&1
+tree="${SBX}/tree"; mkdir "${tree}"
+git -C "${REPO}" archive "${WORKTREE_COMMIT}" salt install-scripts | tar -C "${tree}" -xf -
+printf '# x\x9b31my \xff\n' >> "${tree}/install-scripts/lib/brave.sh"
+export SEQS_MOCK_TAR="${SBX}/changed.tar"
+tar -C "${tree}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
+run_setup --fetch-only >/dev/null 2>&1
+out="$(run_setup --stage-only 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -qF "Changes to stage in /srv" <<<"$out" && grep -qF "> # x31my " <<<"$out" \
+	&& ! LC_ALL=C grep -q $'[\x9b\xff]' <<<"$out" && ok \
+	|| bad "the staging diff must show the changed line without its raw C1 or invalid bytes: rc=$rc"
+unset SEQS_MOCK_TAR
+rm -rf "${SBX}"
+
 # ── Scenario 3b: fetch never replaces a fetched area SEQS does not own ──────
 echo "== scenario: fetch refuses to replace an unmarked fetched area =="
 new_sandbox
