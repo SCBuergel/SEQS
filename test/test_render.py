@@ -1141,6 +1141,23 @@ def test_protonvpn_fail_closed_hook():
           "app-vm.sh must add the hook to qubes-firewall-user-script")
 
 
+def test_vpn_fail_closed_hooks():
+    case("VPN NetVMs: each firewall hook drops forwarding to eth0, IPv4 first, and stops on an error")
+    comps = os.path.join(sr.REPO_ROOT, "install-scripts", "components")
+    for path, shebang in (("protonvpn/protonvpn-firewall.sh", "#!/bin/sh"),
+                          ("wireguard/wireguard-firewall.sh", "#!/usr/bin/env bash"),
+                          ("gnosisvpn/seqs-gnosisvpn-firewall", "#!/usr/bin/env bash")):
+        with open(os.path.join(comps, path), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        drops = ['nft add rule %s qubes custom-forward oifname "eth0" counter drop' % family
+                 for family in ("ip", "ip6")]
+        check(all(d in lines for d in drops), "%s must drop forwarded IPv4 and IPv6 traffic to eth0" % path)
+        first = min((i for i, line in enumerate(lines) if line.startswith("nft ")), default=len(lines))
+        check(lines[first:first + 1] == drops[:1], "%s must add the IPv4 drop first" % path)
+        check(lines[:1] == [shebang] and any(line in ("set -e", "set -Eeuo pipefail") for line in lines[:first]),
+              "%s must run under %s and stop on a missing chain" % (path, shebang))
+
+
 def test_dom0_named_disposable_rerun_churn_free():
     case("dom0.sls: an already-built named disposable is churn-free on re-run")
     dom0 = render_pillar("dom0")
