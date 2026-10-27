@@ -630,36 +630,50 @@ out="$(run_setup --fetch-only 2>&1)"; rc=$?
 rm -rf "${SBX}"
 
 # ── Scenario 4: air-gap verification fails closed ──────────────────────────
+# The checks run before anything is provisioned: no seqs.qube apply may run.
+no_qube_applied() {
+	! grep -q "seqs.qube" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
+		|| bad "a failed air-gap check must come before any provisioning: $(head -n 1 "${SEQS_MOCK_QUBESCTL_LOG}")"
+	unset SEQS_MOCK_QUBESCTL_LOG
+}
 echo "== scenario: a live netvm on an offline qube halts provisioning =="
 new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 export SEQS_MOCK_NETVM="sys-firewall"   # keepass 'offline' but netvm present
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a netvm"
 grep -qi "air gap NOT in effect" <<<"$out" && ok || bad "expected an air-gap failure message"
+no_qube_applied
 rm -rf "${SBX}"
 
 echo "== scenario: a default disposable on an offline qube halts provisioning =="
 new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 export SEQS_MOCK_DEFAULT_DISPVM="default-dvm"   # reachable via qubes.OpenInVM
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "verifyAirgap should abort when an offline qube has a default_dispvm"
 grep -q "air gap NOT in effect" <<<"$out" && ok || bad "expected a default_dispvm failure message"
+no_qube_applied
 rm -rf "${SBX}"
 
 echo "== scenario: a default disposable on a no_handoff qube halts provisioning =="
 new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 out="$(SEQS_MOCK_DEFAULT_DISPVM=default-dvm run_setup --qubes wallet-ledger 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "qube 'A-wallet-ledger' does not have default_dispvm explicitly set to none" <<<"$out" && ok \
 	|| bad "verifyNoDispvm should abort when a no_handoff qube has a default disposable: rc=$rc $(tail -n 1 <<<"$out")"
+no_qube_applied
 rm -rf "${SBX}"
 
 echo "== scenario: an air gap inherited from a global default halts provisioning =="
 new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
 export SEQS_MOCK_PREFS_INHERITED=1   # None now, but only because of a global default
 out="$(run_setup --all 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "air gap NOT in effect" <<<"$out" && ok \
 	|| bad "verifyAirgap must refuse netvm and default_dispvm that are only inherited as None"
 unset SEQS_MOCK_PREFS_INHERITED
+no_qube_applied
 rm -rf "${SBX}"
 
 # ── Scenario 5: an identical re-fetch is reported as already staged ────────

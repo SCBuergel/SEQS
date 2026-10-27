@@ -112,6 +112,7 @@ MUTATIONS = [
     ("targets-flag", R, "*) die \"unknown flag in ${TARGETS_FILE}: '${flag}'\" ;;", "*) ;;"),
     ("airgap-inherited", R, '$2 == "-" && $3 == "None" { n++ } END { exit n != 2 }\' <<<', '$3 == "None" { n++ } END { exit n != 2 }\' <<<'),
     ("targets-netvm-name", R, '[[ "${flag#netvm=}" =~ ${SAFE_NAME} ]] || die', '[[ "${flag#netvm=}" =~ ${SAFE_NAME} ]] || true'),
+    ("airgap-after-provisioning", R, "\treadTargets\n\tverifyAirgap\n\tverifyNetvm\n\tverifyNoDispvm\n", "\treadTargets\n\ttrap 'verifyAirgap; verifyNetvm; verifyNoDispvm' RETURN\n"),
     ("netvm-verify-call", R, "\tverifyAirgap\n\tverifyNetvm\n", "\tverifyAirgap\n"),
     ("nodispvm-verify-call", R, "\tverifyNetvm\n\tverifyNoDispvm\n", "\tverifyNetvm\n"),
     ("nodispvm-inherited", R, '$1 == "default_dispvm" && $2 == "-" && $3 == "None" { f = 1 }', '$1 == "default_dispvm" && $3 == "None" { f = 1 }'),
