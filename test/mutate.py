@@ -90,6 +90,7 @@ MUTATIONS = [
     ("tar-stdin", R, 'tar -tf - < "${tarball}"', 'tar -tf "${tarball}"'),
     ("tar-listed-size", R, "total=$((total + 10#${f_size}))", "total=0"),
     ("fetch-bidi", R, '[ "${rc}" -eq 1 ] || die "refusing archive', '[ "${rc}" -ge 0 ] || die "refusing archive'),
+    ("fetch-hidden-c-locale", R, 'hidden="$(LC_ALL=C grep -rlaP', 'hidden="$(grep -rlaP'),
     ("fetch-hidden-control", R, "grep -rlaP '[\\x00-\\x08\\x0b-\\x1f\\x7f]|", "grep -rlaP '"),
     ("fetch-hidden-zero-width", R, "\\xe2\\x80[\\x8b-\\x8f\\xa8-\\xae]", "\\xe2\\x80[\\xaa-\\xae]"),
     ("fetch-hidden-tag", R, "|\\xf3\\xa0' -- ", "' -- "),

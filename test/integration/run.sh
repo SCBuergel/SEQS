@@ -549,7 +549,13 @@ out="$(run_setup --fetch-only 2>&1)"; rc=$?
 # A right-to-left override can make a line display as a comment while it runs
 # as code, a terminal escape can hide it in a pager, and a zero-width space can
 # make two names look alike, as can a tag or variation selector; the whole tree
-# is refused, not only that file.
+# is refused, not only that file. In a UTF-8 locale grep -P reads \xe2 as a
+# code point, not a byte, so these run in one, as dom0 usually does.
+UTF8_ANY="${UTF8_LOCALE:-$(locale -a 2>/dev/null | grep -m1 -ix 'c\.utf-\?8')}"
+[ -n "${UTF8_ANY}" ] || echo "  note: no UTF-8 locale; the hidden-character cases use the ambient one"
+utf8_setup() {
+	if [ -n "${UTF8_ANY}" ]; then LANG="${UTF8_ANY}" LC_ALL="${UTF8_ANY}" run_setup "$@"; else run_setup "$@"; fi
+}
 mkdir -p "${evil}/install-scripts"
 for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zero-width space:\xe2\x80\x8b' \
 	'tag character:\xf3\xa0\x80\x81' 'variation selector:\xef\xb8\x8f'; do
@@ -557,7 +563,7 @@ for hide in 'right-to-left override:\xe2\x80\xae' 'terminal escape:\x1b[8m' 'zer
 	SEQS_MOCK_TAR="${SBX}/hidden.tar"
 	tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
 	tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/x.sh
-	out="$(run_setup --fetch-only 2>&1)"; rc=$?
+	out="$(utf8_setup --fetch-only 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qF "refusing archive: install-scripts/x.sh has control or invisible characters" <<<"$out" \
 		&& [ ! -e "${SEQS_FETCH_ROOT}" ] && ok \
 		|| bad "an archive with a ${hide%%:*} must be refused: rc=$rc $(tail -n 2 <<<"$out")"
@@ -573,7 +579,7 @@ for c in '\x7f' '\xc2\x9b' '\xc2\xad' '\xcd\x8f' '\xd8\x9c' '\xe1\x85\x9f' '\xe1
 done
 tar -C "${REPO}" -cf "${SEQS_MOCK_TAR}" salt install-scripts
 tar -C "${evil}" -rf "${SEQS_MOCK_TAR}" install-scripts/h
-out="$(run_setup --fetch-only 2>&1)"; rc=$?
+out="$(utf8_setup --fetch-only 2>&1)"; rc=$?
 refusal="$(grep -F "refusing archive: " <<<"$out" | grep -F " has control or invisible characters")"
 missed=""
 for i in $(seq "$n"); do grep -qF " install-scripts/h/${i}.sh " <<<"$refusal" || missed+=" ${i}"; done
