@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Mock qubes-prefs: "updatevm" prints SEQS_MOCK_UPDATEVM; no argument lists
-# the global properties, extended by SEQS_MOCK_GLOBAL_PREFS lines.
+# the global properties, extended by SEQS_MOCK_GLOBAL_PREFS lines, or fails
+# with SEQS_MOCK_QUBES_PREFS_FAIL set.
 if [ "${1:-}" = "updatevm" ]; then
 	echo "${SEQS_MOCK_UPDATEVM:-sys-firewall}"
 	exit 0
 fi
 if [ "$#" -eq 0 ]; then
+	[ -z "${SEQS_MOCK_QUBES_PREFS_FAIL:-}" ] || { echo "qubesd down" >&2; exit 1; }
 	printf '%s\n' "clockvm                   -  sys-net" "default_netvm             -  sys-firewall"
 	[ -z "${SEQS_MOCK_GLOBAL_PREFS:-}" ] || cat "${SEQS_MOCK_GLOBAL_PREFS}"
 	exit 0

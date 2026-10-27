@@ -151,6 +151,7 @@ MUTATIONS = [
     ("delete-blockers", D, 'if [ "${#blockers[@]}" -gt 0 ]; then', 'if false; then'),
     ("delete-intent-marker", D, 'elif sudo test -e "${INTENTS_DIR}/${candidate}"; then', 'elif false; then'),
     ("delete-qvm-ls-fail", D, """}' || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; return 1; }""", "}' || true"),
+    ("delete-qubes-prefs-fail", D, """|| { echo "ERROR: could not read the global defaults -- nothing was changed" >&2; return 1; }""", "|| true"),
     ("delete-pin-sudo", D, "	if sudo head -n 1 --", "	if head -n 1 --"),
     ("delete-pin-unmarked", D, "| grep -q 'Managed by SEQS'; then", "| true; then"),
     ("delete-users-fields", D, '" ")\n\t\t\tfor (i = 2; i <= 7; i++)', '" ")\n\t\t\tfor (i = 2; i <= 4; i++)'),

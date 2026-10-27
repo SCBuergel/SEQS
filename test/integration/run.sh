@@ -991,6 +991,14 @@ out="$(SEQS_MOCK_QVM_LS_FAIL=1 bash "${REPO}/delete-vms.sh" keepass 2>&1)"; rc=$
 [ "$rc" -ne 0 ] && grep -q "^A-keepass " "${SEQS_MOCK_STATE}" \
 	&& grep -q "ERROR: could not list the qubes -- nothing was changed" <<<"$out" && ok \
 	|| bad "delete-vms.sh must stop, and say why, when qvm-ls fails: rc=$rc ${out}"
+# So must a failing read of the global defaults, before any NetVM user is
+# disconnected.
+printf '%s\n' "A-wireguard halted" "Z-wireguard halted" "A-anon halted" > "${SEQS_MOCK_STATE}"
+printf '%s\n' "A-wireguard sys-firewall" "Z-wireguard none" "A-anon A-wireguard" > "${SBX}/netvms.state"
+out="$(SEQS_MOCK_QUBES_PREFS_FAIL=1 SEQS_MOCK_NETVM_STATE="${SBX}/netvms.state" bash "${REPO}/delete-vms.sh" wireguard 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -q "^A-wireguard " "${SEQS_MOCK_STATE}" && grep -qxF "A-anon A-wireguard" "${SBX}/netvms.state" \
+	&& grep -qF "ERROR: could not read the global defaults -- nothing was changed" <<<"$out" && ok \
+	|| bad "delete-vms.sh must stop, and say why, when qubes-prefs fails: rc=$rc ${out}"
 # A network provider cannot be removed until consumers are detached. Preserve
 # the consumer but set its netvm to none, including when it is still running.
 printf '%s\n' "A-wireguard running" "Z-wireguard halted" "A-anon running" \
