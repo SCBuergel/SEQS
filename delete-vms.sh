@@ -131,7 +131,7 @@ findUsers() {
 						&& (i == 2 || !index(t, " " $1 " ")))
 					print $1, prop[i - 1], $i
 		}' || { echo "ERROR: could not list the qubes -- nothing was changed" >&2; return 1; }
-	qubes-prefs | awk -v t=" $* " 'index(t, " " $3 " ") { print "dom0", $1, $3 }' \
+	qubes-prefs | awk -v t=" $* " '$3 != "" && index(t, " " $3 " ") { print "dom0", $1, $3 }' \
 		|| { echo "ERROR: could not read the global defaults -- nothing was changed" >&2; return 1; }
 }
 

@@ -1039,13 +1039,16 @@ done
 	|| bad "reset must report the unmarked policy it kept and exit non-zero: rc=$rc ${out}"
 grep -q "qubesctl top.disable seqs.config pillar=true" "${SBX}/sudo.log" && ok || bad "reset must disable the SEQS pillar"
 grep -q "webcam's USB controller now belongs to no qube" <<<"$out" && ok || bad "reset must say what the webcam controller needs"
-# With nothing of SEQS left, a reset finds nothing to do and succeeds.
+# With no SEQS qube left, a reset removes the remaining SEQS files and
+# succeeds; a global property with an empty value names no target.
 rm -f "${SEQS_POLICY_DIR}/30-user-input.policy" "${SEQS_POLICY_DIR}/01-seqs-qr-filecopy.policy" "${SEQS_NUC11_CONF}" "${SEQS_VPN_MONITOR}"
-out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" python3 "${REPO}/test/lib/pty_run.py" \
-	bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" \
+write_names D- A- Z-; printf '%s\n' '# Managed by SEQS' > "${SEQS_POLICY_DIR}/29-browser.policy"
+printf '%s\n' 'default_kernel            -  ' > "${SBX}/global"
+out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_GLOBAL_PREFS="${SBX}/global" \
+	python3 "${REPO}/test/lib/pty_run.py" bash "${REPO}/delete-vms.sh" --reset 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "SEQS reset complete" <<<"$out" && [ ! -e "${SEQS_POLICY_DIR}/29-browser.policy" ] \
 	&& [ "$(reset_vms)" = "A-notes debian-13-xfce my-wallet-backup personal sys-firewall sys-net vault " ] && ok \
-	|| bad "a second reset must succeed and change nothing: rc=$rc ${out}"
+	|| bad "a reset with no SEQS qube left must remove the SEQS files and succeed: rc=$rc ${out}"
 unset SEQS_STATE_DIR SEQS_POLICY_DIR SEQS_ETC_DIR SEQS_QR_SCRIPT SEQS_VPN_MONITOR SEQS_NUC11_FW SEQS_NUC11_CONF SEQS_MOCK_UNMANAGED
 unset SEQS_MOCK_FEATURES SEQS_MOCK_PREFS SEQS_MOCK_NETVM_STATE
 unset -f reset_vms
