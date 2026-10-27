@@ -835,9 +835,19 @@ rm -rf "${px}"
 
 echo "== seqs-vpn-monitor shows only four numbers from the VPN qube =="
 # The panel interprets markup in what the monitor prints: anything but four
-# numbers from the qube must show n/a. qvm-run is a fake that prints $OUT.
+# numbers from the qube must show n/a. qvm-run is a fake that prints $OUT,
+# after 6 s with MODE=slow; with MODE=endless it streams 1 MB and notes when
+# the monitor read all of it.
 vb="$(mktemp -d)"
-printf '#!/bin/sh\necho "$*" >> "%s/args"; printf "%%s" "$OUT"\n' "${vb}" > "${vb}/qvm-run"
+cat > "${vb}/qvm-run" <<EOF
+#!/bin/sh
+echo "\$*" >> "${vb}/args"
+case "\${MODE:-}" in
+	slow) trap 'kill \$!; exit 1' TERM; sleep 6 >/dev/null & wait \$! ;;
+	endless) printf '1 2 3 4\\n'; yes | head -c 1000000 && echo whole >> "${vb}/endless"; exit 0 ;;
+esac
+printf "%s" "\$OUT"
+EOF
 chmod +x "${vb}/qvm-run"
 mon() { OUT="$1" PATH="${vb}:${PATH}" bash salt/seqs/files/seqs-vpn-monitor "$2"; }
 eq "traffic is shown" "$(mon '1073741824 2048 1048576 0' A-gnosisvpn)" " ↑ 2.00KiB (+ 0.00B), ↓ 1.00GiB (+ 1.00MiB)"
@@ -849,6 +859,12 @@ grep -q -- "--no-autostart --pass-io -- A-gnosisvpn seqs-gnosisvpn-rates" "${vb}
 : > "${vb}/args"
 eq "an unsafe qube name is refused" "$(mon '1 2 3 4' '-x')" " VPN: n/a"
 [ ! -s "${vb}/args" ] && ok || bad "an unsafe qube name must not reach qvm-run"
+# The qube's answer is read for at most 2 s and at most 100 bytes.
+t0="$(date +%s%N)"
+eq "an answer after the timeout shows n/a" "$(MODE=slow mon '1 2 3 4' A-gnosisvpn)" " VPN: n/a"
+[ $(( ($(date +%s%N) - t0) / 1000000 )) -lt 4500 ] && ok || bad "a slow qube must not hold the monitor beyond its timeout"
+eq "an endless answer shows n/a" "$(MODE=endless mon '' A-gnosisvpn)" " VPN: n/a"
+[ ! -e "${vb}/endless" ] && ok || bad "the monitor must stop reading after 100 bytes"
 
 echo "== seqs-gnosisvpn-rates reports totals and the last second's traffic =="
 # Against the loopback interface: four numbers, totals first.

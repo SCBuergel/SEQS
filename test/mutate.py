@@ -188,6 +188,8 @@ MUTATIONS = [
     ("dom0-vcpus-integer", S, "(q.vcpus is not integer or q.vcpus < 1) %}", "false %}"),
     ("dom0-main-app-name", S, "q.main_app | regex_match('^[A-Za-z0-9][A-Za-z0-9._-]*[.]desktop\\\\Z') is none) %}", "false) %}"),
     ("vpn-monitor-name", VM, '[[ "${vm}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]', '[[ -n "${vm}" ]]'),
+    ("vpn-monitor-timeout", VM, "$(timeout 2 qvm-run", "$(qvm-run"),
+    ("vpn-monitor-read-limit", VM, " | head -c 100)", ")"),
     ("vpn-monitor-four-numbers", VM, "^[0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}\\ [0-9]{1,19}$ ]]", "^.*$ ]]"),
     ("dom0-main-app-anchor", S, "[.]desktop\\\\Z') is none) %}", "[.]desktop$') is none) %}"),
     # Dom0 desktop settings: names in the runner's file paths and xfconf properties.
