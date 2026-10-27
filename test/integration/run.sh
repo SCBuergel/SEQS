@@ -743,6 +743,13 @@ grep -q '^template Z-brave brave$' "${SEQS_TARGETS_FILE}" 2>/dev/null && ok \
 ! grep -q "Step 1/3" <<<"$out" && ok || bad "install should not show the old 3-step prompts"
 rm -rf "${SBX}"
 
+# no_trace -- a refused policy takeover left no trace: no dom0 apply (whose
+# mock writes the targets file), no build intent, no run manifest.
+no_trace() {
+	[ ! -e "${SEQS_TARGETS_FILE}" ] && [ ! -e "${SEQS_SELECTION_FILE}" ] && [ ! -e "${SEQS_RUN_MANIFEST}" ] && ok \
+		|| bad "a refused policy takeover must come before anything is recorded or applied"
+}
+
 # ── Scenario 6b2: a second usb_keyboard_prompt assignment keeps the prompt ──
 echo "== scenario: the 30-user-input takeover prompt survives a reassigned False =="
 new_sandbox
@@ -756,6 +763,7 @@ out="$(PTY_RUN_ANSWERS=n run_setup --build-only --qubes brave 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && grep -qF "##  ${SEQS_POLICY_DIR}/30-user-input.policy:" <<<"$out" \
 	&& grep -qF "##      qubes.InputKeyboard * sys-usb @adminvm deny" <<<"$out" && ok \
 	|| bad "a False line reassigned below must keep the 30-user-input takeover prompt: rc=$rc"
+no_trace
 rm -rf "${SBX}"
 
 # ── Scenario 6c: confirmation and ownership gates ──────────────────────────
@@ -772,6 +780,7 @@ out="$(PTY_RUN_ANSWERS=y,n run_setup --qubes brave 2>&1)"; rc=$?
 	&& grep -q "qubes.OpenURL \* @anyvm A-brave ask" <<<"$out" \
 	&& grep -q "admin.vm.List \* A-x @anyvm allow" <<<"$out" && ok \
 	|| bad "an unmarked policy file must be shown and need a y to be overwritten: rc=$rc"
+no_trace
 rm -rf "${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" "${SEQS_FETCH_ROOT}" "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}"
 mkdir -p "${SEQS_FETCH_ROOT}/salt"
 out="$(run_setup --fetch-only 2>&1)"; rc=$?

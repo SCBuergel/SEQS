@@ -37,6 +37,15 @@ B = "install-scripts/lib/brave.sh"
 GV = "install-scripts/components/gnosisvpn/template-vm.sh"
 GD = "install-scripts/components/gnosisvpn/seqs-gnosisvpn-dns"
 
+# The dom0 steps of buildQubes that must come after the policy takeover prompt.
+DOM0_STEPS = (
+    "\t# A temporary GnosisVPN proxy or policy that a killed run left behind.\n"
+    "\tcleanupGnosisUpdateProxy\n\twriteBuildIntent\n\twriteRunManifest started\n"
+    "\techo \"\"\n\techo \"==> Applying dom0 state (policies, qube creation)\"\n"
+    "\trunQubesctl top.enable seqs.config pillar=true || die \"qubesctl top.enable failed\"\n"
+    "\trunQubesctl state.apply seqs.dom0 || die \"seqs.dom0 failed -- nothing was provisioned"
+    " inside any qube. Fix the reported problem and re-run (re-runs converge).\"\n")
+
 # (name, file, exact original text, weakened text)
 MUTATIONS = [
     # Runner: terminal sanitizing, confirmation, ownership, failure detection.
@@ -51,6 +60,7 @@ MUTATIONS = [
     ("confirm-empty", R, "y|Y) return 0 ;;", "y|Y|'') return 0 ;;"),
     ("confirm-tty", R, 'read -rp "$1 [y/N] " answer </dev/tty; then', 'read -rp "$1 [y/N] " answer; then'),
     ("ismanaged-anywhere", R, 'grep -q "^# ${MANAGED_MARKER}"', 'grep -q "${MANAGED_MARKER}"'),
+    ("takeover-after-dom0", R, "\tconfirmPolicyTakeover\n" + DOM0_STEPS, DOM0_STEPS + "\tconfirmPolicyTakeover\n"),
     ("takeover-skip", R, 'if [ -e "${p}" ] && ! isManaged "${p}"; then', 'if false; then'),
     ("takeover-usb-failsafe", R, 'vms="$(qvm-ls --raw-list 2>/dev/null)" && !', '{ vms="$(qvm-ls --raw-list 2>/dev/null)" || true; } && !'),
     ("qubesctl-result-false", R, "Result:([[:space:]]|\\[[0-9;]*m)*False|", ""),
