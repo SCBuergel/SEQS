@@ -62,11 +62,13 @@ PY
     [ -z "${SEQS_MOCK_POLICY_COPY:-}" ] \
       || cp "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" "${SEQS_MOCK_POLICY_COPY}" 2>/dev/null || true
     # SEQS_MOCK_FAIL_TEMPLATE fails that qube the way qubesctl reports it,
-    # after an OK line for each other target except SEQS_MOCK_NO_RESULT.
+    # after an OK line for each other target except SEQS_MOCK_NO_RESULT. With
+    # --show-output, qubesctl prints a target's output in place of OK.
     fail="${SEQS_MOCK_FAIL_TEMPLATE:-}"
+    result=OK; [[ " $args " != *" --show-output "* ]] || result="output of the target"
     targets="${args#*--targets=}"; targets="${targets%% *}"
     for t in ${targets//,/ }; do
-      [ "$t" = "$fail" ] || [ "$t" = "${SEQS_MOCK_NO_RESULT:-}" ] || echo "$t: OK"
+      [ "$t" = "$fail" ] || [ "$t" = "${SEQS_MOCK_NO_RESULT:-}" ] || echo "$t: $result"
     done
     if [ -n "$fail" ] && [[ "$args" == *"$fail"* ]]; then
       [ -n "${SEQS_MOCK_FAIL_QUIET:-}" ] || echo "$fail: ERROR (exit code 20, details in /var/log/qubes/mgmt-$fail.log)"

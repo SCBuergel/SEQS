@@ -1039,20 +1039,21 @@ finished() {
 
 # provisionApps VM... -- apply seqs.qube to the app qubes VM..., add the
 # failed ones to FAILED_APPS, and mark the others provisioned. As for
-# templates, after a failure a qube counts as provisioned only if qubesctl's
-# own ERROR lines name the failed ones and no target's output could have
-# forged them; and always only if it finished.
+# templates, after a failure a qube counts as provisioned only if it finished,
+# qubesctl's own ERROR lines name the failed ones, and no target's output
+# could have forged them. (With --show-output, qubesctl prints a qube's output
+# in place of its OK line.)
 provisionApps() {
 	[ "$#" -gt 0 ] || return 0
-	local vm attributed=1
+	local vm all=1 attributed=0
 	if ! runQubesctl --skip-dom0 "${QUBE_APPLY_OPTS[@]}" --targets="$(joinCsv "$@")" state.apply seqs.qube; then
 		echo "WARNING: at least one app qube failed to provision (see above; re-run" >&2
 		echo "         with --verbose for full per-state output)." >&2
-		FAILED=1
-		[ "${#FAILED_QUBES[@]}" -gt 0 ] && [ "${UNATTRIBUTED_FAILURE}" -eq 0 ] || attributed=0
+		FAILED=1 all=0
+		[ "${#FAILED_QUBES[@]}" -eq 0 ] || [ "${UNATTRIBUTED_FAILURE}" -ne 0 ] || attributed=1
 	fi
 	for vm in "$@"; do
-		if [ "${attributed}" -eq 1 ] && finished "${vm}"; then
+		if [ "${all}" -eq 1 ] || { [ "${attributed}" -eq 1 ] && finished "${vm}"; }; then
 			qvm-features -- "${vm}" seqs-provisioned 1 || die "could not record that ${vm} was provisioned"
 		else
 			FAILED_APPS+=("${vm}")

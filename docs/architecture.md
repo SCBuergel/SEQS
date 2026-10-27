@@ -53,7 +53,12 @@ data flow and controls. For the per-component trust analysis see
    executes anything a target qube produces. Output from the qubes reaches the
    dom0 terminal only through the runner's `sanitize()` filter. dom0 reads only
    failure markers and regex-checked qube names from it, which can only make a
-   run fail or skip failed qubes. A GnosisVPN build is the exception: before
+   run fail or skip failed qubes, and qubesctl's own `VM: OK` lines: after a
+   failed apply, these decide which qubes still count as provisioned, so that
+   the app qubes of such a template are provisioned and such a VPN provider
+   becomes the NetVM of the qubes routed through it. With `--verbose` a
+   target's output could forge one, so then every qube of a failed apply
+   counts as failed. A GnosisVPN build is the exception: before
    provisioning, the runner itself installs the Debian prerequisites in the
    template with `qvm-run -u root` and sanitized output, and adds a
    temporary download proxy qube and policy for its package

@@ -121,8 +121,9 @@ MUTATIONS = [
     ("netvm-set-after-provider", R, 'qvm-prefs -- "${vm}" netvm "${netvm}" || die', 'true || die'),
     ("netvm-verify-before-ready", R, '! isProvisioned "${netvm}" || want="${netvm}"', 'want="${netvm}"'),
     ("netvm-verify-after-ready", R, '\tverifyNetvm\n\tprovisionApps "${second[@]}"', '\tprovisionApps "${second[@]}"'),
-    ("provisioned-ok-required", R, 'if [ "${attributed}" -eq 1 ] && finished "${vm}"; then', 'if true; then'),
-    ("provisioned-unattributed", R, '[ "${UNATTRIBUTED_FAILURE}" -eq 0 ] || attributed=0', '[ "${UNATTRIBUTED_FAILURE}" -eq 0 ] || true'),
+    ("provisioned-ok-required", R, '{ [ "${attributed}" -eq 1 ] && finished "${vm}"; }', '[ "${attributed}" -eq 1 ]'),
+    ("provisioned-unattributed", R, '[ "${UNATTRIBUTED_FAILURE}" -ne 0 ] || attributed=1', 'attributed=1'),
+    ("provisioned-failed-run", R, 'FAILED=1 all=0', 'FAILED=1'),
     ("netvm-inherited", R, '\'$1 == "netvm" && $2 == "-" && $3 == n { f = 1 }', '\'$1 == "netvm" && $3 == n { f = 1 }'),
     ("airgap-one", R, '{ n++ } END { exit n != 2 }\' <<<', '{ n++ } END { exit n < 1 }\' <<<'),
     # delete-vms.sh: only SEQS qubes, only safe names, blockers stop everything.

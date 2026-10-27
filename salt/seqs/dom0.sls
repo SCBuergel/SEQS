@@ -370,7 +370,7 @@ print("END")'{% endset %}
 {% for name, q in qmap.items() if q.get('netvm') is string and q.netvm in qcatalog %}
 {%   set provider = papp ~ q.netvm %}
 {%   if q.netvm not in qmap and (inventory.get(provider, {}).get('recipe') != q.netvm or not inventory[provider].provisioned) %}
-{%     do errors.append("qube '" ~ name ~ "' needs its netvm '" ~ provider ~ "': select '" ~ q.netvm ~ "' in this run or build it first") %}
+{%     do errors.append("qube '" ~ name ~ "' needs its netvm '" ~ provider ~ "': select '" ~ q.netvm ~ "' in this run or provision it successfully first") %}
 {%   endif %}
 {% endfor %}
 

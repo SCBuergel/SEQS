@@ -309,13 +309,16 @@ export SEQS_MOCK_NETVM_STATE="${SBX}/netvms"; : > "${SEQS_MOCK_NETVM_STATE}"
 # Until the provider was provisioned, which installs its killswitch, neither
 # routed qube gets it as NetVM, and A-anon is not provisioned: here its
 # template fails, then its app qube, then its app qube with an OK line that
-# no ERROR line makes attributable.
-for SEQS_MOCK_FAIL_TEMPLATE in Z-gnosisvpn A-gnosisvpn A-gnosisvpn:forged; do
-	unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
-	[[ "${SEQS_MOCK_FAIL_TEMPLATE}" != *:forged ]] \
-		|| export SEQS_MOCK_FAIL_TEMPLATE=A-gnosisvpn SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_OUTPUT='A-gnosisvpn: OK'
-	export SEQS_MOCK_FAIL_TEMPLATE; : > "${SEQS_MOCK_QUBESCTL_LOG}"
-	out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
+# no ERROR line makes attributable, or that with --verbose its own output may
+# have forged, together with an ERROR line.
+for SEQS_MOCK_FAIL_TEMPLATE in Z-gnosisvpn A-gnosisvpn A-gnosisvpn:forged A-gnosisvpn:verbose; do
+	unset SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT; verbose=()
+	case "${SEQS_MOCK_FAIL_TEMPLATE}" in
+		*:forged) export SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_OUTPUT='A-gnosisvpn: OK' ;;
+		*:verbose) export SEQS_MOCK_FAIL_QUIET=1 SEQS_MOCK_FAIL_OUTPUT='A-gnosisvpn: OK\nA-anon: ERROR forged'; verbose=(--verbose) ;;
+	esac
+	export SEQS_MOCK_FAIL_TEMPLATE="${SEQS_MOCK_FAIL_TEMPLATE%:*}"; : > "${SEQS_MOCK_QUBESCTL_LOG}"
+	out="$(run_setup "${verbose[@]}" --qubes gnosisvpn,anon 2>&1)"; rc=$?
 	[ "$rc" -ne 0 ] && grep -qF "NetVM verified: A-anon has none until A-gnosisvpn is provisioned." <<<"$out" \
 		&& grep -qF "WARNING: A-anon stays without a netvm: A-gnosisvpn was not provisioned, so its killswitch is not installed" <<<"$out" \
 		&& grep -qF "WARNING: D-anon stays without a netvm: A-gnosisvpn was not provisioned" <<<"$out" \
@@ -328,6 +331,11 @@ out="$(run_setup --qubes gnosisvpn,anon 2>&1)"; rc=$?
 	&& grep -q "NetVM verified: D-anon uses A-gnosisvpn" <<<"$out" && ok \
 	|| bad "both NetVMs must be verified ($rc): $(tail -n 3 <<<"$out")"
 eq "the NetVMs the runner set" "$(grep anon "${SEQS_MOCK_NETVM_STATE}" | sort)" "$(printf '%s\n' "A-anon A-gnosisvpn" "D-anon A-gnosisvpn")"
+# With --verbose, qubesctl prints no OK lines; a clean run still counts.
+: > "${SEQS_MOCK_NETVM_STATE}"; : > "${SEQS_MOCK_PROVISIONED}"
+out="$(run_setup --build-only --verbose --qubes gnosisvpn,anon 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && grep -q "NetVM verified: A-anon uses A-gnosisvpn" <<<"$out" && ok \
+	|| bad "a clean --verbose run must provision the provider and its routed qube ($rc): $(tail -n 5 <<<"$out")"
 grep -qF "No default disposable verified on A-anon A-gnosisvpn D-anon." <<<"$out" && ok \
 	|| bad "the no_handoff qubes' default disposable must be verified: $(grep -i 'default disposable' <<<"$out")"
 eq "the provider's wave comes first" "$(grep -o -- "--targets=A-[^ ]*" "${SEQS_MOCK_QUBESCTL_LOG}" | tail -n 2 | tr '\n' ' ')" \

@@ -1044,7 +1044,7 @@ def test_dom0_netvm_key():
           "a disposable without 'netvm' must stay offline")
     # The provider must be selected or already built for its recipe.
     _, parsed = render_state("dom0", "dom0", Scenario(selection="anon"))
-    check("qube 'anon' needs its netvm 'A-gnosisvpn': select 'gnosisvpn' in this run or build it first" in _errors(parsed),
+    check("qube 'anon' needs its netvm 'A-gnosisvpn': select 'gnosisvpn' in this run or provision it successfully first" in _errors(parsed),
           "anon without its provider must be refused")
     _, parsed = render_state("dom0", "dom0", Scenario(selection="anon", existing_qubes=["A-gnosisvpn"],
                                                       tagged_qubes=["A-gnosisvpn"], recipes={"A-gnosisvpn": "brave"},
