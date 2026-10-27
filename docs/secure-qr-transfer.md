@@ -1083,7 +1083,8 @@ incoming `key.asc`, left by an earlier scan or rehearsal, delete
 `~/QubesIncoming/seqs-qr-scanner` in `A-qr-staging` once you no longer need
 it, shut `A-qr-staging` down, and run the script again. If it reports that
 `sys-usb-webcam` is already running, that qube has had the shared controller,
-so the script powers the computer off; run it again after the restart.
+so the script powers the computer off: remove every power source and start the
+computer as in the paragraph after the list below, then run the script again.
 Otherwise, type `START` in capital letters. After that:
 
 1. Unplug every USB keyboard and mouse right away. After 10 seconds the
