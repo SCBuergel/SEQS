@@ -1237,8 +1237,9 @@ fi
 # After START, the keyboard's controller is exposed to the camera side: every
 # outcome, success included, must end in a power-off. The camera phase runs
 # under a pseudo-terminal that types the answer.
-write_mock qvm-start ':'
-write_mock qvm-shutdown 'sed -i "/^${!#}$/d" "'"${SBX}"'/running"'
+write_mock qvm-start 'echo "$*" >> "'"${SBX}"'/qvm-start.log"'
+# With shutdown_ignored, a shutdown returns success but the qube keeps running.
+write_mock qvm-shutdown '[ -e "'"${SBX}"'/shutdown_ignored" ] || sed -i "/^${!#}$/d" "'"${SBX}"'/running"'
 # With attach_hangs, an attach hangs until the watchdog forces the power-off.
 # It first sends the watchdog the hangup of a closed terminal, which it must
 # survive.
@@ -1250,8 +1251,7 @@ write_mock qvm-usb 'if [ "${1:-}" = attach ] && [ -e "'"${SBX}"'/attach_hangs" ]
 	exit 1
 fi; cat "'"${SBX}"'/usb" 2>/dev/null; :'
 write_mock qvm-run 'case "$*" in *zbarcam*) exit "$(cat "'"${SBX}"'/scan_rc")" ;; *) cat "'"${SBX}"'/staged" ;; esac'
-qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no)
-	local out
+qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no); sets out
 	rm -f "${SBX}/systemctl.log"
 	out="$(PATH="${SBX}/bin:${PATH}" PTY_RUN_PROMPT="Type START" PTY_RUN_ANSWERS="$2" \
 		python3 "${REPO}/test/lib/pty_run.py" bash "${SBX}/qr.sh" 2>&1)"
@@ -1272,6 +1272,15 @@ printf 'sys-usb-webcam:2-1;x Webcam\n' > "${SBX}/usb"
 qr_camera "unsafe device" START "unsafe device identifier" yes
 printf 'sys-usb-webcam:2-1 Webcam\n' > "${SBX}/usb"; echo 1 > "${SBX}/scan_rc"
 qr_camera "failed scan" START "scan/copy failed" yes
+# The operator plugs in the webcam on "NORMAL USB BACKEND STOPPED": a sys-usb
+# still running after its shutdown must stop the script before that message
+# and before the webcam backend gets the controller.
+echo sys-usb > "${SBX}/running"; touch "${SBX}/shutdown_ignored"; rm -f "${SBX}/qvm-start.log"
+qr_camera "sys-usb still running" START "ERROR: sys-usb is still running" yes
+tr -d '\r' <<<"${out}" | grep -qx "ERROR: sys-usb is still running" && [[ "${out}" != *"NORMAL USB BACKEND STOPPED"* ]] \
+	&& [ ! -e "${SBX}/qvm-start.log" ] && ok \
+	|| bad "sys-usb still running: the script must stop before the webcam step, got: $(tail -n 2 <<<"${out}" | tr -d '\r')"
+rm -f "${SBX}/shutdown_ignored"
 # A hang in the camera phase, here a USB attach that never returns, cannot
 # keep the boot running: the watchdog forces the power-off.
 touch "${SBX}/attach_hangs"
