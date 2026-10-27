@@ -983,6 +983,72 @@ def test_dom0_dedicated_qr_rejects_weak_reset():
           "dedicated mode on a controller without a strict reset must fail pre-flight")
 
 
+# Fakes for the camera-side states, on the files next to them: prefs holds
+# "<vm> <property> <flag> <value>" lines, attached marks the controller as
+# assigned to the webcam backend. Every other command succeeds silently.
+_FAKE_QR_COMMANDS = {
+    "qvm-prefs": r"""#!/usr/bin/env bash
+f="$(dirname "$0")/prefs"; a=(); for x in "$@"; do [ "$x" = -- ] || a+=("$x"); done
+case "${#a[@]}" in
+	1) awk -v v="${a[0]}" '$1 == v { print $2, $3, $4 }' "$f" ;;
+	2) awk -v v="${a[0]}" -v p="${a[1]}" '$1 == v && $2 == p { print $4 }' "$f" ;;
+	3) val="${a[2]}"; [ "$val" = none ] && val=None
+		awk -v v="${a[0]}" -v p="${a[1]}" '!($1 == v && $2 == p)' "$f" > "$f.new"
+		echo "${a[0]} ${a[1]} - ${val}" >> "$f.new"; mv "$f.new" "$f" ;;
+	*) exit 2 ;;
+esac
+""",
+    "qvm-pci": r"""#!/usr/bin/env bash
+d="$(dirname "$0")"
+case "$*" in
+	"list --assignments") [ ! -e "$d/attached" ] || echo "dom0:00_14.0 USB_controller sys-usb-webcam (required)" ;;
+	"list sys-usb") echo "dom0:00_14.0 USB_controller" ;;
+	attach\ *) touch "$d/attached" ;;
+esac
+exit 0
+""",
+    "qvm-ls": "#!/bin/sh\nprintf 'dom0\\nsys-usb\\nsys-usb-webcam\\nseqs-qr-scanner\\n'\n",
+    "qvm-check": "#!/bin/sh\ncase \" $* \" in *' --running '*) exit 1 ;; esac\nexit 0\n",
+}
+for _name in ("qvm-create", "qvm-features", "qvm-shutdown", "qvm-start"):
+    _FAKE_QR_COMMANDS[_name] = "#!/bin/sh\nexit 0\n"
+
+
+def test_dom0_qr_camera_qubes_set_offline():
+    case("dom0.sls: the camera-side qubes are set explicitly offline in both webcam modes")
+    for mode in ("dedicated", "sequential"):
+        pillar = copy.deepcopy(render_pillar("dom0"))
+        pillar.update({"webcam_usb_mode": mode, "webcam_usb_controller": "00_14.0",
+                       "webcam_usb_strict_reset": True})
+        _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True), pillar_seqs=pillar)
+        check("seqs-validation-failed" not in parsed, "%s mode must pass validation: %s" % (mode, _errors(parsed)))
+        for state, vm in (("seqs-webcam-usb-backend", "sys-usb-webcam"), ("seqs-qr-scanner", "seqs-qr-scanner")):
+            with tempfile.TemporaryDirectory() as d:
+                for name, body in _FAKE_QR_COMMANDS.items():
+                    with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                        f.write(body)
+                    os.chmod(os.path.join(d, name), 0o755)
+                # Both start networked, the disposable inherited.
+                with open(os.path.join(d, "prefs"), "w", encoding="utf-8") as f:
+                    for q in ("sys-usb-webcam", "seqs-qr-scanner"):
+                        f.write("%s netvm - sys-firewall\n%s default_dispvm D default-dvm\n" % (q, q))
+                env = dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"])
+
+                def run(key):
+                    return subprocess.run(["bash", "-c", state_arg(parsed, state, "cmd.run", key)],
+                                          env=env, timeout=60, capture_output=True, text=True)
+
+                done = run("name")
+                with open(os.path.join(d, "prefs"), encoding="utf-8") as f:
+                    prefs = sorted(line for line in f.read().splitlines() if line.split()[0] == vm
+                                   and line.split()[1] in ("netvm", "default_dispvm"))
+                check(done.returncode == 0 and prefs == ["%s default_dispvm - None" % vm, "%s netvm - None" % vm],
+                      "%s mode: %s must set %s's netvm and default_dispvm explicitly to none, got %r (rc %d: %s)"
+                      % (mode, state, vm, prefs, done.returncode, done.stderr))
+                if any("unless" in arg for arg in parsed[state]["cmd.run"] if isinstance(arg, dict)):
+                    check(run("unless").returncode == 0, "%s mode: %s must be skipped once applied" % (mode, state))
+
+
 def test_dom0_dedicated_qr_uses_device_api():
     case("dom0.sls: dedicated QR mode manages PCI through qvm-pci")
     pillar = copy.deepcopy(render_pillar("dom0"))

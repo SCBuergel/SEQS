@@ -245,6 +245,10 @@ MUTATIONS = [
     ("dom0-cleanup-dotdot", S, "or ('..' in p) or ('/./' in p ~ '/') %}", "%}"),
     ("dom0-firewall-entry", S, "{%           if e not in ['dns', 'icmp'] and ((es", "{%           if false and ((es"),
     ("dom0-firewall-delete-old", S, "del --rule-no 1; done", "del --rule-no 0; done"),
+    ("dom0-webcam-backend-netvm", S, "        qvm-prefs -- {{ webcam_usb_qube }} netvm none\n", ""),
+    ("dom0-webcam-backend-dispvm", S, "        qvm-prefs -- {{ webcam_usb_qube }} default_dispvm none\n", ""),
+    ("dom0-qr-scanner-netvm", S, "        qvm-prefs -- {{ webcam_scanner_qube }} netvm none\n", ""),
+    ("dom0-qr-scanner-dispvm", S, "        qvm-prefs -- {{ webcam_scanner_qube }} default_dispvm none\n", ""),
     ("dom0-firewall-accept-index", S, "add --before {{ loop.index0 }} {{ r }}", "add --before {{ loop.index }} {{ r }}"),
     ("dom0-webcam-bdf", S, "regex_match('^[0-9a-f]{2}_[0-9a-f]{2}\\.[0-7]\\\\Z') is none %}", "regex_match('^.*$') is none %}"),
     # \Z, not $, which also matches before a trailing newline.
