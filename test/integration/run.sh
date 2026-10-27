@@ -85,6 +85,11 @@ grep -q "Fetching salt tree from source HEAD commit ${SEQS_EXPECTED_COMMIT}" <<<
 grep -q "Staging complete" <<<"$out" && ok || bad "expected the salt tree to be staged"
 grep -q "Air gap verified" <<<"$out" && ok || bad "expected air-gap verification to run"
 grep -q "SEQS setup complete" <<<"$out" && ok || bad "expected a clean completion message"
+# Control bytes from qubes (mocks/bin/qvm-run) reach the terminal only
+# sanitized: the repository qube's stderr not at all, apt's output stripped.
+grep -qF 'apt: ]0;HOSTILE-APT done' <<<"$out" && ok || bad "expected apt's output, sanitized"
+! grep -q HOSTILE-REPO <<<"$out" && ok || bad "the repository qube's stderr reached the terminal"
+! LC_ALL=C grep -qE $'[\a\e]|\xc2[\x80-\x9f]' <<<"$out" && ok || bad "a control byte from a qube reached the terminal"
 grep -q "Creating domain-restricted temporary GnosisVPN updates proxy" <<<"$out" \
 	&& ok || bad "expected the scoped GnosisVPN proxy lifecycle"
 [ ! -e "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" ] && ok \
@@ -125,8 +130,14 @@ rm -rf "${SBX}"
 echo "== scenario: an app qube of a failed template is not provisioned =="
 new_sandbox
 export SEQS_MOCK_FAIL_TEMPLATE=Z-keepass SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+# The failed qube's Salt log holds its own output, control bytes included.
+export SEQS_MOCK_MGMT_LOG="${SBX}/mgmt.log"
+printf '%s\n' 'earlier run, exit code: 0' $'2026-01-01 Z-keepass output: E: \e]0;HOSTILE-LOG\a\xc2\x9b failed' 'last line' > "${SEQS_MOCK_MGMT_LOG}"
 out="$(run_setup --qubes keepass,signal 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok || bad "a failed template must fail the run"
+grep -qF '    E: ]0;HOSTILE-LOG failed' <<<"$out" \
+	&& ! LC_ALL=C grep -qE $'[\a\e]|\xc2[\x80-\x9f]' <<<"$out" && ok \
+	|| bad "the failed qube's log excerpt must be shown, sanitized"
 grep -q "skipping A-keepass: its template failed" <<<"$out" && ok \
 	|| bad "the app qube of the failed template must be reported as skipped"
 grep -q -- "--targets=A-signal state.apply" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
@@ -181,7 +192,7 @@ out="$(SEQS_MOCK_PREFS="${SBX}/prefs" run_setup --build-only --qubes keepass,sig
 [ "$rc" -ne 0 ] && grep -q "could not read the template of A-signal" <<<"$out" \
 	&& ! grep -q -- "--targets=.*A-signal" "${SEQS_MOCK_QUBESCTL_LOG}" && ok \
 	|| bad "an unreadable template must stop the run before app qubes are provisioned"
-unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT
+unset SEQS_MOCK_FAIL_TEMPLATE SEQS_MOCK_QUBESCTL_LOG SEQS_MOCK_FAIL_RC SEQS_MOCK_FAIL_QUIET SEQS_MOCK_FAIL_OUTPUT SEQS_MOCK_MGMT_LOG
 rm -rf "${SBX}"
 
 # ── Scenario 1a1: a failed dom0 state stops the run before any qube ──────

@@ -16,6 +16,10 @@ while [ $# -gt 0 ]; do
 done
 # SEQS_MOCK_SUDO_REFUSE: a glob; a command matching it fails.
 [[ -z "${SEQS_MOCK_SUDO_REFUSE:-}" || "$*" != ${SEQS_MOCK_SUDO_REFUSE} ]] || exit 1
+# SEQS_MOCK_MGMT_LOG: the file read in place of a qube's Salt log.
+if [ "${1:-}" = tac ] && [[ "${2:-}" == /var/log/qubes/mgmt-*.log ]] && [ -n "${SEQS_MOCK_MGMT_LOG:-}" ]; then
+  exec tac "${SEQS_MOCK_MGMT_LOG}"
+fi
 # The unprivileged test container cannot chown to root; production sudo can.
 if [ "${1:-}" = "chown" ]; then
   exit 0

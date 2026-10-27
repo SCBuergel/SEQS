@@ -42,6 +42,10 @@ MUTATIONS = [
     # Runner: terminal sanitizing, confirmation, ownership, failure detection.
     ("sanitize-esc", R, r"tr -d '\000-\010\013-\037\177'", r"tr -d '\000-\010\013-\032\177'"),
     ("sanitize-c1", R, r"s/\xc2[\x80-\x9f]//g", r"s/\xc2[\x80-\x8f]//g"),
+    ("sanitize-mgmt-log", R, "| sed 's/^.* output: *//' | sanitize |", "| sed 's/^.* output: *//' |"),
+    ("sanitize-gnosis-apt", R, "2>&1 </dev/null | sanitize; then", "2>&1 </dev/null | cat; then"),
+    ("repo-stderr-commit", R, "2>/dev/null </dev/null | head -c 100", "</dev/null | head -c 100"),
+    ("repo-stderr-archive", R, '2>/dev/null </dev/null | head -c "${MAX_ARCHIVE}"', '</dev/null | head -c "${MAX_ARCHIVE}"'),
     ("confirm-empty", R, "y|Y) return 0 ;;", "y|Y|'') return 0 ;;"),
     ("ismanaged-anywhere", R, 'grep -q "^# ${MANAGED_MARKER}"', 'grep -q "${MANAGED_MARKER}"'),
     ("takeover-skip", R, 'if [ -e "${p}" ] && ! isManaged "${p}"; then', 'if false; then'),

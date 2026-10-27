@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Mock qvm-run: the installer's ONLY VM->dom0 dataflow is
+# Mock qvm-run: the installer's only VM->dom0 dataflows are
 #   qvm-run -p REPO_VM "git ... rev-parse ... HEAD^{commit}"
 #   qvm-run -p REPO_VM "git ... cat-file ... && ... && git ... archive ..."
+#   qvm-run -p -u root Z-gnosisvpn "apt-get update && ..." (shown sanitized)
 # Emit the requested result. The export command runs as sent, against
 # SEQS_REPO_ROOT in place of the repository path, so that its checks are the
 # runner's own. SEQS_MOCK_TAR overrides the archive payload so a
@@ -13,10 +14,17 @@ endless() {
   yes | head -c 20000000 && echo "${SEQS_MOCK_ENDLESS}" >> "${SEQS_MOCK_ENDLESS_LOG:-/dev/null}"
   exit 0
 }
+# Every answer also carries terminal control bytes (OSC, BEL, C1), on stderr
+# from the repository qube and on stdout from apt: none may reach the
+# terminal raw (HOSTILE-REPO and HOSTILE-APT name them in the output).
 case "$*" in
   *"Z-gnosisvpn"*"apt-get update"*"openresolv"*)
+    printf 'apt: \e]0;HOSTILE-APT\a\xc2\x9b done\n'
     exit 0
     ;;
+esac
+printf '\e]0;HOSTILE-REPO\a\xc2\x9b\n' >&2
+case "$*" in
   *"rev-parse --verify HEAD^{commit}"*)
     [ "${SEQS_MOCK_ENDLESS:-}" != commit ] || endless
     printf '%s\n' "${SEQS_MOCK_RESOLVED_COMMIT:-${SEQS_EXPECTED_COMMIT:?SEQS_EXPECTED_COMMIT unset}}"
