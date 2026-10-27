@@ -955,7 +955,7 @@ touch "${SEQS_STATE_DIR}/intents/A-orphan" "${SEQS_SALT_TREE}/dom0.sls" "${SEQS_
 printf '#!/bin/sh\n# Managed by SEQS. Sequential-path QR scan\n' > "${SEQS_QR_SCRIPT}"
 # A hand-written wrapper that mentions SEQS is not SEQS's file.
 printf '#!/bin/sh\n# wrapper around the SEQS monitor\n' > "${SEQS_VPN_MONITOR}"
-for p in 00-seqs-qr-input-deny 28-browser-suppress 29-browser 50-seqs-audiovm; do
+for p in 00-seqs-qr-input-deny 20-seqs-gnosisvpn-updates 28-browser-suppress 29-browser 50-seqs-audiovm; do
 	echo "# Managed by SEQS (test)" > "${SEQS_POLICY_DIR}/${p}.policy"
 done
 printf '%s\n' "qubes.InputKeyboard * sys-usb @adminvm allow" "# Managed by SEQS? No, by hand." \
@@ -1024,6 +1024,7 @@ out="$(PTY_RUN_PROMPT="Type RESET" PTY_RUN_ANSWERS="RESET" SEQS_MOCK_SUDO_LOG="$
 	|| bad "reset left the wrong qubes: $(reset_vms); ${out}"
 [ "$(awk '$1 == "personal" { print $2 }' "${SBX}/netvm")" = "none" ] && ok || bad "the NetVM user must be disconnected"
 for f in "${SEQS_SALT_TREE}" "${SEQS_PILLAR_TREE}" "${SEQS_STATE_DIR}" "${SEQS_ETC_DIR}" "${SEQS_QR_SCRIPT}" \
+		"${SEQS_POLICY_DIR}/00-seqs-qr-input-deny.policy" "${SEQS_POLICY_DIR}/20-seqs-gnosisvpn-updates.policy" \
 		"${SEQS_POLICY_DIR}/29-browser.policy" "${SEQS_POLICY_DIR}/50-seqs-audiovm.policy" \
 		"${SBX}/config/xfce4/panel/seqs-dom0-launchers" "${SEQS_NUC11_FW}"; do
 	[ ! -e "${f}" ] && ok || bad "reset left ${f}"

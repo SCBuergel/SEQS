@@ -478,16 +478,23 @@ def test_dom0_adopts_via_intent_marker():
           % ids_containing(parsed, "seqs-stale-intent-"))
 
 
+def _runner_policy_files():
+    """The names in setup-qubes.sh's POLICY_FILES, and the runner's text."""
+    with open(os.path.join(sr.REPO_ROOT, "setup-qubes.sh"), encoding="utf-8") as f:
+        text = f.read()
+    block = re.search(r"\nPOLICY_FILES=\(\n(.*?)\n\)\n", text, re.S)
+    names = set(re.findall(r'"\$\{POLICY_DIR\}/([0-9a-z.-]+\.policy)"', block.group(1) if block else ""))
+    check(block is not None and len(names) == len(block.group(1).splitlines()),
+          "POLICY_FILES in setup-qubes.sh must be one quoted ${POLICY_DIR}/NAME.policy per line")
+    return names, text
+
+
 def test_dom0_policy_files_match_runner_takeover_list():
     case("dom0.sls: every qrexec policy file it writes is in the runner's POLICY_FILES")
     # seqs.dom0 overwrites its policy files without looking for the marker;
     # only the runner's takeover check, which reads POLICY_FILES, protects an
     # operator's unmarked file of the same name.
-    with open(os.path.join(sr.REPO_ROOT, "setup-qubes.sh"), encoding="utf-8") as f:
-        block = re.search(r"\nPOLICY_FILES=\(\n(.*?)\n\)\n", f.read(), re.S)
-    runner = set(re.findall(r'"\$\{POLICY_DIR\}/([0-9a-z.-]+\.policy)"', block.group(1) if block else ""))
-    check(block is not None and len(runner) == len(block.group(1).splitlines()),
-          "POLICY_FILES in setup-qubes.sh must be one quoted ${POLICY_DIR}/NAME.policy per line")
+    runner, _ = _runner_policy_files()
     # Renders that write every conditional policy: QR sequential mode (00-,
     # 01-), Qubes 4.3 with sys-usb (30-), an audio qube in @all (50-).
     qr = copy.deepcopy(render_pillar("dom0"))
@@ -505,6 +512,25 @@ def test_dom0_policy_files_match_runner_takeover_list():
           % (sorted(managed), sorted(runner)))
     # A policy file written another way, such as by a cmd.run, needs the guard too.
     check(named <= runner, "policy files named in seqs.dom0 but not in POLICY_FILES: %s" % sorted(named - runner))
+
+
+def test_reset_removes_every_seqs_policy_file():
+    case("delete-vms.sh: --reset covers every policy file SEQS writes")
+    # The reset removes only the marked files its POLICIES list names: those
+    # of seqs.dom0, which the test above ties to POLICY_FILES, and the
+    # runner's temporary GnosisVPN updates policy.
+    runner, text = _runner_policy_files()
+    gnosis = re.search(r'\nGNOSIS_UPDATE_POLICY="\$\{POLICY_DIR\}/([0-9a-z.-]+\.policy)"\n', text)
+    check(gnosis is not None, "setup-qubes.sh must set GNOSIS_UPDATE_POLICY=\"${POLICY_DIR}/NAME.policy\"")
+    with open(os.path.join(sr.REPO_ROOT, "delete-vms.sh"), encoding="utf-8") as f:
+        block = re.search(r"\nPOLICIES=\(([^)]*)\)\n", f.read())
+    names = block.group(1).split() if block else []
+    check(names and all(re.fullmatch(r"[0-9a-z.-]+", n) for n in names) and len(set(names)) == len(names),
+          "POLICIES in delete-vms.sh must be distinct bare policy names: %r" % names)
+    expected = runner | ({gnosis.group(1)} if gnosis else set())
+    got = {n + ".policy" for n in names}
+    check(got == expected, "delete-vms.sh POLICIES %s must be POLICY_FILES plus GNOSIS_UPDATE_POLICY %s"
+          % (sorted(got), sorted(expected)))
 
 
 def test_dom0_usb_policy_release_gated():
