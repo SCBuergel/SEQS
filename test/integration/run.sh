@@ -153,6 +153,18 @@ grep -qx -- "--update -- D-qr-display" "${SEQS_MOCK_APPMENUS_LOG}" 2>/dev/null &
 	|| bad "only named disposables need the runner's menu refresh"
 rm -rf "${SBX}"
 
+# ── Scenario 1-apt: a failed GnosisVPN prerequisite install stops the run ─
+echo "== scenario: a failed apt run in the GnosisVPN template stops the build =="
+new_sandbox
+export SEQS_MOCK_QUBESCTL_LOG="${SBX}/qubesctl.log"
+out="$(SEQS_MOCK_APT_RC=100 run_setup --qubes gnosisvpn 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF 'apt: ]0;HOSTILE-APT done' <<<"$out" \
+	&& grep -q "ERROR: could not install GnosisVPN prerequisites in Z-gnosisvpn" <<<"$out" \
+	&& ! grep -q "seqs.qube" "${SEQS_MOCK_QUBESCTL_LOG}" 2>/dev/null && ok \
+	|| bad "a failed apt run must stop the build before any qube is provisioned: rc=$rc $(tail -n 3 <<<"$out")"
+unset SEQS_MOCK_QUBESCTL_LOG
+rm -rf "${SBX}"
+
 # ── Scenario 1a: a failed template skips its app qube, not the others ─────
 echo "== scenario: an app qube of a failed template is not provisioned =="
 new_sandbox

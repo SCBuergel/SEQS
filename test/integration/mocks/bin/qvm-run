@@ -16,11 +16,12 @@ endless() {
 }
 # Every answer also carries terminal control bytes (OSC, BEL, C1), on stderr
 # from the repository qube and on stdout from apt: none may reach the
-# terminal raw (HOSTILE-REPO and HOSTILE-APT name them in the output).
+# terminal raw (HOSTILE-REPO and HOSTILE-APT name them in the output). apt's
+# also holds invalid UTF-8 (0xFF), and exits SEQS_MOCK_APT_RC.
 case "$*" in
   *"Z-gnosisvpn"*"apt-get update"*"openresolv"*)
-    printf 'apt: \e]0;HOSTILE-APT\a\xc2\x9b done\n'
-    exit 0
+    printf 'apt: \e]0;HOSTILE-APT\a\xc2\x9b\xff done\n'
+    exit "${SEQS_MOCK_APT_RC:-0}"
     ;;
 esac
 printf '\e]0;HOSTILE-REPO\a\xc2\x9b\n' >&2

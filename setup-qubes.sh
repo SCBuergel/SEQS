@@ -892,11 +892,12 @@ prepareGnosisPrerequisites() {
 	echo "==> Preparing GnosisVPN dependencies through the default UpdateVM"
 	for template in "${GNOSIS_TEMPLATE_TARGETS[@]}"; do
 		echo "    ${template}"
-		if ! qvm-run -p -u root "${template}" \
+		# apt's exit status decides; sanitize fails when it drops invalid UTF-8.
+		qvm-run -p -u root "${template}" \
 			"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg openresolv wireguard-tools libc6 systemd iptables logrotate wireguard ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0t64 libayatana-appindicator3-1 libglib2.0-bin" \
-			2>&1 </dev/null | sanitize; then
-			die "could not install GnosisVPN prerequisites in ${template} through the default updates proxy"
-		fi
+			2>&1 </dev/null | sanitize
+		[ "${PIPESTATUS[0]}" -eq 0 ] \
+			|| die "could not install GnosisVPN prerequisites in ${template} through the default updates proxy"
 		qvm-shutdown --wait "${template}" \
 			|| die "could not commit GnosisVPN prerequisite installation in ${template}"
 	done
