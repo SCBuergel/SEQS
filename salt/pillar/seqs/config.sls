@@ -42,11 +42,9 @@ for all options and docs/secure-qr-transfer.md before enabling webcam USB.
     build checks which applies. #}
 {%- set webcam_usb_strict_reset = True %}
 {%- set webcam_usb_qube = 'sys-usb-webcam' %}
-{%- set webcam_scanner_dvm = prefix_app ~ 'qr-camera' %}
 {%- set webcam_normal_usb_qube = 'sys-usb' %}
 {#- Named disposable of qr-camera that scans on both paths; qrexec rules name it. #}
 {%- set webcam_scanner_qube = 'seqs-qr-scanner' %}
-{%- set webcam_staging_qube = prefix_app ~ 'qr-staging' %}
 
 {#- Catalogue of everything this reviewed tree is able to build. The runner's
     mandatory --qubes/--all argument selects entries for each invocation. #}
@@ -138,10 +136,8 @@ seqs:
   webcam_usb_mode: '{{ webcam_usb_mode }}'
   webcam_usb_strict_reset: {{ webcam_usb_strict_reset | tojson }}
   webcam_usb_qube: '{{ webcam_usb_qube }}'
-  webcam_scanner_dvm: '{{ webcam_scanner_dvm }}'
   webcam_normal_usb_qube: '{{ webcam_normal_usb_qube }}'
   webcam_scanner_qube: '{{ webcam_scanner_qube }}'
-  webcam_staging_qube: '{{ webcam_staging_qube }}'
 {%- else %}
 {%-   set ns = namespace(role='', base='') %}
 {%-   if id.startswith(prefix_template) %}

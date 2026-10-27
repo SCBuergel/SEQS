@@ -762,6 +762,35 @@ def test_dom0_qr_mode_without_camera_in_selection():
           % unresolved_requisites(parsed))
 
 
+def test_dom0_qr_qubes_are_the_catalogue_qubes():
+    case("dom0.sls: the QR template and staging qube are the catalogue's, built by SEQS")
+    pillar = copy.deepcopy(render_pillar("dom0"))
+    pillar.update({
+        "webcam_usb_mode": "sequential",
+        "webcam_usb_controller": "00_14.0",
+        "webcam_usb_strict_reset": True,
+    })
+    # Former settings: the scanner must never copy to a qube they name.
+    _, parsed = render_state("dom0", "dom0", Scenario(sys_usb=True, existing_qubes=["vault"]),
+                             pillar_seqs=dict(pillar, webcam_staging_qube="vault", webcam_scanner_dvm="vault"))
+    copy_rules = policy_rules(state_arg(parsed, "seqs-policy-qr-filecopy", "file.managed", "contents"))
+    check(("qubes.Filecopy", "*", "seqs-qr-scanner", "A-qr-staging", "allow") in copy_rules
+          and "STAGING_QUBE='A-qr-staging'" in state_arg(parsed, "seqs-qr-sequential-config", "file.managed", "contents")
+          and "-t A-qr-camera " in state_arg(parsed, "seqs-qr-scanner", "cmd.run", "name"),
+          "the QR qubes must be the catalogue's, whatever the pillar says")
+    # Not selected, a same-named qube counts only if SEQS built it for that recipe.
+    for name, message in (("qr-staging", "sequential webcam mode requires qube 'qr-staging': select it in this run or build it first"),
+                          ("qr-camera", "webcam_usb_controller requires qube 'qr-camera': select it in this run or build it first")):
+        other = "qr-camera" if name == "qr-staging" else "qr-staging"
+        vm, built = "A-" + name, "A-" + other
+        for tagged, recipes, what in (([built], {built: other}, "an unmanaged"),
+                                      ([built, vm], {built: other, vm: "keepass"}, "a keepass")):
+            _, parsed = render_state("dom0", "dom0", Scenario(
+                sys_usb=True, selection="brave", existing_qubes=["A-brave", built, vm],
+                tagged_qubes=["A-brave"] + tagged, recipes=recipes), pillar_seqs=pillar)
+            check(message in _errors(parsed), "%s %s must not stand in for %s" % (what, vm, name))
+
+
 def test_dom0_sequential_qr_allows_explicit_weak_reset():
     case("dom0.sls: sequential QR mode accepts webcam_usb_strict_reset = False without a reset method")
     pillar = copy.deepcopy(render_pillar("dom0"))
@@ -1211,8 +1240,7 @@ def test_dom0_validation_catches_bad_config():
         "config_errors from pillar compilation must abort the dom0 apply")
     for bdf in ("00_1A.0", "0000:00:14.0", "00:14.0", "00_14.8", "00_14.0\n"):
         check(_rejected("webcam_usb_controller '%s' is invalid" % bdf, _bad_pillar(
-            webcam_usb_mode="sequential", webcam_usb_controller=bdf,
-            webcam_scanner_dvm="A-qr-camera")),
+            webcam_usb_mode="sequential", webcam_usb_controller=bdf)),
             "controller '%s' is not a lowercase qvm-pci BDF and must fail" % bdf)
     check(_rejected("webcam_usb_controller is set while webcam_usb_mode is disabled", _bad_pillar(
         webcam_usb_mode="disabled", webcam_usb_controller="00_14.0")),

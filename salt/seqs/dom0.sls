@@ -21,10 +21,13 @@
 {% set webcam_controller = seqs.get('webcam_usb_controller', '') %}
 {% set webcam_strict_reset = seqs.get('webcam_usb_strict_reset', true) %}
 {% set webcam_usb_qube = seqs.get('webcam_usb_qube', 'sys-usb-webcam') %}
-{% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', '') %}
+{# The camera side's template and the qube the scanner may copy to without a
+   dialog are always the catalogue's qr-camera and qr-staging qubes, so the
+   checks of those entries below apply to them. #}
+{% set webcam_scanner_dvm = papp ~ 'qr-camera' %}
 {% set webcam_normal_usb_qube = seqs.get('webcam_normal_usb_qube', 'sys-usb') %}
 {% set webcam_scanner_qube = seqs.get('webcam_scanner_qube', 'seqs-qr-scanner') %}
-{% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}
+{% set webcam_staging_qube = papp ~ 'qr-staging' %}
 
 {# \Z, not $: Python's $ also matches before a trailing newline. #}
 {% set name_re = '^[A-Za-z0-9_][A-Za-z0-9._-]*\\Z' %}
@@ -181,18 +184,17 @@ print("END")'{% endset %}
 {%     do errors.append("webcam_usb_strict_reset is False, but webcam_usb_controller '" ~ webcam_controller ~ "' supports a strict reset (" ~ methods | join(' ') ~ "): set it to True") %}
 {%   endif %}
 {% endif %}
-{% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube), ('webcam_staging_qube', webcam_staging_qube)] %}
+{% for field, value in [('webcam_usb_qube', webcam_usb_qube), ('webcam_normal_usb_qube', webcam_normal_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube)] %}
 {%   if value | regex_match(name_re) is none %}
 {%     do errors.append(field ~ " '" ~ value ~ "' has an unsafe name") %}
 {%   endif %}
 {% endfor %}
-{% if webcam_controller and (not webcam_scanner_dvm or webcam_scanner_dvm | regex_match(name_re) is none) %}
-{%   do errors.append("webcam_scanner_dvm is missing or unsafe") %}
-{% endif %}
-{% if webcam_controller and 'qr-camera' not in qmap and (webcam_scanner_dvm not in inventory) %}
+{# Not selected, each must be a qube SEQS built for that recipe (a qube built
+   before SEQS recorded recipes has none). #}
+{% if webcam_controller and 'qr-camera' not in qmap and not (inventory.get(webcam_scanner_dvm, {}).get('managed') and inventory[webcam_scanner_dvm].recipe in ['', 'qr-camera']) %}
 {%   do errors.append("webcam_usb_controller requires qube 'qr-camera': select it in this run or build it first") %}
 {% endif %}
-{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap and (webcam_staging_qube not in inventory) %}
+{% if webcam_mode == 'sequential' and 'qr-staging' not in qmap and not (inventory.get(webcam_staging_qube, {}).get('managed') and inventory[webcam_staging_qube].recipe in ['', 'qr-staging']) %}
 {%   do errors.append("sequential webcam mode requires qube 'qr-staging': select it in this run or build it first") %}
 {% endif %}
 {% if webcam_mode == 'sequential' and (not qcatalog.get('qr-staging', {}).get('offline') or not qcatalog.get('qr-staging', {}).get('preserve_incoming')) %}
