@@ -1086,7 +1086,7 @@ seqs-cpu-pinning-{{ name }}:
 seqs-cpu-pinning-clear-{{ name }}:
   cmd.run:
     - name: rm -f -- {{ pin_file }}
-    - onlyif: head -n 1 -- {{ pin_file }} | grep -q '^{{ '{#' }} Managed by SEQS'
+    - onlyif: "head -n 1 -- {{ pin_file }} | grep -qxF '{{ pin_marker }}'"
 {%   endif %}
 
 {%   if not app_tagged %}

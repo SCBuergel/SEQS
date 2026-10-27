@@ -2036,10 +2036,13 @@ def test_dom0_cpu_pinning_removed():
     _, parsed = render_state("dom0", "dom0", sc)
     check("seqs-cpu-pinning-clear-signal" in parsed, "a leftover pinning file must be considered for removal")
     onlyif = state_arg(parsed, "seqs-cpu-pinning-clear-signal", "cmd.run", "onlyif")
-    marker = "{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}"
-    check(_owns(onlyif, PIN_FILE, marker + "\n{% extends 'libvirt/xen.xml' %}\n"),
-          "the pinning file SEQS wrote must be removed: %s" % onlyif)
-    for mine in ("{# my own pinning, replaces the one Managed by SEQS #}\n", "<!-- mine -->\n# Managed by SEQS\n"):
+    body = state_arg(_pinned({"cpus": [0]}), "seqs-cpu-pinning-signal", "file.managed", "contents")
+    check(_owns(onlyif, PIN_FILE, body), "the pinning file SEQS wrote must be removed: %s" % onlyif)
+    with open(os.path.join(sr.REPO_ROOT, "delete-vms.sh"), encoding="utf-8") as f:
+        check("PIN_MARKER='%s'" % body.split("\n")[0] in f.read(),
+              "delete-vms.sh must know the marker seqs.dom0 writes into the pinning file")
+    for mine in ("{# my own pinning, replaces the one Managed by SEQS #}\n", "<!-- mine -->\n# Managed by SEQS\n",
+                 "{# Managed by SEQS? no, mine #}\n"):
         check(not _owns(onlyif, PIN_FILE, mine), "an operator's pinning file %r must stay" % mine)
 
 
@@ -2088,7 +2091,7 @@ def test_gnosisvpn_panel_monitor():
     with open(os.path.join(sr.REPO_ROOT, "salt", "seqs", "files", "seqs-vpn-monitor"), encoding="utf-8") as f:
         check(_owns(onlyif, monitor, f.read()), "without GnosisVPN in the catalogue, dom0 removes the monitor SEQS wrote")
     check(_owns(onlyif, monitor, "# Managed by SEQS\n"), "a marker on line 1 counts too")
-    for mine in ("#!/bin/sh\n# not Managed by SEQS\n", "# mine\n# Managed by SEQS\n"):
+    for mine in ("#!/bin/sh\n# not Managed by SEQS\n", "# mine\n# Managed by SEQS\n", "x # Managed by SEQS\n"):
         check(not _owns(onlyif, monitor, mine), "an operator's %s %r must stay" % (monitor, mine))
     with open(os.path.join(sr.REPO_ROOT, "install-scripts", "components", "gnosisvpn", "template-vm.sh"), encoding="utf-8") as f:
         check('"${ASSET_DIR}/seqs-gnosisvpn-rates" /usr/bin/seqs-gnosisvpn-rates' in f.read(),

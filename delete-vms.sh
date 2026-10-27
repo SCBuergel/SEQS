@@ -368,10 +368,12 @@ done
 # dom0 files SEQS wrote for a removed qube: its CPU pinning or creation
 # marker would apply to a later qube of the same name, and its recorded
 # firewall is stale.
+PIN_MARKER='{# Managed by SEQS (salt state seqs.dom0) -- manual edits will be overwritten. #}'
 for vm in "${found[@]}"; do
 	pin="${LIBVIRT_DIR}/${vm}.xml"
-	# The directory is readable by root only. SEQS's marker starts line 1.
-	if [[ "$(sudo head -n 1 -- "${pin}" 2>/dev/null)" == "{# Managed by SEQS"* ]]; then
+	# The directory is readable by root only. Line 1 is the marker seqs.dom0
+	# writes (pin_marker there).
+	if [ "$(sudo head -n 1 -- "${pin}" 2>/dev/null)" = "${PIN_MARKER}" ]; then
 		sudo rm -f -- "${pin}"
 	fi
 	sudo rm -f -- "${STATE_DIR}/firewall/${vm}" "${INTENTS_DIR}/${vm}"
