@@ -1242,6 +1242,12 @@ def test_dom0_validation_catches_bad_config():
         check(_rejected("webcam_usb_controller '%s' is invalid" % bdf, _bad_pillar(
             webcam_usb_mode="sequential", webcam_usb_controller=bdf)),
             "controller '%s' is not a lowercase qvm-pci BDF and must fail" % bdf)
+    # These names reach root shell commands and qrexec policy lines.
+    for field in ("webcam_usb_qube", "webcam_normal_usb_qube", "webcam_scanner_qube"):
+        for value in ("x;id", "x\n"):
+            check(_rejected("%s '%s' has an unsafe name" % (field, value), _bad_pillar(
+                webcam_usb_mode="sequential", webcam_usb_controller="00_14.0", **{field: value})),
+                "%s %r must fail validation" % (field, value))
     check(_rejected("webcam_usb_controller is set while webcam_usb_mode is disabled", _bad_pillar(
         webcam_usb_mode="disabled", webcam_usb_controller="00_14.0")),
         "a controller with the mode disabled must fail validation")

@@ -238,6 +238,7 @@ MUTATIONS = [
     ("qube-ext-id-anchor", Q, "regex_match('^[a-p]{32}\\\\Z')", "regex_match('^[a-p]{32}$')"),
     ("qube-browser-desktop-anchor", Q, "\\\\.desktop\\\\Z')", "\\\\.desktop$')"),
     ("qube-cleanup-anchor", Q, "regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z')", "regex_match('^/home/user(/[A-Za-z0-9._-]+)+$')"),
+    ("dom0-webcam-names", S, "{%   if value | regex_match(name_re) is none %}", "{%   if false %}"),
     ("dom0-qr-staging-derived", S, "{% set webcam_staging_qube = papp ~ 'qr-staging' %}", "{% set webcam_staging_qube = seqs.get('webcam_staging_qube', papp ~ 'qr-staging') %}"),
     ("dom0-qr-camera-derived", S, "{% set webcam_scanner_dvm = papp ~ 'qr-camera' %}", "{% set webcam_scanner_dvm = seqs.get('webcam_scanner_dvm', papp ~ 'qr-camera') %}"),
     ("dom0-qr-staging-managed", S, "inventory.get(webcam_staging_qube, {}).get('managed') and", "webcam_staging_qube in inventory and"),
