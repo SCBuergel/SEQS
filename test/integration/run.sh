@@ -1182,15 +1182,21 @@ write_mock qvm-check 'n="${!#}"; case " $* " in *" --running "*) grep -qx "$n" "
 # The fixture holds "<vm> <property> <flag> <value>" lines; "qvm-prefs -- VM"
 # lists them as "<property> <flag> <value>".
 write_mock qvm-prefs 'awk -v v="${!#}" '"'"'$1 == v { print $2, $3, $4 }'"'"' "'"${SBX}"'/prefs"'
-write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; cat "'"${SBX}"'/staged"'
+# The camera-side qubes are untrusted: their mocks also write terminal
+# escapes, which qr_clean must not find in the script's output.
+write_mock qvm-run 'echo "$*" >> "'"${SBX}"'/qvm-run.log"; printf "staging\033]0;PWNED\007\n" >&2; cat "'"${SBX}"'/staged"'
 write_mock qvm-usb 'cat "'"${SBX}"'/usb" 2>/dev/null; :'
 write_mock qvm-kill ':'
 write_mock qvm-shutdown ':'
 write_mock systemctl 'echo "$*" >> "'"${SBX}"'/systemctl.log"'
+qr_clean() {  # NAME -- no output of a camera-side qube reached the terminal
+	[[ "${out}" != *[$'\e\a']* && "${out}" != *PWNED* ]] && ok || bad "$1: a qube's output reached the dom0 terminal"
+}
 qr_case() {  # NAME EXPECTED-OUTPUT -- run with the current fixture files; sets out
 	out="$(PATH="${SBX}/bin:${PATH}" setsid bash "${SBX}/qr.sh" </dev/null 2>&1)" \
 		&& bad "$1: the script must not succeed without START"
 	grep -qF -- "$2" <<<"${out}" && ok || bad "$1: expected '$2', got: $(tail -n 1 <<<"${out}")"
+	qr_clean "$1"
 	[ ! -e "${SBX}/systemctl.log" ] && ok || bad "$1: the script powered off before the camera phase"
 }
 qr_reset() {
@@ -1262,12 +1268,16 @@ write_mock qvm-usb 'if [ "${1:-}" = attach ] && [ -e "'"${SBX}"'/attach_hangs" ]
 	for _ in $(seq 100); do grep -qx -- "poweroff --force --force" "'"${SBX}"'/systemctl.log" 2>/dev/null && exit 1; /bin/sleep 0.1; done
 	exit 1
 fi; cat "'"${SBX}"'/usb" 2>/dev/null; :'
-write_mock qvm-run 'case "$*" in *zbarcam*) exit "$(cat "'"${SBX}"'/scan_rc")" ;; *) cat "'"${SBX}"'/staged" ;; esac'
+write_mock qvm-run 'case "$*" in
+	*zbarcam*) printf "scan\033]0;PWNED\007\n"; printf "scan\033[2JPWNED\n" >&2; exit "$(cat "'"${SBX}"'/scan_rc")" ;;
+	*) printf "staging\033[2JPWNED\n" >&2; cat "'"${SBX}"'/staged" ;;
+esac'
 qr_camera() {  # NAME ANSWER EXPECTED-OUTPUT POWEROFF(yes|no); sets out
 	rm -f "${SBX}/systemctl.log"
 	out="$(PATH="${SBX}/bin:${PATH}" PTY_RUN_PROMPT="Type START" PTY_RUN_ANSWERS="$2" \
 		python3 "${REPO}/test/lib/pty_run.py" bash "${SBX}/qr.sh" 2>&1)"
 	grep -qF -- "$3" <<<"${out}" && ok || bad "$1: expected '$3', got: $(tail -n 2 <<<"${out}" | tr -d '\r')"
+	qr_clean "$1"
 	if [ "$4" = yes ]; then
 		grep -qx poweroff "${SBX}/systemctl.log" 2>/dev/null && ok || bad "$1: the camera phase must end in a power-off"
 		qr_stop_watchdog "$1"
