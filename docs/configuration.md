@@ -381,8 +381,8 @@ returns to `sys-usb` only after a cold boot. The other `webcam_*` settings
 name the qubes the transfer creates or uses (`webcam_usb_qube`,
 `webcam_scanner_qube`, `webcam_normal_usb_qube`); change them only to avoid a
 clash with an existing qube. The build refuses a `webcam_usb_qube` or
-`webcam_scanner_qube` that names a catalogue qube, the normal USB qube, or the
-other one of the two. The camera side's template and the qube that
+`webcam_scanner_qube` that names a qube SEQS builds for a catalogue entry
+(built or not), the normal USB qube, or the other one of the two. The camera side's template and the qube that
 receives the scan are always the catalogue's `qr-camera` and `qr-staging`
 qubes.
 

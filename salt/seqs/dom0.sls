@@ -204,10 +204,10 @@ print("END")'{% endset %}
 {%   do errors.append("sequential webcam mode requires existing normal USB qube '" ~ webcam_normal_usb_qube ~ "'") %}
 {% endif %}
 {# The camera-side qubes are their own qubes: seqs-managed with no recipe,
-   never a catalogue qube or the normal USB qube, whose settings the webcam
-   states would overwrite. #}
+   never a qube of a catalogue entry or selected instance (built or not) or
+   the normal USB qube, whose settings the webcam states would overwrite. #}
 {% set catalogue_vms = [] %}
-{% for name, q in qmap.items() %}
+{% for name, q in (qcatalog | dictsort) + (qmap | dictsort) %}
 {%   do catalogue_vms.extend([ptpl ~ name, papp ~ name] + ([pdvm ~ name] if q.get('named_disposable') and pdvm else [])) %}
 {% endfor %}
 {% for field, special in [('webcam_usb_qube', webcam_usb_qube), ('webcam_scanner_qube', webcam_scanner_qube)] if webcam_mode in ['dedicated', 'sequential'] %}

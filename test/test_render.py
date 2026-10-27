@@ -795,8 +795,9 @@ def test_dom0_qr_special_qubes_are_their_own():
     case("dom0.sls: the camera-side qubes are never a catalogue qube or the normal USB qube")
     pillar = copy.deepcopy(render_pillar("dom0"))
     pillar.update(webcam_usb_mode="sequential", webcam_usb_controller="00_14.0", webcam_usb_strict_reset=True)
-    built = ["A-brave", "A-qr-camera", "A-qr-staging", "A-keepass"]
-    recipes = {"A-brave": "brave", "A-qr-camera": "qr-camera", "A-qr-staging": "qr-staging", "A-keepass": "keepass"}
+    built = ["A-brave", "A-qr-camera", "A-qr-staging", "A-keepass", "A-brave-old"]
+    recipes = {"A-brave": "brave", "A-qr-camera": "qr-camera", "A-qr-staging": "qr-staging", "A-keepass": "keepass",
+               "A-brave-old": "brave"}
 
     def errors(specials=(), **names):
         _, parsed = render_state("dom0", "dom0", Scenario(
@@ -809,10 +810,20 @@ def test_dom0_qr_special_qubes_are_their_own():
           % errors(["sys-usb-webcam", "seqs-qr-scanner"]))
     for field, value, message in (
             ("webcam_usb_qube", "A-keepass", "is a qube SEQS builds from the catalogue"),  # built earlier
+            ("webcam_usb_qube", "A-brave-old", "is a qube SEQS builds from the catalogue"),  # an instance built earlier
             ("webcam_scanner_qube", "Z-brave", "is a qube SEQS builds from the catalogue"),  # built in this run
+            ("webcam_usb_qube", "A-signal", "is a qube SEQS builds from the catalogue"),  # not built yet
+            ("webcam_usb_qube", "D-qr-display", "is a qube SEQS builds from the catalogue"),  # named disposable
             ("webcam_scanner_qube", "sys-usb", "is the normal USB qube (webcam_normal_usb_qube)")):
         check("%s '%s' %s -- choose another name" % (field, value, message) in errors(**{field: value}),
               "%s '%s' must be refused" % (field, value))
+    # A qube built before SEQS recorded recipes has none, but keeps its catalogue name.
+    _, parsed = render_state("dom0", "dom0", Scenario(
+        sys_usb=True, selection="brave", existing_qubes=built, tagged_qubes=built,
+        recipes={"A-brave": "brave", "A-qr-staging": "qr-staging", "A-brave-old": "brave"}),
+        pillar_seqs=dict(pillar, webcam_usb_qube="A-qr-camera"))
+    check("webcam_usb_qube 'A-qr-camera' is a qube SEQS builds from the catalogue -- choose another name"
+          in _errors(parsed), "a recipe-less A-qr-camera must not become the camera USB qube")
     check("webcam_usb_qube and webcam_scanner_qube are both 'cam' -- they must name different qubes"
           in errors(webcam_usb_qube="cam", webcam_scanner_qube="cam"),
           "the two camera-side qubes must differ")

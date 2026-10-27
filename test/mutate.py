@@ -244,6 +244,7 @@ MUTATIONS = [
     ("qube-browser-desktop-anchor", Q, "\\\\.desktop\\\\Z')", "\\\\.desktop$')"),
     ("qube-cleanup-anchor", Q, "regex_match('^/home/user(/[A-Za-z0-9._-]+)+\\\\Z')", "regex_match('^/home/user(/[A-Za-z0-9._-]+)+$')"),
     ("dom0-webcam-special-built", S, "{%   if special in catalogue_vms or inventory", "{%   if inventory"),
+    ("dom0-webcam-special-catalogue", S, "(qcatalog | dictsort) + (qmap | dictsort)", "(qmap | dictsort)"),
     ("dom0-webcam-special-recipe", S, "catalogue_vms or inventory.get(special, {}).get('recipe') %}", "catalogue_vms %}"),
     ("dom0-webcam-special-normal", S, "{%   if special == webcam_normal_usb_qube %}", "{%   if false %}"),
     ("dom0-webcam-special-equal", S, "and webcam_usb_qube == webcam_scanner_qube %}", "and false %}"),
